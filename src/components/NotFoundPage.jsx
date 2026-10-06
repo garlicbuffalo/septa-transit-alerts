@@ -120,7 +120,7 @@ export default function NotFoundPage() {
           </div>
           <div className="px-4 sm:px-6 py-5 sm:py-7">
             <Row label="TRACK" value="404" delay={0} />
-            <Row label="STATUS" value="DELAYED" delay={200} valueClass="text-red-400" />
+            <Row label="STATUS" value="NO SUCH JAWN" delay={200} valueClass="text-red-400" />
             <Row label="REASON" value="PAGE NOT FOUND" delay={400} />
             <Row label="ROUTE" value={attemptedPath || '/'} delay={600} />
             <Row label="NEXT ARR" value="NEVER" delay={800} valueClass="text-red-400" />
@@ -146,9 +146,40 @@ export default function NotFoundPage() {
           </div>
         </div>
 
-        <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
-          We apologize for any inconvenience.
-        </p>
+        {/* A nod to the city's most persistent overpass tag: unlike this
+            page, some things in Philly are forever. */}
+        <figure className="mt-8">
+          <svg
+            viewBox="0 0 600 120"
+            className="w-full h-auto"
+            role="img"
+            aria-label="A concrete overpass spray-painted with BONER 4EVER"
+          >
+            <rect x="0" y="18" width="600" height="62" fill="#9ca3af" />
+            <rect x="0" y="18" width="600" height="8" fill="#6b7280" />
+            <rect x="0" y="74" width="600" height="6" fill="#6b7280" />
+            <rect x="60" y="80" width="34" height="40" fill="#9ca3af" />
+            <rect x="506" y="80" width="34" height="40" fill="#9ca3af" />
+            <path d="M120 40l30 20M380 30l-10 40M470 70l40-14" stroke="#6b7280" strokeWidth="1" />
+            <text
+              x="300"
+              y="64"
+              textAnchor="middle"
+              fontSize="36"
+              fontWeight="900"
+              fontStyle="italic"
+              fontFamily="Impact, 'Arial Black', sans-serif"
+              fill="#111827"
+              transform="rotate(-3 300 56)"
+              letterSpacing="2"
+            >
+              BONER 4EVER
+            </text>
+          </svg>
+          <figcaption className="mt-3 text-center text-sm text-slate-500 dark:text-slate-400">
+            Page not found. Some things in Philly are forever, but this page isn’t one of them.
+          </figcaption>
+        </figure>
       </main>
       <Footer />
     </div>

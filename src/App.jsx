@@ -566,7 +566,8 @@ export default function App() {
                         All clear
                       </p>
                       <p className="text-xs text-green-700/80 dark:text-green-400/80">
-                        No active {NETWORK_LABELS[selectedNetwork]} disruptions right now.
+                        No active {NETWORK_LABELS[selectedNetwork]} disruptions right now. Go get
+                        yourself a wooder ice.
                       </p>
                     </div>
                   </section>
