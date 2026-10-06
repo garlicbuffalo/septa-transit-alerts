@@ -20,3 +20,6 @@ public/data/*
 # when run from a checkout; on the server it lives in /var/lib/septa-bots.
 /bot-state/
 /bot/.env
+
+# Local secrets (Bluesky app passwords). Never commit.
+.env
