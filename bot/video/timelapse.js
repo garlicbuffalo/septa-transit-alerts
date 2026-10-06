@@ -6,27 +6,9 @@ import sharp from 'sharp';
 import { escapeXml, FONT, pill, textWidth, titlePill } from '../map/draw.js';
 import { encodeMp4, FPS } from './encode.js';
 
+export { clockLabel, clockRange } from '../lib/clock.js';
+
 export const VIDEO_SIZE = 1080;
-
-const CLOCK = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/New_York',
-  hour: 'numeric',
-  minute: '2-digit',
-});
-
-/** Philadelphia clock time: "4:12 PM". */
-export function clockLabel(ts) {
-  return CLOCK.format(new Date(ts)).replace(/ /g, ' ');
-}
-
-/** "4:00–4:15 PM", or "11:50 AM–12:05 PM" across noon. */
-export function clockRange(start, end) {
-  const a = clockLabel(start);
-  const b = clockLabel(end);
-  const [aTime, aHalf] = a.split(' ');
-  const [, bHalf] = b.split(' ');
-  return aHalf === bHalf ? `${aTime}–${b}` : `${a}–${b}`;
-}
 
 /** Elapsed time as "+3:45". */
 export function elapsedLabel(ms) {

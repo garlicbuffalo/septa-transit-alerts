@@ -20,7 +20,11 @@ export function recordEvent(db, e) {
   db.prepare(`
     INSERT INTO detection_events (subject, source, mode, route, metric, ratio, near, lat, lon, ts, posted)
     VALUES (@subject, @source, @mode, @route, @metric, @ratio, @near, @lat, @lon, @ts, @posted)
-    ON CONFLICT(subject) DO UPDATE SET posted = MAX(posted, excluded.posted)
+    ON CONFLICT(subject) DO UPDATE SET
+      posted = MAX(posted, excluded.posted),
+      lat = COALESCE(lat, excluded.lat),
+      lon = COALESCE(lon, excluded.lon),
+      near = COALESCE(near, excluded.near)
   `).run({
     ratio: null,
     near: null,

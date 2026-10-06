@@ -120,6 +120,38 @@ const MIGRATIONS = [
     PRIMARY KEY (capture_id, vehicle_id, t)
   ) WITHOUT ROWID;
   `,
+  `
+  -- Every Regional Rail train on TrainView, one row per service day: the
+  -- worst lateness seen, whether it ran, whether SEPTA marked it cancelled.
+  -- The rail recaps count from here.
+  CREATE TABLE rail_trains (
+    service_date TEXT NOT NULL,
+    train_no TEXT NOT NULL,
+    line TEXT,
+    origin TEXT,
+    dest TEXT,
+    max_late INTEGER,
+    ran INTEGER NOT NULL DEFAULT 0,
+    cancelled INTEGER NOT NULL DEFAULT 0,
+    first_seen INTEGER NOT NULL,
+    last_seen INTEGER NOT NULL,
+    PRIMARY KEY (service_date, train_no)
+  ) WITHOUT ROWID;
+  `,
+  `
+  -- Every speed map posted: which route each account mapped last (they take
+  -- turns), and the averages behind "slowest reported in 14 days".
+  CREATE TABLE speedmap_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account TEXT NOT NULL,
+    route TEXT NOT NULL,
+    direction TEXT,
+    ts INTEGER NOT NULL,
+    avg_mph REAL NOT NULL,
+    coverage REAL
+  );
+  CREATE INDEX speedmap_runs_route ON speedmap_runs (account, route, ts);
+  `,
 ];
 
 /**
@@ -176,8 +208,9 @@ export function clearCooldown(db, keys) {
 }
 
 /**
- * Delete old observations, expired cooldowns, and finished captures' samples
- * (the capture rows themselves stay a month, as a record).
+ * Delete old observations, expired cooldowns, finished captures' samples (the
+ * capture rows themselves stay a month, as a record), and rail train tallies
+ * over 400 days old.
  */
 export function pruneDb(db, now, { observationRetentionDays }) {
   const DAY = 24 * 60 * 60 * 1000;
@@ -191,5 +224,8 @@ export function pruneDb(db, now, { observationRetentionDays }) {
     )
     .run(now - DAY).changes;
   db.prepare('DELETE FROM captures WHERE end_ts < ?').run(now - 30 * DAY);
+  // A year of trains, plus a month's margin, for the recaps.
+  const railCutoff = new Date(now - 400 * DAY).toISOString().slice(0, 10);
+  db.prepare('DELETE FROM rail_trains WHERE service_date < ?').run(railCutoff);
   return { observations, cooldowns, samples };
 }

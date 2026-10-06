@@ -5,11 +5,12 @@
 // by how late it's running.
 import metroShapes from '../../src/lib/metroLineShapes.json' with { type: 'json' };
 import { METRO_LINES } from '../../src/lib/metroLines.js';
+import { clockLabel } from '../lib/clock.js';
 import { formatDistance, maxPairDistance, metersBetween, pathLength } from '../lib/geo.js';
 import { escapeXml, FONT, line } from '../map/draw.js';
 import { bboxOf, fitView, project } from '../map/projection.js';
 import { MARKER, MARKER_R, STRETCH, separate, stretchBetween } from '../map/routeMap.js';
-import { clockLabel, dotLegend, elapsedLabel, hud, VIDEO_SIZE } from './timelapse.js';
+import { dotLegend, elapsedLabel, hud, VIDEO_SIZE } from './timelapse.js';
 import { positionAt, trailAt } from './tracks.js';
 
 const MIN_SPAN_DEG = 0.012;

@@ -149,14 +149,18 @@ describe('pipeline', () => {
     const stateDir = mkdtempSync(join(tmpdir(), 'bot-'));
     const config = loadConfig({ STATE_DIR: stateDir, FIXTURES_DIR: FIXTURES });
     const db = openDb(config.dbPath);
-    setMeta(db, client.dryRun ? 'dry_run_since' : 'live_since', 0);
+    // Posting since well before the fixtures' alerts began (0 would read as unset).
+    setMeta(db, client.dryRun ? 'dry_run_since' : 'live_since', 1);
     const poster = createPoster({ db, client, now: () => FIXTURE_NOW });
+    // An empty local remote: the real published branch would make the test
+    // depend on the network and on whatever the live detectors remember.
     const publisher = createPublisher({
       dataDir: config.dataDir,
       github: config.github,
       db,
       enabled: false,
       deployMinGapMs: 0,
+      remoteUrl: bareRemote(),
     });
     const logs = [];
     const pipeline = createPipeline({
@@ -182,10 +186,18 @@ describe('pipeline', () => {
     const { ok, summary } = await pipeline.collectTick();
     expect(ok).toBe(true);
     expect(summary.hook.alerts.posted).toBeGreaterThan(0);
-    expect(client.posts.every((p) => p.account === 'alerts')).toBe(true);
+    expect(client.posts.filter((p) => p.account === 'alerts')).toHaveLength(
+      summary.hook.alerts.posted,
+    );
+    // The fixtures' trip feed cancels bus trips and it's past 2:45 PM: one
+    // cancelled-trip roundup; nothing else on the other accounts yet.
+    expect(summary.hook.cancellations).toMatchObject({ posts: 1 });
+    expect(client.posts.filter((p) => p.account !== 'alerts')).toHaveLength(1);
     const recent = JSON.parse(readFileSync(join(config.dataDir, 'alerts-recent.json'), 'utf8'));
     const linked = recent.incidents.filter((i) => i.official_alert?.post_url);
-    expect(linked.length).toBe(summary.hook.linked);
+    const roundup = recent.incidents.filter((i) => i.detections?.some((d) => d.post_url));
+    expect(roundup.length).toBeGreaterThan(0);
+    expect(linked.length + roundup.length).toBe(summary.hook.linked);
     expect(linked[0].official_alert.post_url).toMatch(
       /^https:\/\/bsky\.app\/profile\/did:plc:alerts\/post\//,
     );

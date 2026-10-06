@@ -268,6 +268,7 @@ export async function postDetections({
   for (const inc of incidents.values()) {
     for (const det of inc.detections ?? []) {
       if (!POSTED_SOURCES.has(det.source)) continue;
+      if (det.lifecycle.active) noteDetection(db, inc, det, vehicles);
       const account = accountFor(inc.mode);
       if (!account || !poster.client.hasAccount(account)) continue;
       const subject = subjectOf(det);
@@ -369,19 +370,7 @@ async function postNew({
   const route = det.scope.route;
   const d = det.evidence?.details ?? {};
   const score = scoreOf(det.source, d);
-  const anchor = vehicles.get(String(d.vehicles?.[0]));
-  recordEvent(db, {
-    subject,
-    source: det.source,
-    mode: inc.mode,
-    route,
-    metric: metricOf(det.source, d),
-    ratio: det.source === 'gap' ? score : null,
-    near: det.scope.from_station ?? cleanStopName(anchor?.nextStopName),
-    lat: anchor?.lat ?? null,
-    lon: anchor?.lon ?? null,
-    ts: det.lifecycle.first_seen_ts,
-  });
+  noteDetection(db, inc, det, vehicles);
 
   // Caps and cooldowns, unless this is clearly the worst of the day.
   const today = postedSince(db, { source: det.source, route, since: startOfEasternDay(now) });
@@ -465,6 +454,27 @@ async function postNew({
     }
   }
   return 'posted';
+}
+
+/**
+ * Record a detection in the history (once; later calls only keep it), where
+ * its first vehicle is: the recaps count every detection seen, posted or not.
+ */
+function noteDetection(db, inc, det, vehicles) {
+  const d = det.evidence?.details ?? {};
+  const anchor = vehicles.get(String(d.vehicles?.[0]));
+  recordEvent(db, {
+    subject: subjectOf(det),
+    source: det.source,
+    mode: inc.mode,
+    route: det.scope.route,
+    metric: metricOf(det.source, d),
+    ratio: det.source === 'gap' ? scoreOf(det.source, d) : null,
+    near: det.scope.from_station ?? cleanStopName(anchor?.nextStopName),
+    lat: anchor?.lat ?? null,
+    lon: anchor?.lon ?? null,
+    ts: det.lifecycle.first_seen_ts,
+  });
 }
 
 function postedInLastHour(db, mode, source, now) {

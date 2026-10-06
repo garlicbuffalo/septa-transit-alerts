@@ -8,9 +8,9 @@ The always-on half of the project. It runs on a small server and:
   | Account | Posts |
   |---|---|
   | `alerts` | SEPTA's significant alerts, with a map when the alert names a stretch of line, and a threaded ✅ reply when SEPTA clears them |
-  | `metro` | SEPTA Metro gaps, bunching, stuck vehicles, and silent routes, each with a map; an hourly roundup of routes with vehicles missing from the tracker; timelapse videos |
+  | `metro` | SEPTA Metro gaps, bunching, stuck vehicles, and silent routes, each with a map; an hourly roundup of routes with vehicles missing from the tracker; cancelled-trip roundups; timelapse videos; speed maps; weekly and monthly bunching and gap recaps |
   | `bus` | The same for buses, plus clusters of several routes' buses stopped together |
-  | `rail` | Regional Rail delays, cancellations, speed maps, and recaps *(phase 4)* |
+  | `rail` | An hourly roundup of Regional Rail cancellations and 15+ min delays; speed maps; weekly and monthly on-time recaps with a chart by line |
 
 - **Publishes the site's data.** It pushes the `data` branch and triggers deploys, and links every incident to its Bluesky post. While the server publishes, the [collect workflow](../.github/workflows/collect.yml) stands down. If the server goes quiet for 20 minutes, the workflow's next scheduled run takes over again by itself (GitHub's cron can be slow to fire; *Actions → Collect SEPTA data → Run workflow* takes over at once).
 
@@ -66,6 +66,8 @@ You need:
 | One manual tick | `sudo septa-bots once` |
 | Re-render an alert's map | `sudo septa-bots map alert-136615` |
 | Record and post the system timelapses now | `sudo septa-bots snapshot` (15 minutes; `snapshot 3` for 3) |
+| Post a speed map now | `sudo septa-bots speedmap bus` (or `metro`, `rail`) |
+| Post a recap now | `sudo septa-bots recap rail week` (`bus`, `metro`, `rail`; `week` or `month`) |
 | Turn videos off | set `VIDEOS=0`, restart |
 | Stop posting at once | set `BOT_MODE=dry-run`, restart |
 | Hand collecting back to GitHub Actions | set `PUBLISH=0`, restart, then run *Actions → Collect SEPTA data → Run workflow* (or wait 20+ minutes for its schedule) |
@@ -74,7 +76,7 @@ You need:
 
 | Path | What it holds |
 |---|---|
-| `bots.sqlite` | Every post (so restarts never double-post and threads continue), recent vehicle positions, cooldowns, timelapse recordings |
+| `bots.sqlite` | Every post (so restarts never double-post and threads continue), recent vehicle positions, cooldowns, timelapse recordings, a year of Regional Rail train tallies, speed map history, every detection seen (for the recaps) |
 | `data/` | The checkout of the `data` branch |
 | `cache/` | The daily GTFS schedule index |
 | `bluesky-sessions/` | Cached logins, so the accounts stay under Bluesky's login limits |
@@ -98,8 +100,13 @@ features/detections.js  gap / bunching / stuck / silent-route posts, caps, follo
 features/ghosts.js      hourly missing-vehicle roundups
 features/crossBunching.js  several routes' vehicles stopped together
 features/history.js     detection history: daily caps and "📊" callouts
+features/rail.js        Regional Rail roundups, the TrainView tally, and on-time recaps
 features/timelapse.js   timelapse recordings: start, sample, render, post
-map/               Mapbox basemap + SVG overlay rendering (projection, drawing, line and route maps)
+features/speedmaps.js   past-hour speeds binned along a route, round-robin
+features/recaps.js      weekly and monthly bunching hotspots and gap charts
+features/cancellations.js  twice-daily cancelled-trip roundups
+map/               Mapbox basemap + SVG overlay rendering (projection, drawing, line, route,
+                   speed and hotspot maps, bar charts)
 video/             timelapses: vehicle tracks, scenes, frame rendering, ffmpeg encoding
 lib/shapes.js      route shapes from GTFS (built with the collector's daily schedule)
 ```
@@ -120,6 +127,14 @@ Each feature decides what to post from the collector's incidents. It records wha
 **Timelapses.** After a gap, bunching, or cluster post, the bot follows the vehicles in it for 10 minutes, polling their route every 15 seconds, and replies with a 10-second video: the vehicles numbered (or L and N) as on the map, with trails, the route's other vehicles as dots, and a live readout. The reply says what happened: "Still bunched: 3 buses within 520 ft (was 370 ft)", "The buses spread out: 370 ft → 0.42 mi from first to last", "The gap between #3787 (L) and #3314 (N) went from 2.40 mi to 2.10 mi", or "3 of the 4 buses had moved on". At 8 and 11 AM and 2, 5, and 8 PM, each account also posts a 15-minute system timelapse: every tracked bus, or every Metro trolley and M1 car, colored by how late it's running. Bluesky caps video uploads per account per day, so each account gets at most one timelapse reply per kind per hour and 20 videos a day in all (`VIDEO_DAILY_CAP`), 5 of them kept for the snapshots.
 
 Each route gets at most one post per kind per hour, and a few per day: 3 gaps, 3 bunches, 4 stuck-vehicle posts and 3 silent stretches. A detection 25% worse than everything already posted for the route that day posts anyway. Posts carry history callouts ("📊 2nd Route 23 gap reported today · biggest gap vs schedule on this route in 30 days"). When a detection is attached to a SEPTA alert, the alerts account quotes it into that alert's thread, up to 3 per thread.
+
+**Speed maps.** Every two hours from morning to evening, each account maps how fast its vehicles moved along one route or line over the past hour: buses (bus account), trolleys and the M1 (metro), Regional Rail lines (rail). Speeds come from each vehicle's consecutive positions, binned along the route (40 stretches, or half-mile stretches for Regional Rail) and colored like traffic: red is slow, green is moving well, gray had no data. Layovers at the ends of a route don't count. Routes take turns, least recently mapped first, and a map with data for under 30% of its route is skipped. A route's slowest or fastest map in 14 days gets a "📊" callout.
+
+**Cancelled trips.** SEPTA publishes each day's cancelled bus and trolley trips ahead of time. At 6:45 AM and 2:45 PM, the bus and metro accounts post the day's count by route ("Route 16: 14 of 120 trips"). The 12 worst routes are listed and the rest summed in one line ("…and 33 more routes, 107 trips"), since SEPTA can cancel 250+ bus trips on 45 routes in a day. A day with fewer than 3 cancelled trips gets no post, and each route's incident on the site links to the roundup.
+
+**Recaps.** Sunday mornings (the past week) and on the 1st (the past month), the bus and metro accounts post a map of the places vehicles bunched most often, with bubbles sized by count, and a reply charting the routes with the most long gaps. They count every bunching and gap detection the bot saw, posted or not.
+
+**Regional Rail** (rail account). At 14 past each hour, the bot posts a roundup of the trains SEPTA cancelled and the trains running 15+ minutes late that the collector picked up in the hour before, worst delays first, threaded when it runs long. It's silent when there were none, and each train's incident on the site links to the roundup. Every Sunday (the past week) and on the 1st (the past month), a recap gives the share of trains on time (under 15 minutes late and not cancelled), the three least reliable lines, cancellations, and the worst delay, with a bar chart of every line. The recaps count every train on SEPTA's TrainView as the server polls it, not just the ones that were posted.
 
 **Which alerts post:**
 

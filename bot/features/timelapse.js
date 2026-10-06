@@ -13,6 +13,7 @@
 // observations fill those in.
 import { easternDateKey, easternParts } from '../../collector/lib/time.js';
 import { normalizeTransitView } from '../../collector/lib/vehicles.js';
+import { clockRange } from '../lib/clock.js';
 import { formatDistance, maxPairDistance, metersBetween } from '../lib/geo.js';
 import { routeShortLabel } from '../lib/routes.js';
 import { routeColor } from '../map/routeMap.js';
@@ -25,7 +26,7 @@ import {
   snapshotScene,
   TRACKED_METRO,
 } from '../video/scenes.js';
-import { clockRange, renderTimelapse } from '../video/timelapse.js';
+import { renderTimelapse } from '../video/timelapse.js';
 import { buildTracks, positionAt } from '../video/tracks.js';
 import { startOfEasternDay } from './history.js';
 

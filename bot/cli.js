@@ -8,6 +8,8 @@
 //                                  the data directory to the assets folder
 //   node bot/cli.js snapshot [min] record and post the bus and Metro system
 //                                  snapshots now (default 15 minutes)
+//   node bot/cli.js speedmap <account>      post a speed map now (bus, metro, rail)
+//   node bot/cli.js recap <account> <week|month>  post a recap now
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createBlueskyClient } from './lib/bluesky.js';
@@ -124,11 +126,27 @@ async function snapshot(minutes) {
   db.close();
 }
 
+async function runOnce(fn) {
+  const { pipeline, db } = createRuntime(config);
+  await pipeline.loadShapes();
+  log(JSON.stringify(await fn(pipeline)));
+  db.close();
+}
+
+const ACCOUNT_NAMES = ['bus', 'metro', 'rail'];
+
 if (command === 'check') await check();
 else if (command === 'once') await once();
 else if (command === 'map' && args[0]) await map(args[0]);
 else if (command === 'snapshot') await snapshot(Number(args[0]) || 15);
+else if (command === 'speedmap' && ACCOUNT_NAMES.includes(args[0]))
+  await runOnce((p) => p.speedMap(args[0]));
+else if (command === 'recap' && ACCOUNT_NAMES.includes(args[0]) && /^(week|month)$/.test(args[1]))
+  await runOnce((p) => (args[0] === 'rail' ? p.railRecap(args[1]) : p.recap(args[0], args[1])));
 else {
-  log('usage: node bot/cli.js check | once | map <incident-id> | snapshot [minutes]');
+  log(
+    'usage: node bot/cli.js check | once | map <incident-id> | snapshot [minutes] | ' +
+      'speedmap <bus|metro|rail> | recap <bus|metro|rail> <week|month>',
+  );
   process.exit(2);
 }
