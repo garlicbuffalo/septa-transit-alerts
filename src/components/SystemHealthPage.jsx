@@ -321,7 +321,7 @@ function RouteGrid({ kind, rows, sortKey, onSortChange }) {
             </div>
             <div
               className="text-xs tabular-nums text-slate-600 dark:text-slate-300 text-right"
-              title="Disrupted time in the last 30 days"
+              title="Unplanned disrupted time in the last 30 days (planned work isn't counted)"
             >
               {row.disruptionMinutes > 0 ? (
                 formatMinutesAsHours(row.disruptionMinutes)
@@ -626,12 +626,13 @@ export default function SystemHealthPage({ kind }) {
                   {systemDisruption && systemDisruption.disruptedMinutes > 0 && (
                     <p
                       className="text-xs text-slate-500 dark:text-slate-400"
-                      title="Total line-time spent in a detected disruption over the last 30 days, summed across every route in this mode."
+                      title="Total line-time spent in an unplanned disruption over the last 30 days, summed across every route in this mode. Planned work — scheduled closures, construction, and maintenance — isn't counted."
                     >
                       <strong className="text-slate-700 dark:text-slate-200">
                         {formatMinutesAsHours(systemDisruption.disruptedMinutes)}
                       </strong>{' '}
-                      disrupted across all {modeLabel.toLowerCase()} over the last 30 days
+                      of unplanned disruption across all {modeLabel.toLowerCase()} over the last 30
+                      days
                       {systemDisruption.ratio > 0 && (
                         <>
                           {' · '}

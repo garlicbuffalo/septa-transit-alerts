@@ -233,7 +233,7 @@ export default function SummaryStats({
       ? buildDisruptionCard(
           metroDisruption7d,
           'Metro',
-          `Total SEPTA Metro line-hours in a disruption over the last 7 days, summed across the ${METRO_LINE_ORDER.length} lines (overlapping incidents on one line are unioned; separate lines are summed). The percentage is that share of scheduled Metro service hours.`,
+          `Total SEPTA Metro line-hours in an unplanned disruption over the last 7 days, summed across the ${METRO_LINE_ORDER.length} lines (overlapping incidents on one line are unioned; separate lines are summed). The percentage is that share of scheduled Metro service hours. Planned work — scheduled closures, construction, and maintenance — isn't counted.`,
         )
       : null;
   const railDisruptionCard =
@@ -241,7 +241,7 @@ export default function SummaryStats({
       ? buildDisruptionCard(
           railDisruption7d,
           'Regional Rail',
-          `Total Regional Rail line-hours in a disruption over the last 7 days, summed across the ${RAIL_LINE_ORDER.length} lines (overlapping incidents on one line are unioned; separate lines are summed). The percentage is that share of estimated Regional Rail service hours.`,
+          `Total Regional Rail line-hours in an unplanned disruption over the last 7 days, summed across the ${RAIL_LINE_ORDER.length} lines (overlapping incidents on one line are unioned; separate lines are summed). The percentage is that share of estimated Regional Rail service hours. Planned work — scheduled closures, construction, and maintenance — isn't counted.`,
         )
       : null;
   const trendCard = (() => {

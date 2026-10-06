@@ -798,6 +798,10 @@ export const SERVICE_HOURS_PER_DAY = DEFAULT_SERVICE_HOURS_PER_DAY;
 // 60-min alert on T1+T2 contributes 120 line-minutes, matching the per-day
 // timeline cells which also draw on both rows.
 //
+// Planned work (SEPTA maintenance/construction advisories, advance-notice
+// closures and reroutes — see isPlannedWork) is left out; only unplanned
+// disruptions and bot-observed impact count.
+//
 // Spans are clamped to the window and to `now` (active spans extend to now).
 // Overlapping incidents on the same line collapse to the union of their
 // intervals so a held cluster + ghost detection don't double-count.
@@ -857,11 +861,22 @@ export function computeDisruptionMinutes(
   }
 
   for (const m of merged) {
+    if (m.planned) {
+      // Planned work with bot detections: only the observed impact counts.
+      // Use the raw detection records — the merged record hides their
+      // resolution while the incident is still active.
+      for (const o of observations || []) {
+        if (o._incidentId !== m._incidentId || o.line == null) continue;
+        add(`${o.kind}:${o.line}`, o.ts, o.resolved_ts ?? (o.active ? null : o.ts));
+      }
+      continue;
+    }
     for (const route of m.routes || []) {
       add(`${m.kind}:${route}`, m.first_seen_ts, m.resolved_ts);
     }
   }
   for (const a of standaloneAlerts) {
+    if (a.planned) continue; // scheduled work isn't a disruption (see isPlannedWork)
     for (const route of a.routes || []) {
       add(`${a.kind}:${route}`, a.first_seen_ts, a.resolved_ts);
     }

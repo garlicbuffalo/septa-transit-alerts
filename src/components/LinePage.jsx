@@ -53,6 +53,9 @@ import { SignalBreakdownSingleRoute } from './SignalBreakdown.jsx';
 import Timeline from './Timeline.jsx';
 import TrendSparkline from './TrendSparkline.jsx';
 
+const PLANNED_NOTE =
+  "Planned work — scheduled closures, construction, and maintenance — isn't counted.";
+
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // Compact 7-bar weekday breakdown. Average incidents per weekday over the
@@ -610,6 +613,7 @@ export default function LinePage({ kind, lineId }) {
                         cells.push({
                           v: formatMinutesAsHours(disruption.disruptedMinutes),
                           l: pct ? `disrupted, 30d · ${pct}` : 'disrupted, 30d',
+                          t: `Time this line spent in an unplanned disruption over the last 30 days, and its share of service hours. ${PLANNED_NOTE}`,
                         });
                       }
                       if (reliability) {
@@ -641,6 +645,7 @@ export default function LinePage({ kind, lineId }) {
                           {cells.map((c) => (
                             <div
                               key={c.l}
+                              title={c.t}
                               className="rounded-lg border border-slate-200 dark:border-gh-border bg-white dark:bg-gh-surface px-3 py-2"
                             >
                               <div className="text-base font-semibold text-slate-800 dark:text-slate-100 tabular-nums leading-tight">

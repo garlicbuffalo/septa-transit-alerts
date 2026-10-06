@@ -202,7 +202,7 @@ function StatTable({ kind, selected, perLine, yoyByLine }) {
             </th>
             {yoyByLine.map((y, idx) => cell(y ? `${y.currentCount}` : '—', idx))}
           </tr>
-          <tr title="Severity-weighted: total line-time spent in a detected disruption over the last 30 days, against an assumed 20h/day service window.">
+          <tr title="Total line-time spent in an unplanned disruption over the last 30 days, against an assumed 20h/day service window. Planned work — scheduled closures, construction, and maintenance — isn't counted.">
             <th
               scope="row"
               className="py-2 pr-3 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 sticky left-0 bg-white dark:bg-gh-surface z-10 whitespace-nowrap font-normal text-left"

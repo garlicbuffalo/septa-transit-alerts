@@ -26,6 +26,7 @@ import {
   incidentCategory,
   incidentHeadlineText,
   isPlannedIncident,
+  isPlannedWork,
   modeLabel,
   observationSignals,
   railIncidentStatus,
@@ -975,6 +976,21 @@ describe('incidentCategory / isPlannedIncident', () => {
     // A real-time ALERT with the same text stays a live delay.
     inc.official_alert.septa = { type: 'ALERT', cause: 'CONSTRUCTION', effect: null };
     expect(isPlannedIncident(inc, NOW_TS)).toBe(false);
+  });
+
+  it('judges planned work as of when the incident was first seen', () => {
+    // Posted before its start: advance-notice work stays planned once it begins.
+    const inc = aInc({
+      routes: ['l1'],
+      first_seen_ts: NOW - 2 * DAY,
+      active: true,
+      cta: { headline: '11th St Station Closed', agency_event_start_ts: NOW - DAY },
+    });
+    expect(isPlannedIncident(inc, NOW)).toBe(false);
+    expect(isPlannedWork(inc)).toBe(true);
+    // A live alert with no window is unplanned.
+    const live = aInc({ routes: ['l1'], active: true, cta: { headline: 'L1 Delays' } });
+    expect(isPlannedWork(live)).toBe(false);
   });
 
   it("keeps SEPTA's headline when a train-numbered alert reports no delay or cancellation", () => {

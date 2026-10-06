@@ -176,6 +176,8 @@ export function officialRecordFromIncident(inc) {
     agency_event_end_ts: agencyWindow.end_ts ?? null,
     agency_event_start_is_date_only: agencyWindow.start_is_date_only ?? false,
     agency_event_end_is_date_only: agencyWindow.end_is_date_only ?? false,
+    // Scheduled work (see isPlannedWork) — left out of disruption-time stats.
+    planned: isPlannedWork(inc),
     // Schedule-anchored single-train Regional Rail cancellation (null
     // otherwise). Top-level on the incident, not under `official_alert`.
     cancellation:
@@ -634,6 +636,19 @@ export function isPlannedIncident(incident, now = Date.now()) {
   return PLANNED_TEXT_RE.test(text);
 }
 
+// Whether an incident is scheduled work rather than an unplanned disruption,
+// judged as of when it was first seen — so advance-notice work stays "planned"
+// once it starts. Disruption-time stats leave planned work out: a weeks-long
+// station closure or a construction advisory is published service, not a
+// breakdown, and counting it would swamp the measure.
+/**
+ * @param {Incident} incident
+ * @returns {boolean}
+ */
+export function isPlannedWork(incident) {
+  return isPlannedIncident(incident, incidentLifecycle(incident).first_seen_ts ?? 0);
+}
+
 /**
  * Three-way bucket for the homepage's active list:
  *   'planned'    — scheduled / advance-notice work (see {@link isPlannedIncident})
@@ -1030,6 +1045,7 @@ function buildMergedRecord(alert, obsList) {
     active,
     post_url: alert.post_url,
     source_url: alert.source_url ?? null,
+    planned: alert.planned === true,
     resolved_reply_url: alert.resolved_reply_url,
     affected_from_station: alert.affected_from_station,
     affected_to_station: alert.affected_to_station,

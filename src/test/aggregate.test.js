@@ -76,6 +76,35 @@ describe('computeDisruptionMinutes', () => {
     expect(out.ratio).toBeCloseTo(60 / (20 * 30 * 60), 6);
   });
 
+  it('leaves planned work out, keeping bot-observed impact during it', () => {
+    const lines = [{ kind: 'metro', line: 'l1' }];
+    const closure = alert({
+      routes: ['l1'],
+      planned: true,
+      first_seen_ts: NOW - 10 * 24 * HOUR,
+      resolved_ts: null,
+      active: true,
+      _incidentId: 'closure',
+    });
+    expect(computeDisruptionMinutes([closure], [], { now: NOW, lines }).disruptedMinutes).toBe(0);
+    // A detection merged into the planned incident still counts, for its own span.
+    const gap = obs({
+      line: 'l1',
+      ts: NOW - 2 * HOUR,
+      resolved_ts: NOW - HOUR,
+      active: false,
+      _incidentId: 'closure',
+    });
+    expect(
+      computeDisruptionMinutes([closure], [gap], { now: NOW, lines }).disruptedMinutes,
+    ).toBe(60);
+    // The same alert unplanned counts in full (capped by the 30-day window).
+    expect(
+      computeDisruptionMinutes([{ ...closure, planned: false }], [], { now: NOW, lines })
+        .disruptedMinutes,
+    ).toBe(10 * 24 * 60);
+  });
+
   it('caps the share at 100% for a line disrupted around the clock', () => {
     const out = computeDisruptionMinutes(
       [],
