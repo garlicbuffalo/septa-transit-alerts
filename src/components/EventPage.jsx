@@ -11,12 +11,12 @@ import {
 import { SITE_NAME } from '../lib/site.js';
 import { buildStationIndex } from '../lib/stations.js';
 import Breadcrumb from './Breadcrumb.jsx';
-import BrowseMenu from './BrowseMenu.jsx';
 import { EventDetail } from './event/EventDetail.jsx';
 import EventNav from './event/EventNav.jsx';
 import { describeText, incidentRoutes } from './event/incidentText.jsx';
 import { CrossLineContext, RelatedIncidents } from './event/RelatedIncidents.jsx';
 import Footer from './Footer.jsx';
+import Header from './Header.jsx';
 import NotFoundPage from './NotFoundPage.jsx';
 
 export default function EventPage({ eventId }) {
@@ -101,8 +101,18 @@ export default function EventPage({ eventId }) {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-gh-canvas flex flex-col">
+      <Header
+        generatedAt={null}
+        dark={dark}
+        onToggleDark={toggleDark}
+        onResetFilters={() => {
+          window.location.href = '/';
+        }}
+        alerts={flat?.alerts}
+        observations={flat?.observations}
+      />
       <main id="main" tabIndex={-1} className="max-w-3xl mx-auto px-4 py-6 w-full flex-1">
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4">
           <Breadcrumb
             items={
               incident
@@ -113,18 +123,6 @@ export default function EventPage({ eventId }) {
                 : [{ label: 'Home', href: '/' }, { label: 'Incident' }]
             }
           />
-          <div className="flex items-center gap-2">
-            <BrowseMenu alerts={flat?.alerts} observations={flat?.observations} />
-            <button
-              type="button"
-              onClick={toggleDark}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-gh-subtle text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gh-border transition-colors"
-              aria-label="Toggle dark mode"
-            >
-              {dark ? '☀️' : '🌙'}
-              <span>{dark ? 'Light' : 'Dark'}</span>
-            </button>
-          </div>
         </div>
 
         {error && <p className="text-red-600 text-sm">Failed to load alert data.</p>}

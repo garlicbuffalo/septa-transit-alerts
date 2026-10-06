@@ -876,7 +876,8 @@ describe('EventPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Detour: Market St Closed')).toBeInTheDocument();
     });
-    expect(screen.queryByText('Stations')).not.toBeInTheDocument();
+    // Scoped to <main>: the site header's section nav has its own "Stations" link.
+    expect(within(screen.getByRole('main')).queryByText('Stations')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '15th St' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '17th St' })).not.toBeInTheDocument();
   });

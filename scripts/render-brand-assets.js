@@ -1,7 +1,8 @@
 // Render the committed raster brand assets from their sources with Playwright:
 //
 //   scripts/og-template.html   → public/og-image.png (1200×630 homepage card)
-//   public/favicon.svg         → public/favicon-16.png, public/favicon-32.png
+//   public/favicon.svg         → public/favicon-16.png, public/favicon-32.png,
+//                                public/icon-192.png, public/icon-512.png
 //   public/apple-touch-icon.svg → public/apple-touch-icon.png (180×180)
 //   scripts/icon-maskable.svg  → public/icon-maskable-192.png, -512.png
 //
@@ -22,6 +23,8 @@ const SITE_HOST = new URL(SITE_ORIGIN).host;
 const ICONS = [
   { src: 'public/favicon.svg', out: 'public/favicon-16.png', size: 16 },
   { src: 'public/favicon.svg', out: 'public/favicon-32.png', size: 32 },
+  { src: 'public/favicon.svg', out: 'public/icon-192.png', size: 192 },
+  { src: 'public/favicon.svg', out: 'public/icon-512.png', size: 512 },
   { src: 'public/apple-touch-icon.svg', out: 'public/apple-touch-icon.png', size: 180 },
   { src: 'scripts/icon-maskable.svg', out: 'public/icon-maskable-192.png', size: 192 },
   { src: 'scripts/icon-maskable.svg', out: 'public/icon-maskable-512.png', size: 512 },
