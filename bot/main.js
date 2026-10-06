@@ -21,15 +21,24 @@ const shapes = await pipeline.loadShapes();
 log(
   `maps: ${shapes ? 'route shapes loaded' : 'no route shapes; detection posts will be text-only'}`,
 );
+const video = await pipeline.checkVideo();
+log(
+  `video: ${video ? 'timelapses on' : config.videos ? `no ffmpeg at "${config.ffmpegPath}"; timelapses off` : 'timelapses off (VIDEOS=0)'}`,
+);
 
 const scheduler = createScheduler({ log });
 scheduler.every('observe', config.intervals.observeMs, () => pipeline.observe());
 scheduler.every('collect', config.intervals.collectMs, () => pipeline.collectTick(), {
   delayMs: 15_000,
 });
+scheduler.every('sample', 15_000, () => pipeline.sampleCaptures());
+scheduler.every('render', 30_000, () => pipeline.renderCaptures(), { delayMs: 20_000 });
+scheduler.cron('snapshot', '0 8,11,14,17,20 * * *', () => pipeline.startSnapshots());
 scheduler.cron('housekeeping', '7 * * * *', async () => {
   const r = await pipeline.housekeeping();
-  log(`housekeeping: pruned ${r.observations} observations, ${r.assetDays} asset days`);
+  log(
+    `housekeeping: pruned ${r.observations} observations, ${r.samples} timelapse samples, ${r.assetDays} asset days`,
+  );
 });
 scheduler.cron('backup', '17 4 * * *', async () => log(`backup: ${await pipeline.backup()}`));
 // The collector rebuilds the shapes with its daily schedule; pick them up.

@@ -143,7 +143,23 @@ export function composeCluster(group, place, shapes) {
     title: `⚠ ${group.length} ${noun} · ${routes.length} routes`,
   });
   const alt = `Map of ${group.length} ${noun} from ${routes.map((r) => routeShortLabel(group.find((v) => v.route === r).mode, r)).join(', ')} stopped together${place.name ? ` near ${place.name}` : ''}, numbered and colored by route.`;
-  return { text, facets: linkFacets(text, [{ text: SITE_HOST, uri: SITE_ORIGIN }]), plan, alt };
+  // The vehicles a timelapse follows, numbered and colored as on the map.
+  const focus = ordered.map((v, i) => ({
+    id: String(v.id),
+    label: String(v.label),
+    tag: String(i + 1),
+    route: v.route,
+    color: colorFor.get(v.route),
+  }));
+  return {
+    text,
+    facets: linkFacets(text, [{ text: SITE_HOST, uri: SITE_ORIGIN }]),
+    plan,
+    alt,
+    focus,
+    routes,
+    noun,
+  };
 }
 
 /**
@@ -157,6 +173,7 @@ export async function postCrossBunching({
   poster,
   shapes,
   basemap,
+  timelapse = null,
   now,
   log = () => {},
 }) {
@@ -193,14 +210,14 @@ export async function postCrossBunching({
     lon: place.lon,
     ts: now,
   });
-  const { text, facets, plan, alt } = composeCluster(group, place, shapes);
+  const { text, facets, plan, alt, focus, routes, noun } = composeCluster(group, place, shapes);
   let image = null;
   try {
     image = { data: await renderRouteMap(plan, { basemap }), alt };
   } catch (err) {
     log(`cross-bunching: map failed: ${err.message}`);
   }
-  await poster.post({
+  const post = await poster.post({
     account,
     kind: 'cross-bunching',
     subject,
@@ -209,5 +226,24 @@ export async function postCrossBunching({
     ...(image && { image }),
   });
   markPosted(db, subject, now);
+  if (timelapse && image) {
+    try {
+      timelapse({
+        kind: 'cluster',
+        subject,
+        account,
+        mode: account,
+        routes,
+        title: plan.title.replace(/^⚠\s*/, ''),
+        header: `🎬 ${place.name ? `Near ${place.name}` : 'The cluster'} · the next 10 minutes`,
+        noun,
+        vehicles: focus,
+        post,
+        now,
+      });
+    } catch (err) {
+      log(`cross-bunching: starting the timelapse failed: ${err.message}`);
+    }
+  }
   return { posted: 1, vehicles: group.length };
 }

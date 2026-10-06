@@ -131,4 +131,9 @@ export class RouteShapes {
   shapes(route) {
     return Object.values(this.data.routes[route] ?? {});
   }
+
+  /** Every route with a shape. */
+  routes() {
+    return Object.keys(this.data.routes);
+  }
 }

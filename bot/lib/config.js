@@ -73,6 +73,12 @@ export function loadConfig(env = process.env) {
     // changes ride the deploy workflow's own 30-minute schedule.
     deployMinGapMs: num(env.DEPLOY_MIN_GAP_MIN, 10) * 60 * 1000,
     observationRetentionDays: num(env.OBSERVATION_RETENTION_DAYS, 3),
+    // Timelapse videos (needs ffmpeg): replies under gap, bunching, and
+    // cluster posts, and the system snapshots. Bluesky caps video uploads
+    // per account per day; VIDEO_DAILY_CAP stays under it.
+    videos: bool(env.VIDEOS, true),
+    ffmpegPath: env.FFMPEG_PATH?.trim() || 'ffmpeg',
+    videoDailyCap: num(env.VIDEO_DAILY_CAP, 20),
     // Never post an incident first seen longer ago than this (covers restarts
     // and the first start, so a backlog never floods the feed).
     postMaxAgeMs: num(env.POST_MAX_AGE_MIN, 30) * 60 * 1000,

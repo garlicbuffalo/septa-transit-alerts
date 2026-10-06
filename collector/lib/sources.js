@@ -18,6 +18,10 @@ export const ENDPOINTS = {
   // Live positions for every tracked bus and SEPTA Metro vehicle, with the GTFS
   // trip each is running and its schedule deviation (`late`, minutes).
   transitView: 'https://www3.septa.org/api/TransitViewAll/index.php',
+  // The same for one route ({ bus: vehicle[] }), ~3% of the full feed's size:
+  // what the bots poll every 15 seconds while recording a timelapse.
+  transitViewRoute: (route) =>
+    `https://www3.septa.org/api/TransitView/index.php?route=${encodeURIComponent(route)}`,
   // GTFS-realtime TripUpdates for buses and SEPTA Metro (protobuf). Cancelled
   // trips carry schedule_relationship CANCELED — the day's cancellations are
   // published ahead of time.
@@ -91,6 +95,23 @@ export function createSources({ fixturesDir = null } = {}) {
     async tripUpdates() {
       if (fixturesDir) return readFile(join(fixturesDir, FIXTURE_FILES.tripUpdates));
       return fetchBinary(ENDPOINTS.tripUpdates);
+    },
+    /** One route's vehicles, as { bus: vehicle[] } (route: a raw SEPTA route id). */
+    async transitViewRoute(route) {
+      if (fixturesDir) {
+        const all = JSON.parse(
+          await readFile(join(fixturesDir, FIXTURE_FILES.transitView), 'utf8'),
+        );
+        const wanted = String(route).toLowerCase();
+        const bus = [];
+        for (const group of all.routes ?? []) {
+          for (const [raw, list] of Object.entries(group ?? {})) {
+            if (raw.toLowerCase() === wanted && Array.isArray(list)) bus.push(...list);
+          }
+        }
+        return { bus };
+      }
+      return fetchJson(ENDPOINTS.transitViewRoute(route), { timeoutMs: 10000, retries: 1 });
     },
     async railSchedule(trainNo) {
       if (fixturesDir) {

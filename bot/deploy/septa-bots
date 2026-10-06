@@ -5,6 +5,7 @@
 #   sudo septa-bots check      verify each credential in /etc/septa-bots.env
 #   sudo septa-bots once       run one collector tick by hand
 #   sudo septa-bots map <id>   render the alert map for an incident
+#   sudo septa-bots snapshot   record and post the system snapshots now
 #   sudo septa-bots logs       follow the service log
 #   sudo septa-bots status     service status
 #   sudo septa-bots update     pull the latest code and restart
@@ -17,7 +18,7 @@ case "${1:-}" in
   logs) exec journalctl -u septa-bots -f -o cat ;;
   status) exec systemctl --no-pager status septa-bots ;;
   update) exec bash "$APP_DIR/bot/deploy/setup.sh" ;;
-  check | once | map)
+  check | once | map | snapshot)
     if [[ $EUID -ne 0 ]]; then
       echo "Run with sudo (it reads ${ENV_FILE})." >&2
       exit 1
@@ -32,7 +33,7 @@ case "${1:-}" in
     exec runuser -u septa-bots --preserve-environment -- node bot/cli.js "$@"
     ;;
   *)
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac

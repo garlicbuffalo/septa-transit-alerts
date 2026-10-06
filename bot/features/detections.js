@@ -12,6 +12,7 @@ import { vehicleNoun } from '../../collector/lib/vehicles.js';
 import { SITE_ORIGIN } from '../../src/lib/site.js';
 import { cleanStopName } from '../../src/lib/stops.js';
 import { acquireCooldown, clearCooldown } from '../lib/db.js';
+import { formatDistance, maxPairDistance } from '../lib/geo.js';
 import { routeEmoji, routeShortLabel } from '../lib/routes.js';
 import { firstThatFits, graphemeLength, linkFacets, POST_MAX_GRAPHEMES } from '../lib/text.js';
 import { planRouteMap, renderRouteMap, routeColor, stretchBetween } from '../map/routeMap.js';
@@ -43,6 +44,7 @@ const MAX_QUOTES_PER_THREAD = 3;
 const KEYCAPS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 const SITE_HOST = new URL(SITE_ORIGIN).host;
 
+export { formatDistance };
 export const accountFor = (mode) => ACCOUNT_FOR_MODE[mode] ?? null;
 export const subjectOf = (det) => `det:${det.id}`;
 
@@ -60,12 +62,6 @@ function metricOf(source, d) {
   return d?.vehicle_count ?? null;
 }
 
-/** "450 ft" under 1,000 ft, else "0.42 mi". */
-export function formatDistance(meters) {
-  const ft = meters * 3.28084;
-  return ft < 1000 ? `${Math.round(ft / 10) * 10} ft` : `${(ft / 5280).toFixed(2)} mi`;
-}
-
 function lateness(v) {
   if (v?.lateMin == null) return null;
   if (v.lateMin >= 2) return `${Math.round(v.lateMin)} min late`;
@@ -77,20 +73,6 @@ function vehicleRef(v, tag = null) {
   const extra = [tag, lateness(v)].filter(Boolean).join(', ');
   return `#${v.label}${extra ? ` (${extra})` : ''}`;
 }
-
-const maxPairDistance = (vs) => {
-  let max = 0;
-  for (let i = 0; i < vs.length; i++)
-    for (let j = i + 1; j < vs.length; j++) {
-      const k = Math.cos((vs[i].lat * Math.PI) / 180);
-      const d = Math.hypot(
-        (vs[i].lat - vs[j].lat) * 111_320,
-        (vs[i].lon - vs[j].lon) * 111_320 * k,
-      );
-      max = Math.max(max, d);
-    }
-  return max;
-};
 
 // Assemble a post: the first two lines (headline and main fact) and the
 // footer always; the optional lines after them only while the post still
@@ -112,8 +94,10 @@ function finish(lines, incident, priority = null) {
 }
 
 /**
- * Text, alt text, and map plan for a detection's post.
- * @returns {{ text: string, facets: object[], alt: string, plan: object | null }}
+ * Text, alt text, and map plan for a detection's post, plus the vehicles a
+ * timelapse would follow (`focus`, tagged as on the map).
+ * @returns {{ text: string, facets: object[], alt: string, plan: object | null,
+ *   focus?: Array<{ v: object, tag: string }> }}
  */
 export function composeDetection({ incident, det, vehicles, shapes, calloutLine }) {
   const mode = incident.mode;
@@ -163,7 +147,14 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
     const alt =
       `Map of ${label} with the last ${noun.replace(/s$/, '')} seen (L) and the next one up (N) ` +
       `~${d.gap_min} minutes apart${plan?.stretch ? ', the empty stretch between them dashed' : ''}.`;
-    return { text, facets, alt, plan };
+    const focus =
+      ahead && behind
+        ? [
+            { v: ahead, tag: 'L' },
+            { v: behind, tag: 'N' },
+          ]
+        : [];
+    return { text, facets, alt, plan, focus };
   }
 
   if (det.source === 'bunching') {
@@ -192,7 +183,8 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
         })
       : null;
     const alt = `Map of ${label} with ${d.vehicle_count} ${noun} numbered in order, running together${near ? ` near ${near}` : ''}.`;
-    return { text, facets, alt, plan };
+    const focus = ordered.map((v, i) => ({ v, tag: String(i + 1) }));
+    return { text, facets, alt, plan, focus };
   }
 
   if (det.source === 'pulse-held') {
@@ -245,8 +237,10 @@ export function progressText(incident, det, now) {
  * Post new detections, progress replies, ✅ replies, and related quotes.
  * @param {{ incidents: Map<string, object>, poster: object, db: object,
  *   vehicles: Map<string, object>, shapes: object | null, basemap: Function,
- *   now: number, maxAgeMs: number, log?: (m: string) => void }} opts
- *   vehicles: the latest positions by vehicle label
+ *   timelapse?: ((opts: object) => unknown) | null, now: number, maxAgeMs: number,
+ *   log?: (m: string) => void }} opts
+ *   vehicles: the latest positions by vehicle label; timelapse: starts a
+ *   timelapse capture after a gap or bunching post (features/timelapse.js)
  */
 export async function postDetections({
   incidents,
@@ -255,6 +249,7 @@ export async function postDetections({
   vehicles,
   shapes,
   basemap,
+  timelapse = null,
   now,
   maxAgeMs,
   log = () => {},
@@ -328,7 +323,17 @@ export async function postDetections({
       continue;
     }
     try {
-      const r = await postNew({ ...c, poster, db, vehicles, shapes, basemap, now, log });
+      const r = await postNew({
+        ...c,
+        poster,
+        db,
+        vehicles,
+        shapes,
+        basemap,
+        timelapse,
+        now,
+        log,
+      });
       if (r === 'skipped') stats.skipped++;
       if (r !== 'posted') continue;
       stats.posted++;
@@ -353,6 +358,7 @@ async function postNew({
   vehicles,
   shapes,
   basemap,
+  timelapse,
   now,
   log,
 }) {
@@ -399,7 +405,7 @@ async function postNew({
       scoreOf: (r) => scoreOfEvent(det.source, r),
     }),
   );
-  const { text, facets, alt, plan } = composeDetection({
+  const { text, facets, alt, plan, focus } = composeDetection({
     incident: inc,
     det,
     vehicles,
@@ -414,7 +420,7 @@ async function postNew({
       log(`detections: map for ${det.id} failed: ${err.message}`);
     }
   }
-  await poster.post({
+  const post = await poster.post({
     account,
     kind: 'detection',
     subject,
@@ -432,6 +438,32 @@ async function postNew({
         }),
   });
   markPosted(db, subject, now);
+  // Follow the vehicles for a timelapse reply (gaps and bunches with a map).
+  if (timelapse && image && focus?.length >= 2) {
+    try {
+      timelapse({
+        kind: det.source,
+        subject,
+        account,
+        mode: inc.mode,
+        routes: [route],
+        directionId: d.direction_id ?? null,
+        title: plan.title.replace(/^⚠\s*/, ''),
+        header: `🎬 ${label}${det.scope.direction_label ? ` — ${det.scope.direction_label}` : ''} · the next 10 minutes`,
+        noun: vehicleNoun(inc.mode, route),
+        vehicles: focus.map(({ v, tag }) => ({
+          id: String(v.id),
+          label: String(v.label),
+          tag,
+          route: v.route,
+        })),
+        post,
+        now,
+      });
+    } catch (err) {
+      log(`detections: starting the timelapse for ${det.id} failed: ${err.message}`);
+    }
+  }
   return 'posted';
 }
 

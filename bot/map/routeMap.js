@@ -14,15 +14,15 @@ export const STRETCH = '#ffb000';
 // Distinct colors for several routes on one map.
 export const PALETTE = ['#00c2e0', '#ffb000', '#7cd65a', '#c06cff', '#ff7a59', '#f5f5f5'];
 const MIN_SPAN_DEG = 0.012; // ~1.3 km
-const MARKER_R = 22;
+export const MARKER_R = 22;
 
 export function routeColor(mode, route) {
   if (mode === 'metro') return METRO_LINES[route]?.color ?? BUS_LINE;
   return BUS_LINE;
 }
 
-// Push overlapping markers apart so each stays readable.
-function separate(points, minDist = MARKER_R * 2 + 6) {
+/** Push overlapping markers ({x, y} in pixels) apart so each stays readable. */
+export function separate(points, minDist = MARKER_R * 2 + 6) {
   const pts = points.map((p) => ({ ...p }));
   for (let iter = 0; iter < 20; iter++) {
     let moved = false;
