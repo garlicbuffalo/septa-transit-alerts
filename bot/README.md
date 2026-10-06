@@ -8,8 +8,8 @@ The always-on half of the project. It runs on a small server and:
   | Account | Posts |
   |---|---|
   | `alerts` | SEPTA's significant alerts, with a map when the alert names a stretch of line, and a threaded ✅ reply when SEPTA clears them |
-  | `metro` | Gaps, bunching, and stuck trains on SEPTA Metro *(phase 2)* |
-  | `bus` | Gaps, bunching, stuck buses, and missing or cancelled trips *(phase 2)* |
+  | `metro` | SEPTA Metro gaps, bunching, stuck vehicles, and silent routes, each with a map; an hourly roundup of routes with vehicles missing from the tracker |
+  | `bus` | The same for buses, plus clusters of several routes' buses stopped together |
   | `rail` | Regional Rail delays, cancellations, speed maps, and recaps *(phase 4)* |
 
 - **Publishes the site's data.** It pushes the `data` branch and triggers deploys, and links every incident to its Bluesky post. While the server publishes, the [collect workflow](../.github/workflows/collect.yml) stands down. If the server goes quiet for 20 minutes, the workflow takes over again by itself.
@@ -91,10 +91,28 @@ lib/bluesky.js     Bluesky client: cached sessions, images/video/link cards/quot
 lib/poster.js      posts recorded in SQLite under (subject, kind): never twice, threads continue
 lib/publish.js     single-commit push of the data branch ("· server"), debounced deploy dispatch
 features/alerts.js which SEPTA alerts post, their text, ✅ cleared replies, links into the data
-map/               Mapbox basemap + SVG overlay rendering (projection, drawing, line maps)
+features/detections.js  gap / bunching / stuck / silent-route posts, caps, follow-ups, quotes
+features/ghosts.js      hourly missing-vehicle roundups
+features/crossBunching.js  several routes' vehicles stopped together
+features/history.js     detection history: daily caps and "📊" callouts
+map/               Mapbox basemap + SVG overlay rendering (projection, drawing, line and route maps)
+lib/shapes.js      route shapes from GTFS (built with the collector's daily schedule)
 ```
 
 Each feature decides what to post from the collector's incidents. It records what it posted under the incident's id, and writes the post's URL back into the incident (`official_alert.post_url`, `resolved_reply_url`) before the data is published, so the site links each incident to its post. Posts made in dry-run mode are kept separately and never linked.
+
+**Detection posts** (metro and bus accounts) follow the collector's vehicle detections:
+
+| Detection | Post |
+|---|---|
+| Gap | The last vehicle seen (L) and the next one up (N) on the route map, the empty stretch between them dashed |
+| Bunching | The vehicles numbered from the lead one, with how late or early each is running |
+| Stuck vehicles | The stopped vehicles, then hourly "still stopped" replies and a ✅ when they move |
+| Silent route | How long the route has had nothing on the tracker, then hourly replies and a ✅ |
+| Missing vehicles | One roundup per account at 7 past each hour, listing the routes that opened in the last hour |
+| Cross-route cluster | 4+ vehicles from 2+ routes stopped together (bot-only, not a site incident) |
+
+Each route gets at most one post per kind per hour, and a few per day: 3 gaps, 3 bunches, 4 stuck-vehicle posts and 3 silent stretches. A detection 25% worse than everything already posted for the route that day posts anyway. Posts carry history callouts ("📊 2nd Route 23 gap reported today · biggest gap vs schedule on this route in 30 days"). When a detection is attached to a SEPTA alert, the alerts account quotes it into that alert's thread, up to 3 per thread.
 
 **Which alerts post:**
 

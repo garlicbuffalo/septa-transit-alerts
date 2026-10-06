@@ -452,6 +452,12 @@ export function formatEvidenceChip(incident) {
   if (ev.kind === 'ghost' && ev.scheduled != null) {
     return `${ev.tracked} of ${ev.scheduled} scheduled on the tracker`;
   }
+  if (ev.kind === 'thin-gap' && ev.silent_min != null) {
+    const noun = vehicleWord(incident.kind, nounLine);
+    return ev.headway_min
+      ? `no ${noun} on the tracker for ~${ev.silent_min} min · scheduled every ~${ev.headway_min} min`
+      : `no ${noun} on the tracker for ~${ev.silent_min} min`;
+  }
   if (ev.kind === 'trip-cancellations' && ev.cancelled != null) {
     return ev.scheduled
       ? `${ev.cancelled} of ${ev.scheduled} trips cancelled`

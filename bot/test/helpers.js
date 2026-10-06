@@ -96,3 +96,101 @@ export function testPoster(client = fakeLiveClient(), { since = NOW - 3_600_000 
   const poster = createPoster({ db, client, now: () => t });
   return { db, client, poster, setNow: (v) => (t = v) };
 }
+
+/** A bot-only vehicle-detection incident in the published wire shape. */
+export function detectionIncident({
+  id = 'gap-2026-10-06-23-0-1000',
+  source = 'gap',
+  mode = 'bus',
+  route = '23',
+  firstSeen = NOW - 60_000,
+  resolvedTs = null,
+  details = {},
+  description = 'detection',
+  directionLabel = 'toward 11th-Market',
+  fromStation = null,
+  onsetTs = null,
+  resolvedDescription = null,
+  official = null,
+} = {}) {
+  const lifecycle = {
+    first_seen_ts: firstSeen,
+    resolved_ts: resolvedTs,
+    active: resolvedTs == null,
+    duration_ms: resolvedTs == null ? null : resolvedTs - firstSeen,
+  };
+  const det = {
+    id,
+    source,
+    scope: {
+      route,
+      from_station: fromStation,
+      to_station: null,
+      stations: [],
+      direction: null,
+      direction_label: directionLabel,
+    },
+    lifecycle: { ...lifecycle, onset_ts: onsetTs },
+    post_url: null,
+    resolved_post_url: null,
+    description,
+    evidence: {
+      details: { kind: source, ...details },
+      bullets: [],
+      updates: [],
+      resolved_description: resolvedDescription,
+    },
+  };
+  if (official) {
+    return { ...official, sources: ['septa', 'bot'], detections: [det] };
+  }
+  return {
+    id,
+    agency: 'septa',
+    mode,
+    routes: [route],
+    sources: ['bot'],
+    lifecycle,
+    official_alert: null,
+    detections: [det],
+    status: null,
+  };
+}
+
+/** A normalized vehicle (normalizeTransitView output). */
+export function vehicle(over = {}) {
+  return {
+    id: over.label ?? 'v1',
+    label: 'v1',
+    mode: 'bus',
+    route: '23',
+    tripId: 't1',
+    directionName: 'Southbound',
+    destination: '11th-Market',
+    lat: 40.0,
+    lon: -75.17,
+    heading: 180,
+    lateMin: 0,
+    nextStopSequence: 20,
+    nextStopName: null,
+    reportTs: NOW,
+    ...over,
+  };
+}
+
+export const byLabel = (list) => new Map(list.map((v) => [String(v.label), v]));
+
+/** RouteShapes-like stand-in: one straight north–south line per route. */
+export function fakeShapes(
+  routes = {
+    23: [
+      [40.05, -75.17],
+      [39.95, -75.17],
+    ],
+  },
+) {
+  return {
+    shape: (route) => routes[route] ?? null,
+    shapes: (route) => (routes[route] ? [routes[route]] : []),
+  };
+}

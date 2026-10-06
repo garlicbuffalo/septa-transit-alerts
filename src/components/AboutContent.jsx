@@ -49,10 +49,11 @@ export default function AboutContent() {
           trolleys are against the timetable and flags <em>long gaps</em> (vehicles twice as far
           apart as scheduled, and at least 20 minutes), <em>bunching</em> (vehicles scheduled well
           apart running together), <em>missing vehicles</em> (far fewer of a route's trips on
-          SEPTA's tracker than usual), and <em>vehicles held in place</em> (two or more stopped
-          mid-route for 10+ minutes). A condition has to persist for about six minutes before it's
-          recorded, and when SEPTA has an alert out for the same route the detection is attached to
-          it.
+          SEPTA's tracker than usual), <em>vehicles held in place</em> (two or more stopped
+          mid-route for 10+ minutes), and <em>silent routes</em> (a low-frequency route with nothing
+          on the tracker for long enough to miss two scheduled trips). A condition has to persist
+          for about six minutes before it's recorded, and when SEPTA has an alert out for the same
+          route the detection is attached to it.
         </li>
         <li>
           <strong>Elevator outages</strong> — out-of-service elevators at SEPTA Metro and Regional

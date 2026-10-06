@@ -60,6 +60,29 @@ const MIGRATIONS = [
 
   CREATE TABLE cooldowns (key TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
   `,
+  `
+  -- Every vehicle detection the bots saw open, posted or not: the history
+  -- behind "2nd Route 23 gap reported today", daily caps, and recaps.
+  -- metric is the detection's headline number (gap minutes, vehicles bunched,
+  -- minutes silent); ratio is gap ÷ scheduled spacing where that applies.
+  CREATE TABLE detection_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject TEXT NOT NULL,
+    source TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    route TEXT NOT NULL,
+    metric REAL,
+    ratio REAL,
+    near TEXT,
+    lat REAL,
+    lon REAL,
+    ts INTEGER NOT NULL,
+    posted INTEGER NOT NULL DEFAULT 0,
+    posted_ts INTEGER
+  );
+  CREATE UNIQUE INDEX detection_events_subject ON detection_events (subject);
+  CREATE INDEX detection_events_route ON detection_events (source, route, ts);
+  `,
 ];
 
 /**

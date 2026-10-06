@@ -13,9 +13,13 @@ import { collect } from '../../collector/collect.js';
 import { createSources } from '../../collector/lib/sources.js';
 import { normalizeTransitView } from '../../collector/lib/vehicles.js';
 import { linkAlertPosts, postAlerts } from '../features/alerts.js';
+import { postCrossBunching } from '../features/crossBunching.js';
+import { linkDetectionPosts, postDetections } from '../features/detections.js';
+import { maybePostGhostRollups } from '../features/ghosts.js';
 import { renderAlertMap } from '../map/lineMap.js';
 import { pruneDb } from './db.js';
 import { recordObservations } from './observations.js';
+import { ensureRouteShapes } from './shapes.js';
 
 const ASSET_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const BACKUPS_KEPT = 7;
@@ -38,6 +42,18 @@ export function createPipeline({
   fetchFn = fetch,
 }) {
   const latest = { transitView: null, trainView: null };
+  let shapes = null;
+
+  // Each feature runs on its own: one failing never stops the others (or
+  // the data from publishing).
+  async function step(name, fn) {
+    try {
+      return await fn();
+    } catch (err) {
+      log(`${name}: ${err.stack ?? err.message}`);
+      return { error: err.message };
+    }
+  }
 
   async function ping(suffix = '') {
     if (!config.healthcheckUrl) return;
@@ -48,6 +64,16 @@ export function createPipeline({
 
   return {
     latest,
+
+    /** Load (or build) the route shapes the detection maps draw on. */
+    async loadShapes() {
+      shapes = await ensureRouteShapes({
+        cacheDir: config.cacheDir,
+        fixturesDir: config.fixturesDir,
+        log,
+      });
+      return shapes;
+    },
 
     async observe() {
       const t = now();
@@ -74,6 +100,8 @@ export function createPipeline({
       const t = now();
       const maxAge = config.intervals.observeMs * 1.5;
       const fresh = (x) => (x && t - x.ts <= maxAge ? x.payload : null);
+      // The TransitView payload this tick actually used, for the post maps.
+      let usedTransitView = null;
       const { ok, summary } = await collect({
         dataDir: config.dataDir,
         cacheDir: config.cacheDir,
@@ -82,20 +110,61 @@ export function createPipeline({
         log: () => {},
         warn: log,
         sources: {
-          transitView: async () => fresh(latest.transitView) ?? sources.transitView(),
+          transitView: async () => {
+            usedTransitView = fresh(latest.transitView) ?? (await sources.transitView());
+            return usedTransitView;
+          },
           trainView: async () => fresh(latest.trainView) ?? sources.trainView(),
         },
-        beforePublish: async ({ incidents, now: tickNow }) => {
-          const alerts = await postAlerts({
-            incidents,
-            poster,
-            now: tickNow,
-            maxAgeMs: config.postMaxAgeMs,
-            renderMap: (inc) => renderAlertMap(inc, { basemap }),
-            log,
-          });
-          const linked = linkAlertPosts(incidents, poster);
-          return { alerts, linked };
+        beforePublish: async ({ incidents, schedule, now: tickNow }) => {
+          const vehicleList = usedTransitView
+            ? normalizeTransitView(usedTransitView, tickNow).vehicles
+            : [];
+          const vehicles = new Map();
+          for (const v of vehicleList) {
+            vehicles.set(String(v.label), v);
+            vehicles.set(String(v.id), v);
+          }
+          const alerts = await step('alerts', () =>
+            postAlerts({
+              incidents,
+              poster,
+              now: tickNow,
+              maxAgeMs: config.postMaxAgeMs,
+              renderMap: (inc) => renderAlertMap(inc, { basemap }),
+              log,
+            }),
+          );
+          const detections = await step('detections', () =>
+            postDetections({
+              incidents,
+              poster,
+              db,
+              vehicles,
+              shapes,
+              basemap,
+              now: tickNow,
+              maxAgeMs: config.postMaxAgeMs,
+              log,
+            }),
+          );
+          const ghosts = await step('ghosts', () =>
+            maybePostGhostRollups({ incidents, poster, db, now: tickNow, log }),
+          );
+          const crossRoute = await step('cross-bunching', () =>
+            postCrossBunching({
+              vehicles: vehicleList,
+              schedule,
+              db,
+              poster,
+              shapes,
+              basemap,
+              now: tickNow,
+              log,
+            }),
+          );
+          const linked = linkAlertPosts(incidents, poster) + linkDetectionPosts(incidents, poster);
+          return { alerts, detections, ghosts, crossRoute, linked };
         },
       });
       let published = null;
@@ -113,8 +182,15 @@ export function createPipeline({
       log(
         `collect: ${summary.active} active, ${summary.changed} changed` +
           (summary.hook?.alerts
-            ? `, alerts posted ${summary.hook.alerts.posted} cleared ${summary.hook.alerts.cleared}`
+            ? `, alerts posted ${summary.hook.alerts.posted ?? 0} cleared ${summary.hook.alerts.cleared ?? 0}`
             : '') +
+          (summary.hook?.detections?.posted
+            ? `, detections posted ${summary.hook.detections.posted}`
+            : '') +
+          (summary.hook?.ghosts?.posts
+            ? `, ghost rollup ${summary.hook.ghosts.routes} routes`
+            : '') +
+          (summary.hook?.crossRoute?.posted ? ', cross-route cluster posted' : '') +
           (published?.pushed ? ', pushed' : '') +
           (published?.deployed ? ', deploy triggered' : '') +
           (errors.length ? ` — ${errors.join('; ')}` : ''),
