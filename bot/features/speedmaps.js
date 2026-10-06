@@ -174,7 +174,9 @@ function routeSamples(db, account, route, { since, shapes }) {
   }
   const [direction, samples] = [...byDir].sort((a, b) => b[1].length - a[1].length)[0] ?? ['', []];
   const shape = nearestShape(shapes?.shapes(route) ?? [], samples.slice(0, 200));
-  return { samples, shape, direction: direction || null };
+  // SEPTA writes "NorthBound"; riders read "Northbound".
+  const label = direction ? direction[0].toUpperCase() + direction.slice(1).toLowerCase() : null;
+  return { samples, shape, direction: label };
 }
 
 /**

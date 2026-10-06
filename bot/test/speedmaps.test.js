@@ -174,13 +174,17 @@ describe('speed map posts', () => {
 
   it('maps the busiest direction of the least recently mapped route and records it', async () => {
     const t = testPoster();
-    record(t.db, [
-      ...trip('a', { from: 40.045, mph: 10, minutes: 25 }),
-      ...trip('b', { from: 40.0, mph: 4, minutes: 25 }),
-      ...trip('c', { from: 40.02, mph: 7, minutes: 25 }),
-    ]);
+    record(
+      t.db,
+      [
+        ...trip('a', { from: 40.045, mph: 10, minutes: 25 }),
+        ...trip('b', { from: 40.0, mph: 4, minutes: 25 }),
+        ...trip('c', { from: 40.02, mph: 7, minutes: 25 }),
+      ],
+      { direction: 'SouthBound' },
+    );
     // A northbound bus, fewer reports: not the direction mapped.
-    record(t.db, trip('n', { from: 39.96, mph: -8, minutes: 5 }), { direction: 'Northbound' });
+    record(t.db, trip('n', { from: 39.96, mph: -8, minutes: 5 }), { direction: 'NorthBound' });
     const args = {
       db: t.db,
       poster: t.poster,

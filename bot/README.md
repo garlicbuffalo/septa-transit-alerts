@@ -66,6 +66,8 @@ You need:
 | One manual tick | `sudo septa-bots once` |
 | Re-render an alert's map | `sudo septa-bots map alert-136615` |
 | Record and post the system timelapses now | `sudo septa-bots snapshot` (15 minutes; `snapshot 3` for 3) |
+| Post a speed map now | `sudo septa-bots speedmap bus` (or `metro`, `rail`) |
+| Post a recap now | `sudo septa-bots recap rail week` (`bus`, `metro`, `rail`; `week` or `month`) |
 | Turn videos off | set `VIDEOS=0`, restart |
 | Stop posting at once | set `BOT_MODE=dry-run`, restart |
 | Hand collecting back to GitHub Actions | set `PUBLISH=0`, restart; the workflow resumes within 20 minutes |
