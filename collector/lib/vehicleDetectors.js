@@ -7,8 +7,9 @@
 //               timetable says. Spacing is measured as each vehicle's
 //               scheduled start plus how late it's running; trips cancelled
 //               in between count toward the gap.
-//   bunching    vehicles scheduled well apart are running together (within a
-//               few hundred meters), so the gap behind them is about to open.
+//   bunching    vehicles of one pattern scheduled well apart are running
+//               together (within a few hundred meters), so the gap behind
+//               them is about to open.
 //   ghost       far fewer of a route's scheduled trips are showing on SEPTA's
 //               tracker than usual for that route.
 //   pulse-held  two or more vehicles on a route stopped mid-route for 10+
@@ -217,7 +218,8 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
       const gapMin = Math.round(worstGap.spacing);
       const headwayMin = Math.round(worstGap.headway);
       const noun = vehicleNoun(mode, route);
-      const toward = ahead.trip.destination ?? ahead.destination;
+      // TransitView's headsign reads better than GTFS's final-stop name.
+      const toward = ahead.destination ?? ahead.trip.destination;
       const extra = worstGap.cancelledBetween
         ? ` — ${worstGap.cancelledBetween} cancelled trip${worstGap.cancelledBetween === 1 ? '' : 's'} in between`
         : '';
@@ -251,7 +253,9 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
       const group = [mid[i]];
       let closest = Infinity;
       for (let j = 0; j < mid.length; j++) {
-        if (i === j) continue;
+        // Scheduled starts only compare within a pattern: a short-turn trip
+        // starting midway is scheduled to run close behind a full-length one.
+        if (i === j || mid[i].trip.origin !== mid[j].trip.origin) continue;
         const d = distanceM(mid[i], mid[j]);
         const spacing = Math.abs(mid[i].trip.startTs - mid[j].trip.startTs) / 60000;
         if (d <= cfg.bunching.maxDistM && spacing >= minSpacing) {
@@ -272,7 +276,7 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
       const { group } = worstBunch;
       const scope = metroScope(mode, route, group[0], null);
       const noun = vehicleNoun(mode, route);
-      const toward = group[0].trip.destination ?? group[0].destination;
+      const toward = group[0].destination ?? group[0].trip.destination;
       const near = scope.from ?? group[0].nextStopName;
       conditions.set(`bunching|${mode}|${route}|${direction}`, {
         source: 'bunching',

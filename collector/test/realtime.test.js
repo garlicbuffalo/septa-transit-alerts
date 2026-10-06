@@ -409,6 +409,15 @@ describe('vehicle detectors', () => {
     );
   });
 
+  it('only compares bunching within a route pattern', () => {
+    // b13 starts from a different stop (a short-turn), so its schedule says
+    // nothing about where it should be relative to b12.
+    const s = schedule(busTrips.map((t) => (t[0] === 'b13' ? [...t, 2] : t)));
+    const vehicles = running({ 12: { lat: 39.93, late: 12 }, 13: { lat: 39.9301 } });
+    const { conditions } = tick({ vehicles, sched: s, state: {}, incidents: new Map(), now: NOW });
+    expect(conditions.has('bunching|bus|17|0')).toBe(false);
+  });
+
   it('ignores vehicles at the ends of their trips when looking for bunching', () => {
     const vehicles = running({ 12: { lat: 39.93, seq: 2 }, 13: { lat: 39.9301, seq: 2 } });
     const { conditions } = tick({ vehicles, sched, state: {}, incidents: new Map(), now: NOW });
