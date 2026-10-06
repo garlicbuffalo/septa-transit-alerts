@@ -607,6 +607,29 @@ describe('EventPage', () => {
     expect(within(crumbs).getByText('L1 Market-Frankford Line')).toBeInTheDocument();
   });
 
+  it("links the alerts bot's Bluesky post alongside SEPTA.org", async () => {
+    const post = 'https://bsky.app/profile/did:plc:alerts/post/3k2j';
+    const withPost = {
+      ...PAYLOAD,
+      incidents: PAYLOAD.incidents.map((inc) =>
+        inc.id === 'alert-1001'
+          ? { ...inc, official_alert: { ...inc.official_alert, post_url: post } }
+          : inc,
+      ),
+    };
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(withPost) }),
+    );
+    render(<EventPage eventId="alert-1001" />);
+    await waitFor(() => {
+      expect(screen.getByText('View on Bluesky →').closest('a')).toHaveAttribute('href', post);
+    });
+    expect(screen.getByText('SEPTA.org →').closest('a')).toHaveAttribute(
+      'href',
+      'https://www.septa.org/schedules/L1',
+    );
+  });
+
   it('renders a v2-only incident payload after fetch normalization', async () => {
     globalThis.fetch = vi.fn(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve(V2_PAYLOAD) }),

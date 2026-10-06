@@ -12,7 +12,7 @@ Adapted from [Chicago Transit Alerts](https://github.com/cailinpitt/chicago-tran
 
 ## What's tracked
 
-A collector polls SEPTA's public APIs every ~10 minutes:
+A collector polls SEPTA's public APIs every few minutes (every 2 on the [bot server](#bluesky-bots), every 10 on the GitHub Actions fallback):
 
 - **Official SEPTA alerts** ([`/api/v2/alerts`](https://www3.septa.org/api/v2/alerts/)) — service advisories, real-time alerts, and short-term (≤72h) bus detours for SEPTA Metro, buses, and Regional Rail. Each alert is an incident from when SEPTA posted it until it leaves the feed or its stated end passes; edits to the text are kept as versions. Long-running construction detours and station-amenity notices (parking, ticket offices, waiting rooms) are left out. Affected stations are matched from the alert text against SEPTA's GTFS station list.
 - **Regional Rail delays** ([TrainView](https://www3.septa.org/api/TrainView/index.php)) — any train running 15+ minutes late becomes an incident, updated as its lateness changes and resolved when it recovers or arrives. Each is anchored to the train's scheduled departure from [RRSchedules](https://www3.septa.org/api/RRSchedules/index.php?req1=9233).
@@ -24,7 +24,7 @@ A collector polls SEPTA's public APIs every ~10 minutes:
   - **Missing vehicles** — at most half of a route's in-progress trips on the tracker (and at least three missing), on a route that's usually well tracked.
   - **Held in place** — two or more vehicles on a route stopped mid-route, within 600 m of each other, for 10+ minutes.
 
-  A condition must show up on two consecutive ticks to open a detection and be absent for two to resolve it. If SEPTA has an active, unplanned alert on the same route, the detection attaches to that incident; otherwise it's a bot-only incident. When the tracker covers under half of a busy system's trips (a feed problem), detections are held as they are. Thresholds live in `DETECTOR_CONFIG` in [`collector/lib/vehicleDetectors.js`](collector/lib/vehicleDetectors.js).
+  A condition must persist for at least 6 minutes, across at least two ticks, to open a detection, and be absent for as long to resolve it. If SEPTA has an active, unplanned alert on the same route, the detection attaches to that incident; otherwise it's a bot-only incident. When the tracker covers under half of a busy system's trips (a feed problem), detections are held as they are. Thresholds live in `DETECTOR_CONFIG` in [`collector/lib/vehicleDetectors.js`](collector/lib/vehicleDetectors.js).
 - **Elevator outages** ([elevator API](https://www3.septa.org/api/elevator/index.php)) at SEPTA Metro and Regional Rail stations, archived separately on the accessibility page.
 
 SEPTA Metro uses the 2025 line names: L1 (Market-Frankford), B1/B2/B3 (Broad Street Line, Express, Broad-Ridge Spur), M1 (Norristown High Speed Line), T1–T5 (subway-surface trolleys), G1 (Girard), and D1/D2 (Media and Sharon Hill). Search also understands the old names ("MFL", "BSL", "Route 101").
@@ -86,18 +86,32 @@ Client-side routing only — every path renders the SPA from the same `index.htm
 | `/week`, `/week/:date` | Sunday–Saturday recaps. |
 | `/day/:date` | Everything on one Philadelphia calendar day. |
 
+## Bluesky bots
+
+The [bot server](bot/README.md) posts what the collector sees to four Bluesky accounts. Each incident on the site links to its post, and each post links back:
+
+| Account | Posts | Status |
+|---|---|---|
+| `alerts` | SEPTA's significant alerts, with a map of the affected stretch, and a threaded ✅ reply when SEPTA clears them | Live |
+| `metro` | SEPTA Metro gaps, bunching and stuck trains | Planned |
+| `bus` | Bus gaps, bunching and stuck buses | Planned |
+| `rail` | Regional Rail delays, cancellations and recaps | Planned |
+
+Set the `BLUESKY_HANDLES` repository variable (e.g. `alerts=alerts.example.org,metro=metro.example.org,bus=bus.example.org,rail=rail.example.org`) to list the accounts in the site's About, Subscribe, and Browse menus. The bots are a port of [cta-insights](https://github.com/cailinpitt/cta-insights), the bots behind Chicago Transit Alerts.
+
 ## How it works
 
 ```
-SEPTA APIs ──► collect.yml (every ~10 min) ──► `data` branch ──► deploy.yml ──► GitHub Pages
-               node collector/collect.js        one snapshot      npm run build    site + /data/*
+                      ┌─ bot server (bot/, every 2 min) ─┐
+SEPTA APIs ──► collector/collect.js ──► `data` branch ──► deploy.yml ──► GitHub Pages
+                      └─ collect.yml (fallback, 10 min) ─┘   one snapshot   npm run build   site + /data/*
 ```
 
-1. **Collect.** [`.github/workflows/collect.yml`](.github/workflows/collect.yml) runs [`collector/collect.js`](collector/collect.js) on a 10-minute schedule. It loads the archive from the `data` branch, applies the latest alerts, TrainView, elevator, TransitView, and trip-update feeds, and rewrites the published files: `alerts-recent.json`, monthly `alerts/<YYYY-MM>.json` shards, `incidents/by-line/<key>.json`, `alerts-index.json`, `aggregates.json`, `daily-counts.json`, and `accessibility.json`. The `data` branch is force-pushed as a single commit each run, so it never accumulates history; the monthly shards are the archive. It also holds `_collector-state.json`, the detectors' memory between ticks (last vehicle positions, pending and active detections, each route's usual tracking), which isn't deployed with the site. SEPTA's GTFS schedule is distilled into a ~2 MB index once a day and kept in the Actions cache (`--cache-dir`).
+1. **Collect.** The [bot server](bot/README.md) runs [`collector/collect.js`](collector/collect.js) every 2 minutes, posts to Bluesky, and publishes the result. Without a server, or whenever the server's last snapshot is over 20 minutes old, [`.github/workflows/collect.yml`](.github/workflows/collect.yml) runs it on a 10-minute schedule instead. Each run loads the archive from the `data` branch, applies the latest alerts, TrainView, elevator, TransitView, and trip-update feeds, and rewrites the published files: `alerts-recent.json`, monthly `alerts/<YYYY-MM>.json` shards, `incidents/by-line/<key>.json`, `alerts-index.json`, `aggregates.json`, `daily-counts.json`, and `accessibility.json`. The `data` branch is force-pushed as a single commit each run, so it never accumulates history; the monthly shards are the archive. It also holds `_collector-state.json`, the detectors' memory between ticks (last vehicle positions, pending and active detections, each route's usual tracking), which isn't deployed with the site. SEPTA's GTFS schedule is distilled into a ~2 MB index once a day and kept in the Actions cache (`--cache-dir`).
 2. **Deploy.** When the collector sees a rider-visible change (an incident opening, resolving, or getting new text, or an elevator going out or coming back), it dispatches [`deploy.yml`](.github/workflows/deploy.yml). A 30-minute schedule catches everything else. The build copies the `data` branch into `public/data/` ([`scripts/fetch-data.js`](scripts/fetch-data.js)), builds the Vite app, and runs the postbuild steps: per-page and per-event share cards (Playwright), Atom/JSON feeds, the sitemap, and the CSV.
 3. **Serve.** The site reads its data same-origin from `/data/` and re-polls `alerts-recent.json` every 5 minutes while open.
 
-The collector has no dependencies beyond Node 24, and is a plain script: you can run it from cron on any machine instead (`node collector/collect.js --data-dir <dir> --cache-dir <dir>`), as long as the build can see the data directory. Run it every 10 minutes or so: the detectors' two-tick confirmation assumes roughly that spacing.
+The collector has no dependencies beyond Node 24, and is a plain script: you can run it from cron on any machine instead (`node collector/collect.js --data-dir <dir> --cache-dir <dir>`), as long as the build can see the data directory. Anywhere from every 2 to every 10 minutes works: the detectors' confirmation windows are in minutes, not ticks.
 
 Static reference data — Metro and Regional Rail stations, line shapes, and the bus route list — is generated from [SEPTA's GTFS bundle](https://www3.septa.org/developer/gtfs_public.zip) by [`scripts/build-reference-data.js`](scripts/build-reference-data.js) into `src/lib/*.json`.
 
@@ -106,7 +120,8 @@ Static reference data — Metro and Regional Rail stations, line shapes, and the
 1. **Enable GitHub Pages** with *Settings → Pages → Source: GitHub Actions*.
 2. **Set the site's address.** Add a repository variable `SITE_URL` (*Settings → Secrets and variables → Actions → Variables*) with the public origin, e.g. `https://septa.example.org` or `https://<user>.github.io` for a user site. It's used for canonical links, feeds, the sitemap, and share cards. Until it's set, those point at the placeholder `https://septa-transit-alerts.example`. For a custom domain, also set it under *Settings → Pages → Custom domain*. The site assumes it's served from the root of its domain, so a project page under `https://<user>.github.io/<repo>/` needs a custom domain.
 3. **Start collecting.** Run *Actions → Collect SEPTA data → Run workflow* once. It creates the `data` branch and dispatches the first deploy; the schedule takes over from there.
-4. **Optional:** set `DATA_BASE_URL` to serve the data from another origin, e.g. `https://raw.githubusercontent.com/<owner>/<repo>/data` for a public repository, so the live site picks up every collector run without waiting for a deploy.
+4. **Optional: run the bot server** to post to Bluesky and collect every 2 minutes. See [bot/README.md](bot/README.md).
+5. **Optional:** set `DATA_BASE_URL` to serve the data from another origin, e.g. `https://raw.githubusercontent.com/<owner>/<repo>/data` for a public repository, so the live site picks up every collector run without waiting for a deploy.
 
 Scheduled Actions on a private repository count against your Actions minutes; at a 10-minute cadence the collector alone uses a few thousand minutes a month. Public repositories don't pay for standard runners. GitHub can also delay scheduled runs at busy times; the collector catches up on the next tick.
 
@@ -125,7 +140,7 @@ The same files the site reads are published under `/data/` with no auth:
 /data/alerts.csv                    # flat CSV, one row per alert or detection
 ```
 
-Every incident-bearing file shares one `incidents[]` shape (`schema_version: 2`): an `agency` of `septa`, a `mode` of `metro`, `bus`, or `regional_rail`, `routes`, a `lifecycle`, the SEPTA alert in `official_alert` (with SEPTA's own `type`/`cause`/`effect`/`severity` under `official_alert.septa` and a `source_url` to the route's SEPTA.org page), collector detections in `detections[]`, and a Regional Rail delay/cancellation `status`. The full schema, with examples, is in [`public/llms-full.txt`](public/llms-full.txt); format changes are recorded in the [data changelog](public/data/CHANGELOG.md).
+Every incident-bearing file shares one `incidents[]` shape (`schema_version: 2`): an `agency` of `septa`, a `mode` of `metro`, `bus`, or `regional_rail`, `routes`, a `lifecycle`, the SEPTA alert in `official_alert` (with SEPTA's own `type`/`cause`/`effect`/`severity` under `official_alert.septa` and a `source_url` to the route's SEPTA.org page), collector detections in `detections[]`, and a Regional Rail delay/cancellation `status`. When the bots have posted about an incident, `official_alert.post_url` (and `resolved_reply_url` for the ✅ reply) links to the Bluesky post. The full schema, with examples, is in [`public/llms-full.txt`](public/llms-full.txt); format changes are recorded in the [data changelog](public/data/CHANGELOG.md).
 
 Feeds: `/feed.xml` and `/feed.json` for everything, plus one per Metro line (`/feed/line/l1.xml`), bus route (`/feed/route/17.xml`), and Regional Rail line (`/feed/rail/line/pao.xml`), each with a JSON Feed twin.
 

@@ -12,6 +12,11 @@ name: Collect SEPTA data
 #
 # GitHub may delay or skip scheduled runs under load; the collector is
 # idempotent, so a late tick just catches up.
+#
+# When the bot server (bot/) is running, it is the collector: it polls every
+# couple of minutes and publishes the data branch itself, marking its commits
+# "· server". This workflow then stands down, and takes over again on its own
+# if the server's last snapshot is more than SERVER_GRACE_MIN old.
 
 on:
   schedule:
@@ -21,6 +26,9 @@ on:
 permissions:
   contents: write
   actions: write
+
+env:
+  SERVER_GRACE_MIN: 20
 
 concurrency:
   group: collect
@@ -62,14 +70,31 @@ jobs:
             git worktree add --orphan -b data data-branch
           fi
 
+      - name: Check for the bot server
+        id: server
+        working-directory: data-branch
+        run: |
+          active=false
+          if git rev-parse -q --verify HEAD >/dev/null; then
+            subject="$(git log -1 --format=%s)"
+            age_min=$(( ($(date +%s) - $(git log -1 --format=%ct)) / 60 ))
+            if [[ "$subject" == *"· server"* && $age_min -lt $SERVER_GRACE_MIN ]]; then
+              active=true
+              echo "The bot server published ${age_min} min ago; standing down."
+            fi
+          fi
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+
       - name: Collect
         id: collect
+        if: steps.server.outputs.active != 'true'
         run: |
           set -o pipefail
           node collector/collect.js --data-dir data-branch --cache-dir .collector-cache | tee collect-summary.json
           echo "changed=$(jq -r '.changed // 0' collect-summary.json)" >> "$GITHUB_OUTPUT"
 
       - name: Publish the data branch
+        if: steps.collect.outcome == 'success'
         working-directory: data-branch
         run: |
           git config user.name 'github-actions[bot]'
@@ -84,7 +109,7 @@ jobs:
           git push --force origin "$commit:refs/heads/data"
 
       - name: Redeploy the site
-        if: steps.collect.outputs.changed != '0'
+        if: steps.collect.outcome == 'success' && steps.collect.outputs.changed != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run deploy.yml --ref "${{ github.event.repository.default_branch }}"

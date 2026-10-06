@@ -1,0 +1,20 @@
+{
+  "name": "septa-transit-bots",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Bluesky bots for SEPTA Transit Alerts: the always-on collector, poster, and renderer that runs on the project's server.",
+  "license": "ISC",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node main.js",
+    "test": "vitest run --root ."
+  },
+  "dependencies": {
+    "@atproto/api": "^0.18.16",
+    "better-sqlite3": "^12.4.1",
+    "sharp": "^0.34.5"
+  }
+}

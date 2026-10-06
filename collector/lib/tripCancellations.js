@@ -80,8 +80,9 @@ function build(existing, { id, mode, route, service_date, trips, scheduled, now,
           direction_label: null,
         },
         lifecycle: { ...lifecycle, onset_ts: null },
-        post_url: null,
-        resolved_post_url: null,
+        // Bluesky links, filled in by the bot service; kept across rebuilds.
+        post_url: prev?.post_url ?? null,
+        resolved_post_url: prev?.resolved_post_url ?? null,
         description,
         evidence: {
           train_number: null,

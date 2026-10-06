@@ -43,21 +43,22 @@ const PAGE_SIZE = 25;
 // have to re-derive labels.
 function getSources(incident) {
   const official = officialAlert(incident);
-  const kind = legacyKind(incident);
   const { primary, extras } = splitObservations(incident);
   const out = [];
   if (official?.post_url) {
-    // Merged → "Via SEPTA" (the bot post follows); pure alert → "View post".
+    // The alerts bot's post of SEPTA's alert; merged incidents list the
+    // detection's post after it.
     out.push({
       url: official.post_url,
-      label: primary ? `Via ${agencyLabel(kind)}` : 'View post',
+      label: primary ? 'Alert on Bluesky' : 'View on Bluesky',
     });
-  } else if (official?.source_url) {
-    // SEPTA alerts have no permalinks; the route's SEPTA.org page is the source.
-    out.push({ url: official.source_url, label: 'SEPTA.org' });
-  } else if (primary?.post_url) {
+  } else if (!official && primary?.post_url) {
     // Bot-only incident: the observation post is the main source.
-    out.push({ url: primary.post_url, label: 'View post' });
+    out.push({ url: primary.post_url, label: 'View on Bluesky' });
+  }
+  if (official?.source_url) {
+    // SEPTA alerts have no permalinks; the route's SEPTA.org page is the source.
+    out.push({ url: official.source_url, label: 'SEPTA.org', key: 'septa' });
   }
   if (official && primary?.post_url) {
     out.push({

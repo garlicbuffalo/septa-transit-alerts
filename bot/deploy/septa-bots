@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Operator command for the SEPTA Transit Alerts bots (installed to
+# /usr/local/bin by setup.sh). Run with sudo:
+#
+#   sudo septa-bots check      verify each credential in /etc/septa-bots.env
+#   sudo septa-bots once       run one collector tick by hand
+#   sudo septa-bots map <id>   render the alert map for an incident
+#   sudo septa-bots logs       follow the service log
+#   sudo septa-bots status     service status
+#   sudo septa-bots update     pull the latest code and restart
+set -euo pipefail
+
+APP_DIR=/opt/septa-transit-alerts
+ENV_FILE=/etc/septa-bots.env
+
+case "${1:-}" in
+  logs) exec journalctl -u septa-bots -f -o cat ;;
+  status) exec systemctl --no-pager status septa-bots ;;
+  update) exec bash "$APP_DIR/bot/deploy/setup.sh" ;;
+  check | once | map)
+    if [[ $EUID -ne 0 ]]; then
+      echo "Run with sudo (it reads ${ENV_FILE})." >&2
+      exit 1
+    fi
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+    export STATE_DIR=/var/lib/septa-bots
+    cd "$APP_DIR"
+    # As the service user, so files it writes stay the service's.
+    exec runuser -u septa-bots --preserve-environment -- node bot/cli.js "$@"
+    ;;
+  *)
+    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2
+    ;;
+esac

@@ -53,8 +53,14 @@ export const DETECTOR_CONFIG = {
   // Vehicles near the start or end of their trip (layovers) are left out of
   // bunching and held.
   terminalStops: 3,
+  // A condition opens after showing on confirmTicks consecutive polls spanning
+  // at least confirmMs, and resolves after clearTicks polls without it spanning
+  // clearMs — the same few minutes whether polls come every 2 minutes (the bot
+  // server) or every 10 (the GitHub Actions fallback).
   confirmTicks: 2,
+  confirmMs: 6 * 60 * 1000,
   clearTicks: 2,
+  clearMs: 6 * 60 * 1000,
   // A candidate older than this didn't hold "two ticks in a row".
   tickGapMs: 16 * 60 * 1000,
   maxUpdates: 8,
@@ -598,7 +604,10 @@ export function applyVehicleConditions(incidents, conditions, state, now) {
 
     const cand = candidates[key];
     const confirmed =
-      cand && now - cand.lastTs <= cfg.tickGapMs && cand.count + 1 >= cfg.confirmTicks;
+      cand &&
+      now - cand.lastTs <= cfg.tickGapMs &&
+      cand.count + 1 >= cfg.confirmTicks &&
+      now - cand.firstTs >= cfg.confirmMs;
     if (!confirmed) {
       const fresh = cand && now - cand.lastTs <= cfg.tickGapMs;
       nextCandidates[key] = {
@@ -665,7 +674,8 @@ export function applyVehicleConditions(incidents, conditions, state, now) {
     if (conditions.has(key)) continue;
     st.misses = (st.misses ?? 0) + 1;
     if (st.misses === 1) st.firstMissTs = now;
-    if (st.misses >= cfg.clearTicks) resolve(key, st, st.firstMissTs ?? now);
+    const firstMiss = st.firstMissTs ?? now;
+    if (st.misses >= cfg.clearTicks && now - firstMiss >= cfg.clearMs) resolve(key, st, firstMiss);
   }
 
   state.candidates = nextCandidates;

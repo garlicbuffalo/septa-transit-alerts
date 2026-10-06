@@ -16,3 +16,7 @@ public/data/*
 /data-branch/
 # The collector's GTFS schedule cache (`npm run collect`).
 /.collector-cache/
+# The bot service's local state (database, sessions, caches, dry-run posts)
+# when run from a checkout; on the server it lives in /var/lib/septa-bots.
+/bot-state/
+/bot/.env
