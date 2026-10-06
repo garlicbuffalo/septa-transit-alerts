@@ -411,6 +411,7 @@ export default function LinePage({ kind, lineId }) {
       now,
       windowHours: 3,
       baselineDays: 30,
+      dataStartTs: data.data_start_ts ?? null,
     });
   }, [data, lineAlerts, lineObservations, now]);
   const burstActive =

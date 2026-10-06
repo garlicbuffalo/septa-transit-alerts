@@ -489,6 +489,68 @@ const V2_PAYLOAD = {
       ],
       status: null,
     },
+    {
+      id: 'trip-cancellations-2001-09-08-23',
+      agency: 'septa',
+      mode: 'bus',
+      routes: ['23'],
+      sources: ['bot'],
+      lifecycle: {
+        first_seen_ts: NOW - 2 * 60 * 60_000,
+        resolved_ts: null,
+        active: true,
+        duration_ms: null,
+      },
+      official_alert: null,
+      detections: [
+        {
+          id: 'trip-cancellations-2001-09-08-23',
+          source: 'trip-cancellations',
+          scope: { route: '23' },
+          lifecycle: {
+            first_seen_ts: NOW - 2 * 60 * 60_000,
+            onset_ts: null,
+            resolved_ts: null,
+            active: true,
+            duration_ms: null,
+          },
+          post_url: null,
+          resolved_post_url: null,
+          description: '2 Route 23 trips cancelled — 5:06 AM, 9:14 AM (2 of 225 scheduled)',
+          evidence: {
+            signals: null,
+            details: {
+              kind: 'trip-cancellations',
+              service_date: '2001-09-08',
+              cancelled: 2,
+              scheduled: 225,
+              trips: [
+                {
+                  trip_id: '958770',
+                  direction: 0,
+                  start_ts: NOW - 60 * 60_000,
+                  end_ts: NOW - 60 * 60_000 + 50 * 60_000,
+                  origin: 'Chestnut Hill Loop',
+                  destination: '11th St & Market St',
+                },
+                {
+                  trip_id: '958782',
+                  direction: 0,
+                  start_ts: NOW + 3 * 60 * 60_000,
+                  end_ts: NOW + 3 * 60 * 60_000 + 50 * 60_000,
+                  origin: '11th St & Market St - FS',
+                  destination: 'Chestnut Hill Loop',
+                },
+              ],
+            },
+            bullets: ['2 of 225 scheduled trips cancelled'],
+            onset_description: null,
+            updates: [],
+          },
+        },
+      ],
+      status: null,
+    },
   ],
 };
 
@@ -574,6 +636,20 @@ describe('EventPage', () => {
     ).toBeInTheDocument();
     // resolution + 2 updates + detection = 4 entries (no onset for this fixture).
     expect(screen.getByText(/Per bot · 4 updates/)).toBeInTheDocument();
+  });
+
+  it("lists a route's cancelled trips and credits SEPTA's trip feed", async () => {
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(V2_PAYLOAD) }),
+    );
+    render(<EventPage eventId="trip-cancellations-2001-09-08-23" />);
+    await waitFor(() => {
+      expect(screen.getByText('Cancelled trips · 2')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/real-time trip feed/)).toBeInTheDocument();
+    expect(screen.queryByText(/live vehicle tracking/)).not.toBeInTheDocument();
+    expect(screen.getByText('Chestnut Hill Loop → 11th St & Market St')).toBeInTheDocument();
+    expect(screen.getByText('11th St & Market St → Chestnut Hill Loop')).toBeInTheDocument();
   });
 
   it('renders a standalone observation by id', async () => {

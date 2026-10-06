@@ -400,7 +400,7 @@ describe('vehicle detectors', () => {
     });
     const gap = r.conditions.get('gap|bus|17|0');
     expect(gap.details).toMatchObject({ gap_min: 30, cancelled_between: 2 });
-    expect(gap.description).toMatch(/2 cancelled trips in between$/);
+    expect(gap.description).toMatch(/; 2 trips in between were cancelled$/);
   });
 
   it('flags vehicles scheduled apart that are running together', () => {

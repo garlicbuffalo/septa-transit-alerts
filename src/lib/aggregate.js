@@ -569,7 +569,11 @@ export function describePeakWindow(
 // the same window length averaged across the baseline period.
 //
 // Inputs are expected to be scoped to one line/route by the caller (or the
-// whole system). The helper just counts.
+// whole system). The helper just counts. The baseline starts no earlier than
+// `dataStartTs`, and with under `minBaselineDays` of history there's no
+// "typical" to compare against, so `ratio` is null. Daily trip-cancellation
+// roll-ups are left out: they open in a batch each morning when SEPTA posts
+// the day's cancellations, which says nothing about a burst of disruptions.
 /**
  * @param {import('./incidents.js').Alert[]} alerts
  * @param {import('./incidents.js').Observation[]} observations
@@ -577,18 +581,26 @@ export function describePeakWindow(
  * @param {number} [options.now]
  * @param {number} [options.windowHours]   How recent the "burst" window is.
  * @param {number} [options.baselineDays]  How far back the baseline cohort runs.
+ * @param {number | null} [options.dataStartTs]  When the dataset begins.
+ * @param {number} [options.minBaselineDays]  History needed before a ratio is given.
  * @returns {{ recentCount: number, baselineWindowCount: number, ratio: number | null, windowHours: number }}
  */
 export function computeRecentBurst(
   alerts,
   observations,
-  { now = Date.now(), windowHours = 3, baselineDays = 30 } = {},
+  {
+    now = Date.now(),
+    windowHours = 3,
+    baselineDays = 30,
+    dataStartTs = null,
+    minBaselineDays = 7,
+  } = {},
 ) {
   const HOUR_MS = 60 * 60 * 1000;
   const windowMs = windowHours * HOUR_MS;
   const windowStart = now - windowMs;
-  const baselineMs = baselineDays * DAY_MS;
-  const baselineStart = now - baselineMs;
+  const baselineStart = Math.max(now - baselineDays * DAY_MS, dataStartTs ?? -Infinity);
+  const baselineMs = now - baselineStart;
 
   const { merged, standaloneAlerts, standaloneObs } = getMerge(alerts, observations);
   let recentCount = 0;
@@ -600,7 +612,9 @@ export function computeRecentBurst(
   }
   for (const m of merged) consider(m.first_seen_ts);
   for (const a of standaloneAlerts) consider(a.first_seen_ts);
-  for (const o of standaloneObs) consider(o.first_seen_ts ?? o.ts);
+  for (const o of standaloneObs) {
+    if (o.detection_source !== 'trip-cancellations') consider(o.first_seen_ts ?? o.ts);
+  }
 
   // Baseline-window average: total over baseline, scaled to one window's
   // length. Subtract the recent window from both numerator and denominator
@@ -609,7 +623,10 @@ export function computeRecentBurst(
   const baselineWindowSize = baselineMs - windowMs;
   const baselineWindowCount =
     baselineWindowSize > 0 ? (baselineNonRecent * windowMs) / baselineWindowSize : 0;
-  const ratio = baselineWindowCount > 0 ? recentCount / baselineWindowCount : null;
+  const ratio =
+    baselineWindowCount > 0 && baselineMs >= minBaselineDays * DAY_MS
+      ? recentCount / baselineWindowCount
+      : null;
   return { recentCount, baselineWindowCount, ratio, windowHours };
 }
 

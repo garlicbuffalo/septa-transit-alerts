@@ -221,7 +221,7 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
       // TransitView's headsign reads better than GTFS's final-stop name.
       const toward = ahead.destination ?? ahead.trip.destination;
       const extra = worstGap.cancelledBetween
-        ? ` — ${worstGap.cancelledBetween} cancelled trip${worstGap.cancelledBetween === 1 ? '' : 's'} in between`
+        ? `; ${worstGap.cancelledBetween === 1 ? '1 trip in between was' : `${worstGap.cancelledBetween} trips in between were`} cancelled`
         : '';
       conditions.set(`gap|${mode}|${route}|${direction}`, {
         source: 'gap',
@@ -483,7 +483,7 @@ function buildDetection(id, c, onsetTs, now) {
       bullets: [],
       onset_description: null,
       resolved_description: null,
-      updates: [{ ts: now, description: c.description, post_url: null, evidence: null }],
+      updates: [],
     },
   };
 }

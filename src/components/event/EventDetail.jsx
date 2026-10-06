@@ -51,6 +51,7 @@ import {
   StationChips,
   StationsByLine,
 } from './AffectedStations.jsx';
+import CancelledTrips from './CancelledTrips.jsx';
 import CopySummary from './CopySummary.jsx';
 import {
   buildEventSummaryText,
@@ -203,6 +204,12 @@ export function EventDetail({ incident, incidents, alerts, observations, station
   const isMerged = !!official && !!primary;
   const isAlert = !!official && !primary;
   const isObsOnly = !official;
+  // A route's day of cancelled trips (collector/lib/tripCancellations.js),
+  // read from SEPTA's real-time trip feed rather than vehicle positions.
+  const cancelledTrips =
+    isObsOnly && primary?.detection_source === 'trip-cancellations'
+      ? (primary.evidence?.trips ?? [])
+      : null;
 
   // For absence-style observations (pulse-cold/thin-gap) the export publishes an
   // onset_ts back-dated to the last observed train; use it as the start so
@@ -524,9 +531,13 @@ export function EventDetail({ incident, incidents, alerts, observations, station
           SEPTA post. */}
       {isObsOnly && (
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-2 italic">
-          No matching {agencyLabel(kind)} alert — surfaced from live vehicle tracking only.
+          {cancelledTrips
+            ? `No matching ${agency} rider alert — from ${agency}'s real-time trip feed, which marks each cancelled trip.`
+            : `No matching ${agency} alert — surfaced from live vehicle tracking only.`}
         </p>
       )}
+
+      {cancelledTrips && <CancelledTrips trips={cancelledTrips} now={now} />}
 
       {pointEvent?.lede && pointEvent.lede !== description && (
         <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">{pointEvent.lede}</p>

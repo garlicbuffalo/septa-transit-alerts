@@ -177,6 +177,45 @@ describe('computeRecentBurst', () => {
     expect(out.recentCount).toBe(1);
     expect(out.ratio).toBeNull();
   });
+
+  it('measures the baseline from the start of the data', () => {
+    const records = [
+      obs({ id: 1, ts: NOW - 1 * HOUR }),
+      obs({ id: 2, ts: NOW - 2 * HOUR }),
+      obs({ id: 3, ts: NOW - 5 * DAY }),
+      obs({ id: 4, ts: NOW - 9 * DAY }),
+    ];
+    const full = computeRecentBurst([], records, { now: NOW, baselineDays: 30 });
+    const short = computeRecentBurst([], records, {
+      now: NOW,
+      baselineDays: 30,
+      dataStartTs: NOW - 10 * DAY,
+    });
+    // Two baseline incidents over 10 days, not 30: a third the ratio.
+    expect(short.ratio / full.ratio).toBeCloseTo(1 / 3, 2);
+  });
+
+  it('withholds the ratio until there is a week of history', () => {
+    const out = computeRecentBurst(
+      [],
+      [obs({ id: 1, ts: NOW - 1 * HOUR }), obs({ id: 2, ts: NOW - 2 * DAY })],
+      { now: NOW, baselineDays: 30, dataStartTs: NOW - 3 * DAY },
+    );
+    expect(out.recentCount).toBe(1);
+    expect(out.ratio).toBeNull();
+  });
+
+  it("leaves out the day's trip-cancellation roll-ups", () => {
+    const out = computeRecentBurst(
+      [],
+      [
+        obs({ id: 1, ts: NOW - 1 * HOUR, detection_source: 'trip-cancellations' }),
+        obs({ id: 2, ts: NOW - 1 * HOUR }),
+      ],
+      { now: NOW },
+    );
+    expect(out.recentCount).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

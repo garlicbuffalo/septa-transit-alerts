@@ -421,8 +421,9 @@ export default function App() {
       now,
       windowHours: 3,
       baselineDays: 30,
+      dataStartTs: data?.data_start_ts ?? null,
     });
-  }, [flat, now]);
+  }, [flat, now, data]);
 
   // Station index — used by IncidentList to turn station names into
   // /station/:slug links when the destination page is worth visiting.

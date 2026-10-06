@@ -172,13 +172,13 @@ export function applyTripCancellations(incidents, feed, schedule, now) {
       existing?.detections?.[0]?.evidence?.details?.scheduled ??
       (g.date ? schedule.scheduledTripCount(g.route, g.date) : 0);
     const added = trips.filter((t) => !prevTrips.some((p) => p.trip_id === t.trip_id)).length;
+    // The opening count is the detection itself; updates record later changes.
     let update = null;
-    if (!existing) update = bullet(trips.length, scheduled);
-    else if (added && reinstated.length)
+    if (existing && added && reinstated.length)
       update = `${added} more cancelled, ${reinstated.length} reinstated (${trips.length} total)`;
-    else if (added)
+    else if (existing && added)
       update = `${added} more trip${added === 1 ? '' : 's'} cancelled (${trips.length} total)`;
-    else if (reinstated.length)
+    else if (existing && reinstated.length)
       update = `${reinstated.length} trip${reinstated.length === 1 ? '' : 's'} reinstated (${trips.length} still cancelled)`;
 
     const next = build(existing, { ...g, trips, scheduled, now, update });
