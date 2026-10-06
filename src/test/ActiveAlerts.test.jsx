@@ -6,7 +6,7 @@ import { incident } from './v2TestHelpers.js';
 const NOW = 1_700_000_000_000;
 const MIN = 60_000;
 
-// Nested incident shape with a CTA block — ActiveCard shows `cta.headline`
+// Nested incident shape with a SEPTA block — ActiveCard shows `cta.headline`
 // directly, so the headline doubles as a stable text handle in assertions.
 const activeInc = (over = {}) =>
   incident({
@@ -46,12 +46,12 @@ describe('ActiveAlerts', () => {
     render(
       <ActiveAlerts
         incidents={[
-          // Live disruption (CTA train).
+          // Live disruption (SEPTA train).
           activeInc({
             id: 'd1',
             cta: { headline: 'Red Line gap', post_url: 'https://bsky.app/profile/x/post/d1' },
           }),
-          // Routine Metra delay → Delays.
+          // Routine Regional Rail delay → Delays.
           activeInc({
             id: 'dl1',
             kind: 'rail',

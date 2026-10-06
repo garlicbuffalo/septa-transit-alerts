@@ -36,7 +36,7 @@ const UPCOMING = {
   scheduled_departure_ts: NOW + 60 * 60_000,
   scheduled_arrival_ts: NOW + 148 * 60_000,
   train_number: '67',
-  origin: 'Chicago OTC',
+  origin: 'Jefferson Station',
 };
 // A finalized cancellation: its scheduled departure is in the PAST relative to
 // NOW, which is what now makes it read as 'cancelled' (the state is re-derived
@@ -60,7 +60,7 @@ describe('cancellation helpers', () => {
     expect(info.isUpcoming).toBe(true);
     expect(info.isCancelled).toBe(false);
     expect(info.trainNumber).toBe('67');
-    expect(info.origin).toBe('Chicago OTC');
+    expect(info.origin).toBe('Jefferson Station');
   });
 
   it('re-derives cancelled once the departure passes, ignoring a stale upcoming state', () => {
@@ -156,6 +156,6 @@ describe('RailUpcomingCancellations', () => {
     render(<RailUpcomingCancellations incidents={[cancelInc(UPCOMING)]} now={NOW} />);
     expect(screen.getByText(/1 upcoming cancellation/)).toBeInTheDocument();
     expect(screen.getByText('Train #67')).toBeInTheDocument();
-    expect(screen.getByText(/Chicago OTC/)).toBeInTheDocument();
+    expect(screen.getByText(/Jefferson Station/)).toBeInTheDocument();
   });
 });

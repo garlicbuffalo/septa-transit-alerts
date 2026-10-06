@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildCalendarMonths, dateStringToUtc, maxCountAcrossMonths } from '../lib/calendar.js';
 
-// Pin "now" to 2026-05-09 13:00 Chicago — comfortably mid-day so anchor-month
+// Pin "now" to 2026-05-09 13:00 Philadelphia — comfortably mid-day so anchor-month
 // resolution doesn't depend on the test environment's local timezone.
 const NOW = Date.UTC(2026, 4, 9, 18, 0, 0);
 const DAY_MS = 24 * 60 * 60 * 1000;

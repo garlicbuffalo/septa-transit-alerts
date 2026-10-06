@@ -905,7 +905,10 @@ export function computeDisruptionMinutes(
     serviceHoursTotal = Math.max(1, linesInScope) * DEFAULT_SERVICE_HOURS_PER_DAY;
   }
   const serviceMinutes = serviceHoursTotal * windowDays * 60;
-  const ratio = serviceMinutes > 0 ? disruptedMs / (serviceMinutes * 60_000) : 0;
+  // Spans are wall-clock while the denominator counts service hours, so a line
+  // disrupted around the clock (a weeks-long station closure) would otherwise
+  // read as more than 100% of the time.
+  const ratio = serviceMinutes > 0 ? Math.min(1, disruptedMs / (serviceMinutes * 60_000)) : 0;
   return { disruptedMinutes, serviceMinutes, ratio };
 }
 

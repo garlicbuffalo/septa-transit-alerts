@@ -27,7 +27,7 @@ describe('formatLeadTime', () => {
 });
 
 describe('computeBotLead', () => {
-  it('reports how far the earliest observation predates the CTA post', () => {
+  it('reports how far the earliest observation predates the SEPTA post', () => {
     const out = computeBotLead({
       isMerged: true,
       agencyFirstSeenTs: NOW,
@@ -46,7 +46,7 @@ describe('computeBotLead', () => {
     ).toBeNull();
   });
 
-  it('returns null for non-merged incidents or missing CTA time', () => {
+  it('returns null for non-merged incidents or missing SEPTA time', () => {
     expect(
       computeBotLead({ isMerged: false, agencyFirstSeenTs: NOW, observations: [] }),
     ).toBeNull();
@@ -57,7 +57,7 @@ describe('computeBotLead', () => {
 });
 
 describe('computeAgencyPlanned', () => {
-  it('returns null when CTA fired within 10 minutes (effectively live)', () => {
+  it('returns null when SEPTA fired within 10 minutes (effectively live)', () => {
     expect(computeAgencyPlanned({ agencyStartTs: NOW - 5 * MIN, startTs: NOW })).toBeNull();
   });
 
@@ -153,10 +153,10 @@ describe('buildEventSummaryText', () => {
         dateText: 'May 28, 2026',
         durationText: '59 min',
         active: false,
-        url: 'https://chicagotransitalerts.app/event/abc',
+        url: 'https://septa-transit-alerts.example/event/abc',
       }),
     ).toBe(
-      'Orange Line: Trains standing near Ashland\nMay 28, 2026 · lasted 59 min\nhttps://chicagotransitalerts.app/event/abc',
+      'Orange Line: Trains standing near Ashland\nMay 28, 2026 · lasted 59 min\nhttps://septa-transit-alerts.example/event/abc',
     );
   });
 

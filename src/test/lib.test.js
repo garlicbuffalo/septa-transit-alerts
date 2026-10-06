@@ -299,7 +299,7 @@ describe('filterIncidents', () => {
   });
 
   // selectedDay narrows to a single Philadelphia calendar day. Reference day is the
-  // UTC midnight of NOW's Chicago day; helpers below construct timestamps
+  // UTC midnight of NOW's Philadelphia day; helpers below construct timestamps
   // relative to it.
   describe('selectedDay', () => {
     // phillyDayUTC of NOW (1e12) lands on 2001-09-09 UTC.
@@ -329,7 +329,7 @@ describe('filterIncidents', () => {
 });
 
 describe('incidentHeadlineText', () => {
-  it('summarizes Metra alert incidents that contain multiple delayed trains', () => {
+  it('summarizes Regional Rail alert incidents that contain multiple delayed trains', () => {
     const inc = aInc({
       kind: 'rail',
       routes: ['lan'],
@@ -361,7 +361,7 @@ describe('incidentHeadlineText', () => {
     expect(incidentHeadlineText(inc)).toBe('Lansdale/Doylestown Line trains #426 and #428 delayed');
   });
 
-  it('summarizes single-train Metra alert incidents from the train identity', () => {
+  it('summarizes single-train Regional Rail alert incidents from the train identity', () => {
     const inc = aInc({
       kind: 'rail',
       routes: ['lan'],
@@ -381,7 +381,7 @@ describe('incidentHeadlineText', () => {
     expect(incidentHeadlineText(inc)).toBe('Lansdale/Doylestown Line train #418 delayed');
   });
 
-  it('uses the earliest official version as the stable CTA incident title', () => {
+  it('uses the earliest official version as the stable SEPTA incident title', () => {
     const inc = aInc({
       kind: 'metro',
       routes: ['l1'],
@@ -409,7 +409,7 @@ describe('incidentHeadlineText', () => {
 // ---------------------------------------------------------------------------
 // groupIncidentRecords
 // ---------------------------------------------------------------------------
-// The fuzzy alert↔observation pairing now happens server-side in cta-insights
+// The fuzzy alert↔observation pairing now happens server-side in the collector
 // (covered by its export-web test). The frontend's groupIncidentRecords only
 // REGROUPS records by the _incidentId that pairing stamped on them — so these
 // fixtures share an _incidentId to express "same incident."
@@ -555,8 +555,8 @@ describe('groupIncidentRecords', () => {
   });
 
   it('suppresses resolution fields when alert is still active', () => {
-    // Bot observation ended before the CTA alert was even posted (e.g. a
-    // leading-edge ghost detection that cleared right before CTA announced
+    // Bot observation ended before the SEPTA alert was even posted (e.g. a
+    // leading-edge ghost detection that cleared right before SEPTA announced
     // the reroute). The merged incident must stay active with no resolved_ts
     // or obs_resolved_post_url leaking into the UI.
     const activeAlert = makeAlertForMerge({
@@ -678,22 +678,22 @@ describe('computeSummaryStats', () => {
     });
   });
 
-  it('computes a separate most-affected and quietest line for Metra', () => {
+  it('computes a separate most-affected and quietest line for Regional Rail', () => {
     const alerts = [
-      // CTA train leader.
+      // SEPTA train leader.
       makeAlert({ alert_id: 1, routes: ['l1'], first_seen_ts: NOW - 1 * DAY }),
       makeAlert({ alert_id: 2, routes: ['l1'], first_seen_ts: NOW - 2 * DAY }),
-      // Metra: BNSF is the most-affected line; UP-N's lone old incident makes
+      // Regional Rail: BNSF is the most-affected line; UP-N's lone old incident makes
       // it the quietest.
       makeAlert({ alert_id: 3, kind: 'rail', routes: ['pao'], first_seen_ts: NOW - 1 * DAY }),
       makeAlert({ alert_id: 4, kind: 'rail', routes: ['pao'], first_seen_ts: NOW - 3 * DAY }),
       makeAlert({ alert_id: 5, kind: 'rail', routes: ['nor'], first_seen_ts: NOW - 9 * DAY }),
     ];
     const r = computeSummaryStats(alerts, [], NOW);
-    // CTA leaders unchanged by the Metra rows.
+    // SEPTA leaders unchanged by the Regional Rail rows.
     expect(r.mostAffectedKind).toBe('metro');
     expect(r.mostAffectedId).toBe('l1');
-    // Metra gets its own pair.
+    // Regional Rail gets its own pair.
     expect(r.railMostAffectedId).toBe('pao');
     expect(r.railMostAffectedCount).toBe(2);
     expect(r.railQuietestLineId).toBe('nor');
@@ -805,9 +805,9 @@ describe('railPointEvent', () => {
         detection_source: 'delay',
         line: 'pao',
         from_station: 'Aurora',
-        to_station: 'Chicago Union Station',
+        to_station: 'Suburban Station',
         direction_label: null,
-        bot_description: '~57 min late — the 12:05 PM Chicago Union Station train',
+        bot_description: '~57 min late — the 12:05 PM Suburban Station train',
         ...over,
       },
     });
@@ -815,9 +815,9 @@ describe('railPointEvent', () => {
   it('returns the kind, lede, and station pair for a delay', () => {
     expect(railPointEvent(pointInc())).toEqual({
       source: 'delay',
-      lede: '~57 min late — the 12:05 PM Chicago Union Station train',
+      lede: '~57 min late — the 12:05 PM Suburban Station train',
       fromStation: 'Aurora',
-      toStation: 'Chicago Union Station',
+      toStation: 'Suburban Station',
       directionLabel: null,
     });
   });
@@ -839,7 +839,7 @@ describe('railPointEvent', () => {
     expect(railPointEvent(oInc({ kind: 'rail', obs: { detection_source: 'gap' } }))).toBeNull();
   });
 
-  it('returns null for incidents carrying a Metra alert (merged)', () => {
+  it('returns null for incidents carrying a Regional Rail alert (merged)', () => {
     expect(
       railPointEvent(
         aInc({
@@ -850,7 +850,7 @@ describe('railPointEvent', () => {
             {
               detection_source: 'delay',
               line: 'pao',
-              bot_description: '~57 min late — the 12:05 PM Chicago Union Station train',
+              bot_description: '~57 min late — the 12:05 PM Suburban Station train',
             },
           ],
         }),
@@ -870,7 +870,7 @@ describe('railPointEventLabel', () => {
 });
 
 describe('railPointEventTitle', () => {
-  it('uses train numbers for bot-only Metra delay titles', () => {
+  it('uses train numbers for bot-only Regional Rail delay titles', () => {
     expect(
       railPointEventTitle(
         oInc({
@@ -888,7 +888,7 @@ describe('railPointEventTitle', () => {
     ).toBe('West Trenton Line train #121 delayed');
   });
 
-  it('returns null when a bot-only Metra point event has no train number', () => {
+  it('returns null when a bot-only Regional Rail point event has no train number', () => {
     expect(
       railPointEventTitle(
         oInc({
@@ -902,7 +902,7 @@ describe('railPointEventTitle', () => {
 });
 
 describe('railIncidentStatus', () => {
-  it('reads official Metra delay classifications', () => {
+  it('reads official Regional Rail delay classifications', () => {
     expect(
       railIncidentStatus(
         aInc({
@@ -914,7 +914,7 @@ describe('railIncidentStatus', () => {
     ).toEqual({ source: 'delay' });
   });
 
-  it('falls back to official Metra alert text for older data', () => {
+  it('falls back to official Regional Rail alert text for older data', () => {
     const incident = aInc({
       kind: 'rail',
       routes: ['lan'],
@@ -949,7 +949,7 @@ describe('railIncidentStatus', () => {
 describe('incidentCategory / isPlannedIncident', () => {
   const NOW_TS = NOW;
 
-  it('classifies a Metra planned-delay as planned work', () => {
+  it('classifies a Regional Rail planned-delay as planned work', () => {
     const inc = aInc({
       kind: 'rail',
       routes: ['nor'],
@@ -961,19 +961,47 @@ describe('incidentCategory / isPlannedIncident', () => {
     expect(incidentCategory(inc, NOW_TS)).toBe('planned');
   });
 
-  it('classifies a routine Metra delay as a delay', () => {
+  it("treats SEPTA's maintenance/construction advisories as planned work", () => {
+    const inc = aInc({
+      kind: 'rail',
+      routes: ['pao', 'wtr'],
+      active: true,
+      cta: { headline: 'Potential Delays due to Amtrak Infrastructure Project' },
+    });
+    inc.official_alert.septa = { type: 'ADVISORY', cause: 'CONSTRUCTION', effect: null };
+    expect(isPlannedIncident(inc, NOW_TS)).toBe(true);
+    expect(incidentCategory(inc, NOW_TS)).toBe('planned');
+    expect(railIncidentStatus(inc)).toEqual({ source: 'planned-delay' });
+    // A real-time ALERT with the same text stays a live delay.
+    inc.official_alert.septa = { type: 'ALERT', cause: 'CONSTRUCTION', effect: null };
+    expect(isPlannedIncident(inc, NOW_TS)).toBe(false);
+  });
+
+  it("keeps SEPTA's headline when a train-numbered alert reports no delay or cancellation", () => {
+    const inc = aInc({
+      kind: 'rail',
+      routes: ['nor'],
+      active: true,
+      cta: { headline: 'Outbound Platform Boarding, Train #207, Norristown Transit Center' },
+    });
+    expect(incidentHeadlineText(inc)).toBe(
+      'Outbound Platform Boarding, Train #207, Norristown Transit Center',
+    );
+  });
+
+  it('classifies a routine Regional Rail delay as a delay', () => {
     const inc = aInc({
       kind: 'rail',
       routes: ['lan'],
       active: true,
-      cta: { headline: 'RID #703 Delayed' },
+      cta: { headline: 'Lansdale/Doylestown Train #703 Delayed' },
       rail_status: { source: 'delay', train_number: '703' },
     });
     expect(isPlannedIncident(inc, NOW_TS)).toBe(false);
     expect(incidentCategory(inc, NOW_TS)).toBe('delay');
   });
 
-  it('treats a CTA alert with a multi-day date-only window as planned', () => {
+  it('treats a SEPTA alert with a multi-day date-only window as planned', () => {
     const inc = aInc({
       kind: 'bus',
       routes: ['2', '6', '10'],
@@ -1120,7 +1148,7 @@ describe('filterIncidents signal filter', () => {
     expect(r.map((i) => i.id).sort()).toEqual([gap.id, roundup.id].sort());
   });
 
-  it('drops CTA-only incidents when a signal filter is active', () => {
+  it('drops SEPTA-only incidents when a signal filter is active', () => {
     const r = filterIncidents([aInc(), oInc({ obs: { detection_source: 'gap' } })], {
       signals: ['gap'],
     });
@@ -1494,7 +1522,7 @@ describe('buildSearchMatchers', () => {
     expect(m.matchesIncident(oInc())).toBe(true);
   });
 
-  it('matches CTA headline case-insensitively', () => {
+  it('matches SEPTA headline case-insensitively', () => {
     const a = aInc({ cta: { headline: 'Red Line Reroute at Howard' } });
     expect(buildSearchMatchers('howard').matchesIncident(a)).toBe(true);
   });
@@ -1519,7 +1547,7 @@ describe('buildSearchMatchers', () => {
     expect(buildSearchMatchers('headway gap').matchesIncident(o)).toBe(true);
   });
 
-  it('matches synthesized Metra multi-train titles', () => {
+  it('matches synthesized Regional Rail multi-train titles', () => {
     const inc = aInc({
       kind: 'rail',
       routes: ['lan'],
@@ -1719,9 +1747,9 @@ describe('computeTypicalDurations', () => {
 // buildTodaySummary
 // ---------------------------------------------------------------------------
 describe('buildTodaySummary', () => {
-  // Pin "now" to a Chicago-friendly mid-day moment so the boundary between
+  // Pin "now" to a Philadelphia mid-day moment so the boundary between
   // "today" and "yesterday" doesn't depend on test environment TZ.
-  const TODAY_NOW = Date.UTC(2026, 4, 9, 18, 0, 0); // 2026-05-09 13:00 Chicago
+  const TODAY_NOW = Date.UTC(2026, 4, 9, 18, 0, 0); // 2026-05-09 13:00 Philadelphia
 
   it('returns null when there is no incident data at all', () => {
     expect(buildTodaySummary([], [], TODAY_NOW)).toBeNull();

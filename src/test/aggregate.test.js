@@ -76,6 +76,16 @@ describe('computeDisruptionMinutes', () => {
     expect(out.ratio).toBeCloseTo(60 / (20 * 30 * 60), 6);
   });
 
+  it('caps the share at 100% for a line disrupted around the clock', () => {
+    const out = computeDisruptionMinutes(
+      [],
+      [obs({ ts: NOW - 30 * 24 * HOUR, resolved_ts: null, active: true })],
+      { now: NOW, windowDays: 30, lines: [{ kind: 'metro', line: 'l1' }] },
+    );
+    expect(out.disruptedMinutes).toBe(30 * 24 * 60);
+    expect(out.ratio).toBe(1);
+  });
+
   it('unions overlapping spans on the same line instead of double-counting', () => {
     const out = computeDisruptionMinutes(
       [],
@@ -170,7 +180,7 @@ describe('computeDayOfWeekCounts', () => {
 // computeWorstDay
 // ---------------------------------------------------------------------------
 describe('computeWorstDay', () => {
-  it('returns the Chicago day with the most incident starts', () => {
+  it('returns the Philadelphia day with the most incident starts', () => {
     const out = computeWorstDay(
       [],
       [
@@ -302,7 +312,7 @@ describe('computeRestorationDeltas', () => {
     }),
   });
 
-  it('flags CTA clearing late (after service recovered)', () => {
+  it('flags SEPTA clearing late (after service recovered)', () => {
     const { alert: a, obs: o } = pair({
       alertResolved: NOW,
       obsTs: NOW - 58 * MIN,
@@ -315,7 +325,7 @@ describe('computeRestorationDeltas', () => {
     expect(out.agencyClearedLate[0].deltaMs).toBe(20 * MIN);
   });
 
-  it('flags CTA clearing early (before service recovered)', () => {
+  it('flags SEPTA clearing early (before service recovered)', () => {
     const { alert: a, obs: o } = pair({
       alertResolved: NOW - 30 * MIN,
       obsTs: NOW - 58 * MIN,
@@ -355,7 +365,7 @@ describe('computeRestorationDeltas', () => {
     expect(out.matchedCount).toBe(0);
   });
 
-  it('excludes Metra incidents (CTA-only concept)', () => {
+  it('excludes Regional Rail incidents (SEPTA-only concept)', () => {
     const { alert: a, obs: o } = pair({
       alertResolved: NOW,
       obsTs: NOW - 58 * MIN,
@@ -403,7 +413,7 @@ describe('computeRailLeaderboards', () => {
     expect(out.hasData).toBe(true);
   });
 
-  it('reports no data when nothing Metra is in window', () => {
+  it('reports no data when nothing Regional Rail is in window', () => {
     const stale = [mObs({ id: 1, ts: NOW - 120 * DAY, resolved_ts: NOW - 120 * DAY })];
     const out = computeRailLeaderboards([], stale, { now: NOW, windowDays: 90 });
     expect(out.hasData).toBe(false);
@@ -451,7 +461,7 @@ describe('computeRailStatusCounts', () => {
     expect(out).toEqual({ cancellations: 1, delays: 1, total: 2 });
   });
 
-  it('counts official-only Metra alert status once', () => {
+  it('counts official-only Regional Rail alert status once', () => {
     const out = computeRailStatusCounts(
       [
         railIncident({
@@ -469,7 +479,7 @@ describe('computeRailStatusCounts', () => {
     expect(out).toEqual({ cancellations: 1, delays: 1, total: 2 });
   });
 
-  it('does not count planned-work Metra delay advisories as late trains', () => {
+  it('does not count planned-work Regional Rail delay advisories as late trains', () => {
     const out = computeRailStatusCounts(
       [
         railIncident({
@@ -539,7 +549,7 @@ describe('computeRailCancellationDelayStats', () => {
       observations: [],
       ...over,
     });
-  const cancelObs = ({ id = 'c', depTs = NOW - DAY, origin = 'Chicago Union' } = {}) => ({
+  const cancelObs = ({ id = 'c', depTs = NOW - DAY, origin = 'Suburban Station' } = {}) => ({
     id,
     kind: 'rail',
     line: 'wtr',
@@ -586,8 +596,8 @@ describe('computeRailCancellationDelayStats', () => {
       [
         railIncident({
           observations: [
-            cancelObs({ id: 'c1', origin: 'Chicago Union', depTs: NOW - DAY }),
-            cancelObs({ id: 'c2', origin: 'Chicago Union', depTs: NOW - 2 * DAY }),
+            cancelObs({ id: 'c1', origin: 'Suburban Station', depTs: NOW - DAY }),
+            cancelObs({ id: 'c2', origin: 'Suburban Station', depTs: NOW - 2 * DAY }),
             cancelObs({ id: 'c3', origin: 'Aurora', depTs: NOW - 3 * DAY }),
           ],
         }),
@@ -595,7 +605,7 @@ describe('computeRailCancellationDelayStats', () => {
       { now: NOW, windowDays: 90, lineFilter: 'wtr' },
     );
     expect(out.cancellations.byOrigin).toEqual([
-      { origin: 'Chicago Union', count: 2 },
+      { origin: 'Suburban Station', count: 2 },
       { origin: 'Aurora', count: 1 },
     ]);
     const partTotal = out.cancellations.byPartOfDay.reduce((s, p) => s + p.count, 0);
@@ -623,7 +633,7 @@ describe('computeRailCancellationDelayStats', () => {
     expect(out.total).toBe(0);
   });
 
-  it('returns an empty, renderable shape with no Metra history', () => {
+  it('returns an empty, renderable shape with no Regional Rail history', () => {
     const out = computeRailCancellationDelayStats([], {
       now: NOW,
       windowDays: 90,

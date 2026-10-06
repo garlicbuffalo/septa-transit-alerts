@@ -23,6 +23,18 @@ import Header from './Header.jsx';
 const WINDOW_DAYS = 364; // 52 weeks
 const WEEKDAY_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', '']; // sparse to keep the row compact
 
+// "2 Metro, 1 bus, 3 Regional Rail" — omitting modes with no incidents.
+function modeBreakdown(cell) {
+  const parts = [
+    [cell.metroCount, 'Metro'],
+    [cell.busCount, 'bus'],
+    [cell.railCount, 'Regional Rail'],
+  ]
+    .filter(([n]) => n > 0)
+    .map(([n, label]) => `${n} ${label}`);
+  return parts.join(', ') || 'no breakdown';
+}
+
 const NO_DATA_STYLE = {
   backgroundImage:
     'repeating-linear-gradient(-45deg, var(--no-data-stripe1) 0px, var(--no-data-stripe1) 1px, var(--no-data-stripe2) 1px, var(--no-data-stripe2) 4px)',
@@ -67,7 +79,7 @@ function CalendarCell({ cell, maxCount }) {
   const label =
     cell.count === 0
       ? `${dayLabel}: no incidents`
-      : `${dayLabel}: ${cell.count} incident${cell.count === 1 ? '' : 's'} (${cell.trainCount} train, ${cell.busCount} bus)`;
+      : `${dayLabel}: ${cell.count} incident${cell.count === 1 ? '' : 's'} (${modeBreakdown(cell)})`;
   if (cell.count === 0) {
     return (
       <div

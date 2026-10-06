@@ -9,8 +9,8 @@ import { incident } from './v2TestHelpers.js';
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
-// A fixed Chicago-afternoon anchor so hour bucketing is deterministic.
-const NOW = Date.UTC(2026, 4, 28, 20, 0, 0); // 2026-05-28 20:00 UTC ≈ 15:00 CDT
+// A fixed Philadelphia-afternoon anchor so hour bucketing is deterministic.
+const NOW = Date.UTC(2026, 4, 28, 20, 0, 0); // 2026-05-28 20:00 UTC ≈ 15:00 EDT
 
 function obs(line, from, to, source = 'pulse-cold') {
   return { line, from_station: from, to_station: to, detection_source: source };
@@ -150,7 +150,7 @@ describe('computeLineDurationRank', () => {
 });
 
 describe('computeHourOfDayContext', () => {
-  // Pile 30 incidents into the same Chicago hour as NOW (15:00 CDT) so that
+  // Pile 30 incidents into the same Philadelphia hour as NOW (15:00 EDT) so that
   // hour is far above the flat mean.
   const incidents = [];
   for (let i = 0; i < 30; i++) {

@@ -547,6 +547,14 @@ export function railPointEventTitle(incident) {
   return `${line} train #${trainNumber} ${status}`;
 }
 
+// SEPTA classifies each alert's cause; scheduled maintenance and construction
+// advisories are planned work even when their text doesn't say so ("Potential
+// Delays due to Amtrak Infrastructure Project", "Outbound Platform Boarding").
+const PLANNED_SEPTA_CAUSES = new Set(['MAINTENANCE', 'CONSTRUCTION']);
+function isSeptaPlannedAdvisory(alert) {
+  return alert?.septa?.type === 'ADVISORY' && PLANNED_SEPTA_CAUSES.has(alert.septa.cause);
+}
+
 function officialRailStatusSource(incident) {
   const alert = officialAlert(incident);
   if (legacyKind(incident) !== 'rail' || !alert) return null;
@@ -555,7 +563,10 @@ function officialRailStatusSource(incident) {
   // for schedule anchors and train numbers.
   const text = [alert.headline, alert.description].filter(Boolean).join(' \n ');
   const isPlannedDelay =
-    /\b(track\s+construction|construction|planned\s+work|work\s+zone|maintenance)\b/i.test(text) &&
+    (isSeptaPlannedAdvisory(alert) ||
+      /\b(track\s+construction|construction|planned\s+work|work\s+zone|maintenance)\b/i.test(
+        text,
+      )) &&
     /\bdelay(?:ed|s)?\b|\b\d{1,3}\s*(?:\+|\s*or\s+more)?\s*minutes?\s+(?:late|behind|delay)/i.test(
       text,
     );
@@ -612,6 +623,7 @@ export function isPlannedIncident(incident, now = Date.now()) {
   if (railIncidentStatus(incident)?.source === 'planned-delay') return true;
   const alert = officialAlert(incident);
   if (!alert) return false;
+  if (isSeptaPlannedAdvisory(alert)) return true;
   const w = alert.agency_event_window ?? {};
   // Advance notice: the scheduled work hasn't started yet.
   if (w.start_ts != null && w.start_ts > now) return true;
@@ -707,6 +719,9 @@ function railMultiTrainHeadline(incident) {
   else if (sources.size > 0 && [...sources].every((s) => s === 'cancellation-inferred')) {
     status = 'possibly cancelled';
   }
+  // Without a delay/cancellation to report, SEPTA's own headline ("Outbound
+  // Platform Boarding, Train #207, …") says more than "train #207 affected".
+  if (status === 'affected') return null;
   const line = formatRoutesLabel('rail', incident.routes || []);
   const trainWord = nums.length === 1 ? 'train' : 'trains';
   return `${line} ${trainWord} ${naturalList(nums.map((n) => `#${n}`))} ${status}`;
