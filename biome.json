@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!node_modules", "!dist", "!public/data", "!**/*.min.js"]
+    "includes": ["**", "!node_modules", "!dist", "!public/data", "!data-branch", "!**/*.min.js"]
   },
   "formatter": {
     "enabled": true,

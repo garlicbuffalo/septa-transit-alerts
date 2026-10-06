@@ -1,302 +1,149 @@
-# Chicago Transit Alerts
+# SEPTA Transit Alerts
 
-A public archive of Chicago Transit Authority (CTA) and Metra service alerts and bot-detected disruptions, with a GitHub-style heatmap of incident frequency over the last 90 days. CTA covers the 'L' trains and buses; Metra covers the region's commuter-rail lines.
+A public archive of SEPTA (Southeastern Pennsylvania Transportation Authority) service alerts and detected disruptions across SEPTA Metro, buses, and Regional Rail, with heatmaps, per-line history, and stats for Philadelphia-area riders.
 
-> **Unofficial project.** Not affiliated with, endorsed by, or sponsored by the Chicago Transit Authority or Metra.
+> **Unofficial project.** Not affiliated with, endorsed by, or sponsored by SEPTA.
 
-**Live site:** https://chicagotransitalerts.app
+Adapted from [Chicago Transit Alerts](https://github.com/cailinpitt/chicago-transit-alerts), which does the same for the CTA and Metra. The site, views, and data shape carry over; the data pipeline is new and SEPTA-specific (see [How it works](#how-it-works)).
 
 <p align="center">
-  <img src="docs/images/website-home.png" alt="Homepage: active alerts, line filters, daily summary, and the start of the incident feed" width="820">
+  <img src="docs/images/website-home.png" alt="Homepage: active SEPTA Metro, bus, and Regional Rail alerts side by side" width="820">
 </p>
+
+## What's tracked
+
+A collector polls SEPTA's public APIs every ~10 minutes:
+
+- **Official SEPTA alerts** ([`/api/v2/alerts`](https://www3.septa.org/api/v2/alerts/)) — service advisories, real-time alerts, and short-term (≤72h) bus detours for SEPTA Metro, buses, and Regional Rail. Each alert is an incident from when SEPTA posted it until it leaves the feed or its stated end passes; edits to the text are kept as versions. Long-running construction detours and station-amenity notices (parking, ticket offices, waiting rooms) are left out. Affected stations are matched from the alert text against SEPTA's GTFS station list.
+- **Regional Rail delays** ([TrainView](https://www3.septa.org/api/TrainView/index.php)) — any train running 15+ minutes late becomes an incident, updated as its lateness changes and resolved when it recovers or arrives. Each is anchored to the train's scheduled departure from [RRSchedules](https://www3.septa.org/api/RRSchedules/index.php?req1=9233).
+- **Regional Rail cancellations** — trains TrainView marks cancelled, shown as "upcoming" until their scheduled departure.
+- **Elevator outages** ([elevator API](https://www3.septa.org/api/elevator/index.php)) at SEPTA Metro and Regional Rail stations, archived separately on the accessibility page.
+
+SEPTA Metro uses the 2025 line names: L1 (Market-Frankford), B1/B2/B3 (Broad Street Line, Express, Broad-Ridge Spur), M1 (Norristown High Speed Line), T1–T5 (subway-surface trolleys), G1 (Girard), and D1/D2 (Media and Sharon Hill). Search also understands the old names ("MFL", "BSL", "Route 101").
+
+**Not covered yet.** The Chicago site also infers disruptions from live vehicle positions (gaps, bunching, missing vehicles, stalled trains). The UI supports those detections, but this collector doesn't produce them for SEPTA Metro or buses yet — SEPTA's [TransitView](https://www3.septa.org/api/TransitViewAll/index.php) feed would be the source. Bus trip cancellations aren't tracked either.
 
 ## What you see
 
-- **Active alerts** — anything currently disrupting service, surfaced at the top of the page. The two most recent show as full cards; additional ongoing incidents collapse to compact one-line rows so a system-wide bad afternoon doesn't push the rest of the page off the screen. New incidents picked up by the 5-minute poll briefly fade-in so returning visitors notice what's changed.
-- **At-a-glance summary** — three flowing groups: state + 7-day volume, a week-over-week trend phrase with an inline sparkline, and the most-affected line/route over 30 days plus the train line with the longest clean streak.
-- **Agency filter** — an All / CTA / Metra toggle scopes the incident list to one agency. CTA's line and bus filters narrow CTA only; Metra has its own line filter, so the two agencies never crowd each other out.
-- **90-day timeline** — a per-line contribution-style grid. CTA train rows + the top 5 most-affected bus routes + an aggregate "Other" row for the long tail, then a row per Metra line that had activity. Click a day cell to drill into that single day; click a line name to open its dedicated page.
-- **When do incidents happen?** — a 7×24 hour-of-week heatmap so you can see whether things really are worse at PM rush or on Sunday mornings.
-- **Signal mix by line** — stacked bars showing the proportion of bot detection types per line: gap, bunching, ghost, cold stretch, and trains-held for CTA; cancellations and delays for Metra (its own section). Bus and line pages also show a single-row variant scoped to that route.
-- **Incident history** — chronological day-grouped list of every captured alert and observation. Filterable by CTA line, bus route, Metra line, agency, time window (7d / 30d / 90d / all), single pinned day, signal type, and free-text search across headlines, station names, route numbers, and route names ("Howard", "Aurora", "Red Line", "UP-N", "headway gaps", etc). Search matches are highlighted in the list as you type.
-- **Per-line page** — `/line/:line` (CTA), `/metra/line/:line` (Metra), and `/route/:routeId` (bus) show reliability stats, year-over-year delta (when ≥1y of data exists), resolution-time histogram, and a per-station heatmap on a geographic line map (CTA trains + Metra lines).
-- **Compare** — `/compare` puts up to three CTA train lines, bus routes, or Metra lines side-by-side with a stat table, overlaid duration histograms, signal-mix rows, and a row of mini hour-of-week heatmaps. State round-trips through the URL (`?trains=red,blue,green` / `?buses=66,X9,77` / `?metra=up-n,bnsf`).
-- **Accessibility outages** — `/accessibility` tracks CTA rail and Metra elevator, escalator, entrance, and ADA notices separately from general service disruptions, with current outages and recent station history.
-- **Per-event detail page** — every captured incident gets a permalink at `/event/:id`. Alongside the timeline of CTA/bot updates it surfaces severity badges ("longest Blue Line incident in 30 days", "top 10% by duration"), a recurring-stretch callout ("this stretch has had N disruptions in 90 days"), a busy/quiet hour-of-day note, a live-ticking "ongoing for…" counter on active incidents, surrounding-24h context on the same line, ±1h cross-line context, a 14-day mini timeline whose day cells deep-link to that day (filtered to the line), prev/next navigation (same line and system-wide), and a "copy summary" button.
+- **Active alerts** — everything currently affecting service, split into a Metro & Bus column and a Regional Rail column, each grouped into disruptions, delays, and planned work.
+- **Network filter** — All / Metro & Bus / Regional Rail. Metro line and bus route filters narrow Metro & Bus; Regional Rail has its own line filter.
+- **90-day timeline, hour-of-week heatmap, and calendar** — when and where incidents cluster.
+- **Line, route, and station pages** — `/line/l1`, `/route/17`, `/rail/line/pao`, `/station/8th-market`, `/rail/station/suburban-station`: reliability stats, resolution-time histograms, a station heatmap on a geographic line map, accessibility outages, and the full incident history.
+- **Event pages** — every incident has a permalink at `/event/:id` with its timeline of SEPTA updates and detections, affected stations and map, and surrounding context on the same line and across the system.
+- **Compare, stats, week recaps, and system health** — `/compare?metro=l1,b1`, `/stats`, `/week`, `/system/metro`, `/system/buses`, `/system/rail`.
+- **Accessibility** — `/accessibility` lists current elevator outages and recent history.
 
-Filter state, the pinned day, and the search query all round-trip through the URL — any view is a shareable link.
-
-## More views
-
-A pulse on the last 24 hours, on top of the 90-day per-line timeline:
-
-<p align="center">
-  <img src="docs/images/website-last-24-and-timeline.png" alt="Last-24-hours gantt above the 90-day per-line timeline" width="820">
-</p>
-
-A 7×24 hour-of-week heatmap and the per-line breakdown of bot-detection signal types:
-
-<p align="center">
-  <img src="docs/images/website-incident-occurrence-signal-mix.png" alt="Hour-of-week heatmap and stacked signal-mix bars by line" width="820">
-</p>
-
-Every captured incident gets its own permalink with surrounding context, a 14-day mini timeline, and (for bot detections) the geographic footprint:
-
-<p align="center">
-  <img src="docs/images/website-event.png" alt="Event detail page with geographic map and surrounding context" width="820">
-</p>
-
-CTA train lines, bus routes, Metra lines, and individual stations each have a dedicated page with reliability stats, signal mix, and a per-station heatmap (CTA trains and Metra lines get a geographic line map):
+Filter state, the pinned day, and the search query round-trip through the URL, so any view is a shareable link.
 
 <table align="center">
   <tr>
-    <td width="33%"><img src="docs/images/website-line.png" alt="Train line page"><br><sub align="center">Train line · <code>/line/red</code></sub></td>
-    <td width="33%"><img src="docs/images/website-bus-route.png" alt="Bus route page"><br><sub align="center">Bus route · <code>/route/66</code></sub></td>
-    <td width="33%"><img src="docs/images/website-train-station.png" alt="Train station page"><br><sub align="center">Station · <code>/station/francisco</code></sub></td>
-  </tr>
-</table>
-
-Compare up to three lines or routes side-by-side:
-
-<p align="center">
-  <img src="docs/images/website-compare.png" alt="Side-by-side comparison of three lines" width="820">
-</p>
-
-Metra commuter rail joins the timeline, stats, and compare views above, and has its own line pages (`/metra/line/up-n`), station pages (`/metra/station/aurora`), and a system-health dashboard (`/system/metra`) covering cancellations and delays.
-
-A 12-month calendar heatmap, a stats page with worst-day / worst-station leaderboards, and per-mode system-health snapshots:
-
-<table align="center">
-  <tr>
-    <td width="50%"><img src="docs/images/website-calendar.png" alt="12-month calendar"><br><sub align="center">Calendar · <code>/calendar</code></sub></td>
-    <td width="50%"><img src="docs/images/website-stats.png" alt="Stats leaderboards"><br><sub align="center">Stats · <code>/stats</code></sub></td>
+    <td width="50%"><img src="docs/images/website-line.png" alt="L1 line page"><br><sub>Metro line · <code>/line/l1</code></sub></td>
+    <td width="50%"><img src="docs/images/website-rail-line.png" alt="Paoli/Thorndale line page"><br><sub>Regional Rail line · <code>/rail/line/pao</code></sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/images/website-train-system-health.png" alt="Train system health"><br><sub align="center">Trains · <code>/system/trains</code></sub></td>
-    <td width="50%"><img src="docs/images/website-bus-system-health.png" alt="Bus system health"><br><sub align="center">Buses · <code>/system/buses</code></sub></td>
+    <td width="50%"><img src="docs/images/website-event.png" alt="Event page"><br><sub>Event · <code>/event/alert-136615</code></sub></td>
+    <td width="50%"><img src="docs/images/website-accessibility.png" alt="Accessibility page"><br><sub>Accessibility · <code>/accessibility</code></sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/website-system-rail.png" alt="Regional Rail system health"><br><sub>System health · <code>/system/rail</code></sub></td>
+    <td width="50%"><img src="docs/images/website-compare.png" alt="Compare page"><br><sub>Compare · <code>/compare?metro=l1,b1,t1</code></sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/website-calendar.png" alt="Calendar heatmap"><br><sub>Calendar · <code>/calendar</code></sub></td>
+    <td width="50%"><img src="docs/images/website-stats.png" alt="Stats page"><br><sub>Stats · <code>/stats</code></sub></td>
   </tr>
 </table>
-
-And it works on mobile:
 
 <p align="center">
   <img src="docs/images/website-mobile.png" alt="Homepage on a phone" width="280">
 </p>
 
-## Subscribe
-
-An Atom feed of the 50 most recent incidents (alerts + bot observations, all lines and routes) lives at [`/feed.xml`](https://chicagotransitalerts.app/feed.xml). Drop the URL into any feed reader (Feedly, Inoreader, NetNewsWire, etc.) to follow along — new entries appear as incidents are detected, and resolved incidents bump their entry so readers re-mark them unread when service clears.
-
-Each entry carries `<media:thumbnail>`, `<media:content>`, and a small HTML `<content type="html">` body so readers that support those (Inoreader, Feedly) display the per-event OG card as the entry icon and a richer preview pane than the one-line `<summary>`.
-
-**Per-line and per-route feeds.** If you only care about one line or route, subscribe to its own feed instead of the firehose:
-
-- Train line — `/feed/line/:line.xml` (e.g. [`/feed/line/red.xml`](https://chicagotransitalerts.app/feed/line/red.xml))
-- Bus route — `/feed/route/:route.xml` (e.g. [`/feed/route/66.xml`](https://chicagotransitalerts.app/feed/route/66.xml))
-- Metra line — `/feed/metra/line/:line.xml` (e.g. [`/feed/metra/line/up-n.xml`](https://chicagotransitalerts.app/feed/metra/line/up-n.xml)) — lowercase GTFS line code
-
-A feed exists for every train line, **every** bus route, and **every** Metra line in the roster up front — not just ones with a prior incident — so you can subscribe to your route today and it simply stays quiet until something happens. Each line and route page links its feed (the “🔔 Subscribe (RSS)” control), and prerendered pages advertise it via `<link rel="alternate" type="application/atom+xml">` for reader autodiscovery. Every feed also has a JSON Feed twin at the same path with a `.json` extension.
-
-The feeds are regenerated as a postbuild step from the same incident data the SPA reads, so they update whenever the underlying data does.
-
-## What's tracked
-
-Two agencies — CTA and Metra — each with official alerts and independent bot detections, displayed together.
-
-### CTA (trains & buses)
-
-- **Official CTA alerts** — significant service alerts published by the CTA, captured via the CTA Alerts API and republished by the [@ctaalertinsights.chicagotransitalerts.app](https://bsky.app/profile/ctaalertinsights.chicagotransitalerts.app) Bluesky bot.
-- **Bot-detected observations** — service disruptions inferred from live train and bus positions:
-  - **Cold stretch** — no service through a segment for 15+ min (or 2.5× scheduled headway).
-  - **Trains held in place** — multiple trains visibly stationary in a 1-mile cluster for 10+ min, with no other train moving through. Single-train holds where GPS goes silent are also caught via an inferred-held path inside the cold detector.
-  - **Headway gap** — gap between consecutive vehicles materially longer than the scheduled headway.
-  - **Bunching** — clusters of vehicles arriving stacked.
-  - **Missing vehicles ("ghost")** — full hour where fewer vehicles ran than the schedule implies.
-  - **Multi-signal roundup** — when several of the above fire on the same line at once.
-  Posted by [@ctatraininsights](https://bsky.app/profile/ctatraininsights.chicagotransitalerts.app) and [@ctabusinsights](https://bsky.app/profile/ctabusinsights.chicagotransitalerts.app).
-
-### Metra (commuter rail)
-
-Metra runs on a published timetable, so its detectors look different from the CTA's frequency-based ones:
-
-- **Official Metra alerts** — GTFS-realtime service alerts published by Metra, republished by [@metraalertinsights.chicagotransitalerts.app](https://bsky.app/profile/metraalertinsights.chicagotransitalerts.app).
-- **Cancellations** — a train is either Metra-confirmed cancelled, or **bot-inferred**: a scheduled train that never appears in the real-time feed long after its departure, with no covering alert. Inferred cancellations are suppressed when the whole feed goes quiet, so a data outage isn't mistaken for mass cancellations.
-- **Delays** — a train running materially behind its scheduled arrival (currently 15+ minutes).
-
-  Cancellations, delays, and speed maps are posted by [@metraalertinsights](https://bsky.app/profile/metraalertinsights.chicagotransitalerts.app) and [@metrainsights](https://bsky.app/profile/metrainsights.chicagotransitalerts.app).
-
-When an official alert and a bot observation describe the same incident on the same line within a couple of hours, they're paired into a single incident rather than double-counted — within each agency (a CTA alert never pairs with a Metra observation). That pairing happens once, server-side in the [cta-insights](https://github.com/cailinpitt/cta-insights) pipeline, so the published data and the site both treat it as one event (see [Data as an API](#data-as-an-api) for the shape). Each bot-detected observation also carries a small evidence payload ("3 trains held · 22 min stationary", "the 6:30 PM Aurora train not seen running") shown as a chip on the incident — a one-line answer to "why does the bot think this happened?".
-
 ## Routes
 
-Client-side routing only — every path renders the SPA from the same `index.html`. GitHub Pages's `404.html` (a copy of `index.html`) handles unknown paths so deep-links work without server-side rewriting.
+Client-side routing only — every path renders the SPA from the same `index.html`, and GitHub Pages's `404.html` (a copy of it) handles deep links. Lines, routes, stations, events, and the singleton pages are also prerendered as small HTML stubs so link previews show page-specific cards.
 
-| Path                    | What it shows                                                                          |
-| ----------------------- | -------------------------------------------------------------------------------------- |
-| `/`                     | Homepage with all the cards, filterable.                                               |
-| `/event/:id`            | Single-incident detail page (id is the Bluesky post rkey).                             |
-| `/line/:line`           | CTA train line page — `/line/red`, `/line/blue`, `/line/orange`, etc. CTA short codes (`org`, `p`, `g`, `brn`, `y`) also resolve correctly. |
-| `/route/:routeId`       | Bus route page — `/route/66`, `/route/X9`, `/route/J14`, etc.                          |
-| `/metra/line/:line`     | Metra line page — `/metra/line/up-n`, `/metra/line/bnsf`, etc. (lowercase GTFS route codes).      |
-| `/station/:slug`        | CTA train station page — `/station/clark-division`, `/station/howard`, etc. Slugs are kebab-case derived from station names. Names with line qualifiers slug accordingly: `Central (Green)` → `/station/central-green`. |
-| `/metra/station/:slug`  | Metra station page — `/metra/station/aurora`, `/metra/station/naperville`, etc. (kept in a separate namespace from CTA stations). |
-| `/stations`             | A–Z directory of every CTA 'L' station and Metra station, each linking to its station page. |
-| `/routes`               | Directory of every CTA train line, bus route, and Metra line, each linking to its page.  |
-| `/system/:mode`         | Mode-wide health dashboard — `/system/trains`, `/system/buses`, `/system/metra`.        |
-| `/calendar`             | 12-month calendar heatmap of daily incident counts. Click a day to drill into it.       |
-| `/stats`                | Worst-day / worst-hour / worst-station / longest-incident leaderboards, plus year-over-year and a Metra cancellations/delays section. |
-| `/compare`              | Side-by-side reliability, signal mix, and resolution-time comparison for up to 3 CTA train lines, bus routes, or Metra lines. State round-trips through `?trains=red,blue,green`, `?buses=66,X9,77`, or `?metra=up-n,bnsf`. |
-| `/accessibility`        | CTA rail and Metra station elevator, escalator, entrance, and ADA outage status and recent history. |
-| `/week`, `/week/:date`  | Sunday–Saturday recap of one week — counts, per-day breakdown, most-affected lines, longest incident, and a week-over-week delta. `/week` is the current week; `/week/<YYYY-MM-DD>` is the archived week containing that date (the canonical permalink uses the week's Sunday). |
+| Path | What it shows |
+| --- | --- |
+| `/` | Homepage: active alerts, filters, summary, timeline, and incident history. |
+| `/event/:id` | One incident (`alert-136615`, `detour-d17327`, `delay-2026-10-05-3556`, `cancel-2026-10-05-3285`). |
+| `/line/:line` | SEPTA Metro line — `l1`, `b1`, `b2`, `b3`, `m1`, `t1`–`t5`, `g1`, `d1`, `d2`. |
+| `/route/:routeId` | Bus route — `/route/17`, `/route/K`, `/route/L1-OWL`. |
+| `/rail/line/:line` | Regional Rail line by SEPTA route code — `/rail/line/pao`, `/rail/line/wtr`. |
+| `/station/:slug`, `/rail/station/:slug` | Metro and Regional Rail station pages. |
+| `/stations`, `/routes` | A–Z directories. |
+| `/system/:mode` | `/system/metro`, `/system/buses`, `/system/rail`. |
+| `/calendar`, `/stats`, `/compare`, `/accessibility` | 12-month heatmap, leaderboards, side-by-side comparison, elevator outages. |
+| `/week`, `/week/:date` | Sunday–Saturday recaps. |
+| `/day/:date` | Everything on one Philadelphia calendar day. |
 
 ## How it works
 
-The site is a static React app — no backend, no database calls from the browser. High-churn data lives on the R2 data origin and the static site is rebuilt only to refresh prerendered pages, feeds, CSV, sitemap, and share cards.
+```
+SEPTA APIs ──► collect.yml (every ~10 min) ──► `data` branch ──► deploy.yml ──► GitHub Pages
+               node collector/collect.js        one snapshot      npm run build    site + /data/*
+```
 
-1. A cron job on a home server runs [`push-web-data.sh`](https://github.com/cailinpitt/cta-insights/blob/main/bin/push-web-data.sh) every 15 minutes, and posting jobs can also trigger it shortly after new incidents.
-2. The script exports the latest data from the [cta-insights](https://github.com/cailinpitt/cta-insights) SQLite database — pairing official CTA and Metra alerts with matching bot observations into unified incidents, plus the separate CTA/Metra accessibility outage archive — then uploads the bounded data files (`alerts-recent.json`, the monthly `alerts/<YYYY-MM>.json` shards, the per-line files, `alerts-index.json`, `aggregates.json`), plus `accessibility.json`, `daily-counts.json`, and `alerts.csv`, to Cloudflare R2 at `data.chicagotransitalerts.app`.
-3. If those files changed, the script fires a GitHub `repository_dispatch` rebuild. A scheduled Pages rebuild also runs as a catch-up net.
-4. GitHub Actions fetches the current R2 data during `prebuild` (reassembling the all-time set from the shards for the prerender/feed/sitemap/CSV steps), builds the Vite app, prerenders crawler/feed artifacts, and deploys the static site to GitHub Pages.
-5. The browser polls `https://data.chicagotransitalerts.app/alerts-recent.json` every 5 minutes while visible, so the live app stays current independently of static rebuild timing.
+1. **Collect.** [`.github/workflows/collect.yml`](.github/workflows/collect.yml) runs [`collector/collect.js`](collector/collect.js) on a 10-minute schedule. It loads the archive from the `data` branch, applies the latest alerts, TrainView, and elevator feeds, and rewrites the published files: `alerts-recent.json`, monthly `alerts/<YYYY-MM>.json` shards, `incidents/by-line/<key>.json`, `alerts-index.json`, `aggregates.json`, `daily-counts.json`, and `accessibility.json`. The `data` branch is force-pushed as a single commit each run, so it never accumulates history; the monthly shards are the archive.
+2. **Deploy.** When the collector sees a rider-visible change (an incident opening, resolving, or getting new text, or an elevator going out or coming back), it dispatches [`deploy.yml`](.github/workflows/deploy.yml). A 30-minute schedule catches everything else. The build copies the `data` branch into `public/data/` ([`scripts/fetch-data.js`](scripts/fetch-data.js)), builds the Vite app, and runs the postbuild steps: per-page and per-event share cards (Playwright), Atom/JSON feeds, the sitemap, and the CSV.
+3. **Serve.** The site reads its data same-origin from `/data/` and re-polls `alerts-recent.json` every 5 minutes while open.
+
+The collector has no dependencies beyond Node 24, and is a plain script: you can run it from cron on any machine instead (`node collector/collect.js --data-dir <dir>`), as long as the build can see the directory.
+
+Static reference data — Metro and Regional Rail stations, line shapes, and the bus route list — is generated from [SEPTA's GTFS bundle](https://www3.septa.org/developer/gtfs_public.zip) by [`scripts/build-reference-data.js`](scripts/build-reference-data.js) into `src/lib/*.json`.
+
+## Setting up your own deployment
+
+1. **Enable GitHub Pages** with *Settings → Pages → Source: GitHub Actions*.
+2. **Set the site's address.** Add a repository variable `SITE_URL` (*Settings → Secrets and variables → Actions → Variables*) with the public origin, e.g. `https://septa.example.org` or `https://<user>.github.io` for a user site. It's used for canonical links, feeds, the sitemap, and share cards. Until it's set, those point at the placeholder `https://septa-transit-alerts.example`. For a custom domain, also set it under *Settings → Pages → Custom domain*. The site assumes it's served from the root of its domain, so a project page under `https://<user>.github.io/<repo>/` needs a custom domain.
+3. **Start collecting.** Run *Actions → Collect SEPTA data → Run workflow* once. It creates the `data` branch and dispatches the first deploy; the schedule takes over from there.
+4. **Optional:** set `DATA_BASE_URL` to serve the data from another origin, e.g. `https://raw.githubusercontent.com/<owner>/<repo>/data` for a public repository, so the live site picks up every collector run without waiting for a deploy.
+
+Scheduled Actions on a private repository count against your Actions minutes; at a 10-minute cadence the collector alone uses a few thousand minutes a month. Public repositories don't pay for standard runners. GitHub can also delay scheduled runs at busy times; the collector catches up on the next tick.
 
 ## Data as an API
 
-The same JSON the SPA reads is published at stable URLs under the public data origin, with no auth. The incident data is served as **bounded files** so a client never has to fetch the whole archive at once:
+The same files the site reads are published under `/data/` with no auth:
 
 ```
-https://data.chicagotransitalerts.app/alerts-recent.json          # active + last 93 days
-https://data.chicagotransitalerts.app/alerts-index.json           # manifest: months, lines, id→month
-https://data.chicagotransitalerts.app/alerts/<YYYY-MM>.json       # one Chicago month of history
-https://data.chicagotransitalerts.app/incidents/by-line/<key>.json # all-time history for one line/route
-https://data.chicagotransitalerts.app/aggregates.json             # precomputed year-over-year
-https://data.chicagotransitalerts.app/accessibility.json          # accessibility outage archive
+/data/alerts-recent.json            # active + last 93 days
+/data/alerts-index.json             # manifest: months, lines, id → month
+/data/alerts/<YYYY-MM>.json         # incidents first seen that Philadelphia month
+/data/incidents/by-line/<key>.json  # all-time history for one line or route
+/data/aggregates.json               # year-over-year counts
+/data/daily-counts.json             # per-day counts behind the calendar
+/data/accessibility.json            # elevator outages
+/data/alerts.csv                    # flat CSV, one row per alert or detection
 ```
 
-Every incident-bearing file uses the **same `incidents[]` object shape** sketched below; only the array's scope differs (`alerts-recent.json` = the rolling window, a monthly shard = one month, a by-line file = one route all-time). `alerts-index.json` ties them together — its `months[]` lists every shard, so you can reconstruct the full archive by unioning their `incidents[]` (each incident lives in exactly one monthly shard, by its `first_seen` month). Full field-by-field notes on each file are in the [data changelog](https://chicagotransitalerts.app/data/CHANGELOG.md) ([source](public/data/CHANGELOG.md)) — check it before pinning to the format.
+Every incident-bearing file shares one `incidents[]` shape (`schema_version: 2`): an `agency` of `septa`, a `mode` of `metro`, `bus`, or `regional_rail`, `routes`, a `lifecycle`, the SEPTA alert in `official_alert` (with SEPTA's own `type`/`cause`/`effect`/`severity` under `official_alert.septa` and a `source_url` to the route's SEPTA.org page), collector detections in `detections[]`, and a Regional Rail delay/cancellation `status`. The full schema, with examples, is in [`public/llms-full.txt`](public/llms-full.txt); format changes are recorded in the [data changelog](public/data/CHANGELOG.md).
 
-> **Deprecation:** the original full-history `alerts.json` is still published but **deprecated** and will be retired in a future release. For current data poll `alerts-recent.json`; for all-time data union the monthly shards listed in `alerts-index.json`. Watch the changelog for the retirement date.
+Feeds: `/feed.xml` and `/feed.json` for everything, plus one per Metro line (`/feed/line/l1.xml`), bus route (`/feed/route/17.xml`), and Regional Rail line (`/feed/rail/line/pao.xml`), each with a JSON Feed twin.
 
-Everything is regenerated whenever the underlying data changes, uploaded to Cloudflare R2, and free to use however you like — research, journalism, hobby dashboards, training data.
-
-The top-level array is `incidents` — **one object per real-world disruption**. An official alert (CTA or Metra) and the bot detection(s) describing the same incident are paired server-side into a single object (no client-side merging needed): `official_alert` carries the agency alert (null for bot-only incidents), and `detections[]` carries bot detections (empty for official-alert-only incidents). `sources` tells you which contributed. A non-exhaustive sketch:
-
-`accessibility.json` is a separate `schema_version: 1` feed with `outages[]`, where
-each row has `agency`, `station { slug, name, lines }`, `unit_type`,
-`unit_label`, `headline`, `description`, `lifecycle { first_seen_ts,
-last_seen_ts, restored_ts, active }`, and `source_url`.
-
-```jsonc
-{
-  "schema_version": 2,
-  "generated_at": 1715200000000,        // epoch ms when the snapshot was produced
-  "data_start_ts": 1707350400000,       // earliest moment we have coverage for
-  "incidents": [
-    {
-      "id": "3k2j...",                  // stable permalink id (Bluesky post rkey); /event/:id
-      "agency": "metra",                // "cta" or "metra"
-      "mode": "commuter_rail",          // "train", "bus", or "commuter_rail"
-      "routes": ["up-n"],               // CTA line names ('red',…), bus route numbers, or Metra codes ('up-n')
-      "sources": ["metra", "bot"],      // observers: "cta"/"metra" official agency alerts and/or "bot"
-      "lifecycle": {
-        "first_seen_ts": 1715199000000,
-        "resolved_ts": null,            // null = still open
-        "active": true,
-        "duration_ms": null
-      },
-      "official_alert": {               // null for bot-only incidents
-        "id": "...",
-        "headline": "...",
-        "description": "...",          // agency body text (reroute/closure details)
-        "post_url": "https://bsky.app/profile/.../post/...",
-        "resolved_reply_url": null,     // reply post when the agency alert cleared
-        "lifecycle": {
-          "first_seen_ts": 1715199000000, // agency alert lifecycle, distinct from incident lifecycle
-          "resolved_ts": null,
-          "active": true,
-          "duration_ms": null
-        },
-        "scope": {
-          "from_station": null,
-          "to_station": null,
-          "stations": [],              // full segment fill; [] when no segment resolves
-          "direction": null,
-          "mentioned_stations": []      // canonical station names parsed from alert text
-        },
-        "agency_event_window": {        // agency-claimed event window, when present
-          "start_ts": null,
-          "end_ts": null,
-          "start_is_date_only": false,
-          "end_is_date_only": false
-        }
-        // "versions": [...]            // present only when the agency edited the alert text over time
-      },
-      "detections": [                   // [] for official-alert-only incidents
-        {
-          "id": 12345,
-          "source": "delay",            // CTA: gap/bunching/ghost/pulse-held/thin-gap/roundup
-                                        // Metra: cancellation/cancellation-inferred/delay
-          "scope": {
-            "route": "up-n",
-            "from_station": "Waukegan",
-            "to_station": "Ogilvie Transportation Center",
-            "stations": ["Waukegan", "Lake Forest", "Ogilvie Transportation Center"],
-            "direction": "inbound",
-            "direction_label": "inbound"
-          },
-          "lifecycle": {
-            "first_seen_ts": 1715199000000, // when the bot posted; matches post_url
-            "onset_ts": 1715197860000,      // back-dated start for absence-style detections
-            "resolved_ts": 1715202600000,
-            "duration_ms": 4740000,
-            "active": false
-          },
-          "post_url": "https://bsky.app/profile/.../post/...",
-          "resolved_post_url": null,
-          "description": "…",           // pre-rendered plain-English summary
-          "evidence": {
-            "signals": ["gap", "bunching"], // populated for roundups
-            "details": { /* … */ },
-            "bullets": [],
-            "onset_description": "…"
-          }
-        }
-      ],
-      "status": null                    // Metra cancellation/delay/planned-work status, else null
-    }
-  ]
-}
-```
-
-Field-by-field documentation lives as JSDoc in [`src/lib/incidents.js`](src/lib/incidents.js). An [Atom feed](https://chicagotransitalerts.app/feed.xml) is also published if you want notifications without polling — globally, or [per line/route](#subscribe) (e.g. `/feed/line/red.xml`, `/feed/route/66.xml`, `/feed/metra/line/up-n.xml`), each with a JSON Feed twin.
-
-A flat CSV mirror is also published for spreadsheet and pandas users — the incidents are flattened to **one row per official alert or detection**, with an explicit `record_type` column:
-
-```
-https://data.chicagotransitalerts.app/alerts.csv
-```
-
-Columns: `record_type, incident_id, agency, mode, routes, source, status_type, headline, description, from_station, to_station, stations, direction, direction_label, first_seen_ts, onset_ts, resolved_ts, duration_minutes, active, post_url, resolved_post_url`. Timestamps are ISO 8601 (UTC); `routes` and `stations` are semicolon-separated when multi-valued. `onset_ts` is the disruption start for absence-style detections and is blank when not back-dated; `duration_minutes` is measured from `onset_ts` when present, else `first_seen_ts`. Regenerated alongside `alerts.json`.
-
-> **Metra coverage note.** Metra incidents (`agency: "metra"`, `mode: "commuter_rail"`) are present in `alerts.json`, the flat **CSV**, the global **feed**, and their own **per-line Metra feeds** (`/feed/metra/line/:line.xml`), and are rendered across the site. Metra cancellations/delays are website-data-first (no individual Bluesky post), so their feed entries link to the on-site event page and carry no `post_url`. Metra line pages and event pages render a geographic line map (line shape + station heatmap, and per-event from→to segment highlighting), and Metra line, station, event, and system pages all get prerendered OG share cards (posted events only, same rule as CTA).
-
-Please be a courteous client — cache responses, don't poll faster than every few minutes, and credit the project if you build something public.
-
-## Stack
-
-- [Vite](https://vitejs.dev/) + [React 19](https://react.dev/) + [Tailwind CSS](https://tailwindcss.com/)
-- [Vitest](https://vitest.dev/) + [Testing Library](https://testing-library.com/) for tests, [Biome](https://biomejs.dev/) for linting and formatting
-- Hosted on [GitHub Pages](https://pages.github.com/) with a custom domain
-- Data pipeline lives in [cta-insights](https://github.com/cailinpitt/cta-insights) — see its README for how alerts and observations are produced.
+Please be a courteous client: cache responses, don't poll faster than every few minutes, and credit the project if you build something public.
 
 ## Development
 
 ```sh
 npm install
-npm run dev      # local dev server
-npm test         # run the Vitest suite
+npm run collect  # poll SEPTA's APIs once into public/data/ (repeat to build up history)
+npm run dev      # local dev server, reading public/data/
+npm test         # Vitest suite (site + collector)
 npm run lint     # Biome check (lint + format)
 npm run format   # Biome check --write (autofix)
-npm run build    # production build into dist/
+npm run build    # production build into dist/ (needs Playwright's Chromium for share cards)
 ```
 
-PRs to `main` must pass both the test and lint jobs (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)) before they can be merged.
+Other entry points:
+
+- `node collector/collect.js --data-dir <dir> --fixtures collector/test/fixtures --now 1791244200000` builds a deterministic data directory from captured SEPTA responses (CI builds the site against this).
+- `DATA_DIR=<dir> npm run build` builds against a specific data directory, e.g. a checkout of the `data` branch.
+- `npm run reference-data` downloads SEPTA's GTFS bundle and regenerates the station, shape, and route JSON (or pass a local `gtfs_public.zip`: `npm run reference-data -- path/to/gtfs_public.zip`).
+- `npm run brand-assets` re-renders the PNG icons and the homepage share card (`public/og-image.png`) from their SVG/HTML sources.
+- `CHROMIUM_PATH=/path/to/chromium` makes the Playwright steps use an existing Chromium instead of Playwright's download.
+- [`debugging/`](debugging/DEBUGGING.md) has helpers for inspecting one event and rendering its share card.
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the test, lint, and build jobs on every PR to `main`.
+
+## Stack
+
+[Vite](https://vitejs.dev/) + [React 19](https://react.dev/) + [Tailwind CSS](https://tailwindcss.com/), [Vitest](https://vitest.dev/) + [Testing Library](https://testing-library.com/), [Biome](https://biomejs.dev/), and [Playwright](https://playwright.dev/) for share-card rendering. Hosted on GitHub Pages, with data collection on GitHub Actions.

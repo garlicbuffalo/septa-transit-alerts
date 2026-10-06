@@ -427,5 +427,14 @@ describe('collect (fixtures end to end)', () => {
     expect(detour.map((i) => i.mode).sort()).toEqual(['bus', 'metro']);
     const access = JSON.parse(await readFile(join(dir, 'accessibility.json'), 'utf8'));
     expect(access.outages.filter((o) => o.lifecycle.active)).toHaveLength(6);
+    // Everything is new on the first run.
+    expect(summary.changed).toBe(summary.incidents + access.outages.length);
+  });
+
+  it('reports no rider-visible changes when the feeds are unchanged', async () => {
+    const opts = { dataDir: dir, fixturesDir: FIXTURES, log: () => {} };
+    await collect({ ...opts, now: NOW });
+    const { summary } = await collect({ ...opts, now: NOW + 10 * 60_000 });
+    expect(summary.changed).toBe(0);
   });
 });

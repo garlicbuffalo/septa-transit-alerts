@@ -14,15 +14,11 @@ on:
       - 'vite.config.*'
       - 'tailwind.config.*'
       - '.github/workflows/deploy.yml'
-  # Data refreshes. The high-churn data files live in R2, not the repo, so a
-  # data change no longer creates a commit. The server fires `data-updated`
-  # right after a new incident (mirrors the old event-driven web push), and the
-  # schedule below is the catch-up net for any missed dispatch (mirrors the old
-  # ~7-min cron). Both rebuild only to refresh prerendered OG cards / CSV / feed
-  # — they fetch fresh data from R2 at build time and skip tests/lint, since the
-  # code was already gated when it landed on main.
-  repository_dispatch:
-    types: [data-updated]
+  # Data refreshes. collect.yml dispatches this workflow whenever the collector
+  # sees a rider-visible change, and the schedule below is the catch-up net
+  # (running delay figures, "updated" timestamps, any missed dispatch). Both
+  # rebuild with the latest `data` branch snapshot and skip tests/lint, since
+  # the code was already gated when it landed on main.
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
@@ -55,21 +51,24 @@ jobs:
             exit 0
           fi
 
-          runs_json="$(gh api "repos/$REPO/actions/workflows/deploy.yml/runs?event=push&branch=main&per_page=20")"
-          recent_push_id="$(
+          # Scheduled run: skip if a push or dispatched deploy of this commit
+          # finished in the last 20 minutes — the data it shipped is still fresh.
+          runs_json="$(gh api "repos/$REPO/actions/workflows/deploy.yml/runs?status=success&per_page=20")"
+          recent_id="$(
             printf '%s' "$runs_json" \
               | jq -r --arg sha "$SHA" '
                   now as $now
                   | .workflow_runs[]
+                  | select(.event == "push" or .event == "workflow_dispatch")
                   | select(.head_sha == $sha)
-                  | select(($now - (.created_at | fromdateiso8601)) < 1800)
+                  | select(($now - (.updated_at | fromdateiso8601)) < 1200)
                   | .id
                 ' \
               | head -n 1
           )"
 
-          if [ -n "$recent_push_id" ]; then
-            echo "Skipping $EVENT_NAME rebuild: push run $recent_push_id already handled SHA $SHA in the last 30 minutes."
+          if [ -n "$recent_id" ]; then
+            echo "Skipping scheduled rebuild: run $recent_id deployed SHA $SHA in the last 20 minutes."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
           else
             echo "proceed=true" >> "$GITHUB_OUTPUT"
@@ -91,15 +90,34 @@ jobs:
 
       - run: npm ci
 
-      # Gate only real code changes. Data-driven rebuilds (repository_dispatch /
-      # schedule / manual) re-run already-green code with fresh data, so the
-      # tests/lint would just be wasted minutes — same reasoning as the old
-      # data-only-push skip, but keyed on the trigger instead of a git diff.
+      # Gate only real code changes. Data-driven rebuilds (dispatch / schedule)
+      # re-run already-green code with fresh data, so the tests/lint would just
+      # be wasted minutes.
       - if: github.event_name == 'push'
         run: npm test -- --run
 
       - if: github.event_name == 'push'
         run: npm run lint
+
+      # The collector's output lives on the `data` branch (collect.yml).
+      - name: Look for collected data
+        id: data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${{ github.repository }}/branches/data" --silent 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No data branch yet, so the site deploys with an empty dataset. Run the 'Collect SEPTA data' workflow to start collecting."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.data.outputs.exists == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: data
+          path: data-branch
+          persist-credentials: false
 
       - run: sudo apt-get install -y fonts-inter
 
@@ -126,12 +144,22 @@ jobs:
           restore-keys: |
             og-cache-
 
-      # `prebuild` (scripts/fetch-data.js) pulls alerts.json + daily-counts.json
-      # from R2 into public/data/ first, so the snapshot + postbuild steps have
-      # current data. The *client* always fetches those files live from R2 at
-      # runtime (default origin baked into src/lib/dataSource.js), so the live
-      # app is always fresh, independent of when the site was built.
+      # `prebuild` (scripts/fetch-data.js) copies the data branch into
+      # public/data/, so the deployed site serves it same-origin at /data/ and
+      # the postbuild steps (OG cards, feeds, sitemap, CSV) see the same data.
+      #
+      # Repository variables (Settings → Secrets and variables → Actions →
+      # Variables):
+      #   SITE_URL       the site's public origin, e.g. https://septa.example.org
+      #   DATA_BASE_URL  optional: serve data from another origin instead of
+      #                  /data (e.g. raw.githubusercontent.com for the data
+      #                  branch, so the live site updates without a redeploy)
       - run: npm run build
+        env:
+          DATA_DIR: ${{ steps.data.outputs.exists == 'true' && format('{0}/data-branch', github.workspace) || '' }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          VITE_SITE_URL: ${{ vars.SITE_URL }}
+          VITE_DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
 
       - uses: actions/upload-pages-artifact@v5
         with:
@@ -150,9 +178,3 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
-
-      - name: Notify WebSub hub
-        run: |
-          curl -fsS -X POST https://pubsubhubbub.superfeedr.com/ \
-            -d hub.mode=publish \
-            -d hub.url=https://chicagotransitalerts.app/feed.xml

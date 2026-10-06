@@ -12,3 +12,5 @@ tmp/
 # data changelog is source-controlled; the data itself lives on the `data` branch.
 public/data/*
 !public/data/CHANGELOG.md
+# A local checkout of the `data` branch (see collect.yml / README).
+/data-branch/
