@@ -17,6 +17,10 @@ log(
 );
 const prepared = await publisher.prepare();
 log(`data: ${prepared.fetched ? 'resumed from the published branch' : 'local only'}`);
+const shapes = await pipeline.loadShapes();
+log(
+  `maps: ${shapes ? 'route shapes loaded' : 'no route shapes; detection posts will be text-only'}`,
+);
 
 const scheduler = createScheduler({ log });
 scheduler.every('observe', config.intervals.observeMs, () => pipeline.observe());
@@ -28,6 +32,8 @@ scheduler.cron('housekeeping', '7 * * * *', async () => {
   log(`housekeeping: pruned ${r.observations} observations, ${r.assetDays} asset days`);
 });
 scheduler.cron('backup', '17 4 * * *', async () => log(`backup: ${await pipeline.backup()}`));
+// The collector rebuilds the shapes with its daily schedule; pick them up.
+scheduler.cron('shapes', '40 4 * * *', () => pipeline.loadShapes());
 scheduler.start();
 
 let stopping = false;

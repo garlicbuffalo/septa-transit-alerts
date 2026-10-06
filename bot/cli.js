@@ -75,6 +75,7 @@ async function check() {
 async function once() {
   const { pipeline, publisher, db } = createRuntime(config);
   await publisher.prepare();
+  await pipeline.loadShapes();
   log(`observe: ${JSON.stringify(await pipeline.observe())}`);
   const { summary } = await pipeline.collectTick();
   log(JSON.stringify(summary.hook ?? {}, null, 2));

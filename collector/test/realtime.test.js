@@ -491,6 +491,140 @@ describe('vehicle detectors', () => {
     ).toBe(false);
   });
 
+  it('flags a sparse route with nothing on the tracker for two missed trips', () => {
+    // Route 35 every 30 minutes (two trips in progress at a time, too few for
+    // the ghost check); route 23 keeps the system feed healthy.
+    const sparse = Array.from({ length: 12 }, (_, i) => [
+      `t${i}`,
+      '35',
+      0,
+      at(7, 0) + i * 1800,
+      at(7, 0) + i * 1800 + 3600,
+    ]);
+    const others = Array.from({ length: 20 }, (_, i) => [`o${i}`, '23', 1, at(8, 0), at(12, 0)]);
+    const s = schedule([...sparse, ...others]);
+    const otherVehicles = (ts) =>
+      others.map(([trip], i) => ({
+        id: `w${i}`,
+        route: '23',
+        trip,
+        lat: 40 + i * 0.01,
+        lon: -75.1,
+        ts,
+      }));
+    const state = { routeCoverage: { 35: 0.95, 23: 0.95 } };
+    const t0 = NOW - 70 * MIN;
+    // At t0 a route 35 bus is out (the 9:00 trip); then nothing for 70 minutes.
+    tick({
+      vehicles: [
+        ...otherVehicles(t0),
+        { id: 'r1', route: '35', trip: 't4', lat: 39.95, lon: -75.2, ts: t0 },
+      ],
+      sched: s,
+      state,
+      incidents: new Map(),
+      now: t0,
+    });
+    state.updated_at = t0;
+    const { conditions } = tick({
+      vehicles: otherVehicles(NOW),
+      sched: s,
+      state,
+      incidents: new Map(),
+      now: NOW,
+    });
+    const thin = conditions.get('thin-gap|bus|35');
+    expect(thin.onsetTs).toBe(t0);
+    expect(thin.details).toMatchObject({
+      kind: 'thin-gap',
+      silent_min: 70,
+      headway_min: 30,
+      missed_trips: 2,
+    });
+    expect(thin.description).toBe(
+      "No Route 35 buses on SEPTA's tracker for ~70 min — scheduled every ~30 min",
+    );
+    // A route that's usually poorly tracked stays quiet.
+    const quiet = { routeCoverage: { 35: 0.3, 23: 0.95 }, routeLastSeen: { 35: t0 } };
+    expect(
+      tick({
+        vehicles: otherVehicles(NOW),
+        sched: s,
+        state: quiet,
+        incidents: new Map(),
+        now: NOW,
+      }).conditions.has('thin-gap|bus|35'),
+    ).toBe(false);
+  });
+
+  it('only counts silence during scheduled service', () => {
+    const sparse = [
+      ['t0', '35', 0, at(6, 0), at(7, 0)],
+      ['t1', '35', 0, at(10, 0), at(11, 0)],
+    ];
+    const others = Array.from({ length: 20 }, (_, i) => [`o${i}`, '23', 1, at(5, 0), at(12, 0)]);
+    const s = schedule([...sparse, ...others]);
+    const otherVehicles = (ts) =>
+      others.map(([trip], i) => ({
+        id: `w${i}`,
+        route: '23',
+        trip,
+        lat: 40 + i * 0.01,
+        lon: -75.1,
+        ts,
+      }));
+    const state = {
+      routeCoverage: { 35: 0.95, 23: 0.95 },
+      routeLastSeen: { 35: NOW - 4 * 60 * MIN },
+    };
+    // 8:30, nothing scheduled on route 35: the clock resets.
+    tick({
+      vehicles: otherVehicles(NOW - 2 * 60 * MIN),
+      sched: s,
+      state,
+      incidents: new Map(),
+      now: NOW - 2 * 60 * MIN,
+    });
+    expect(state.routeLastSeen[35]).toBe(NOW - 2 * 60 * MIN);
+  });
+
+  it('remembers usual tracking over hours, whatever the polling cadence', () => {
+    // Route 23 fully tracked (a healthy feed); route 24 drops to 2 of 8 tracked.
+    const healthy = Array.from({ length: 20 }, (_, i) => [`o${i}`, '23', 1, at(8, 0), at(12, 0)]);
+    const sparse = Array.from({ length: 8 }, (_, i) => [`s${i}`, '24', 0, at(8, 0), at(12, 0)]);
+    const s = schedule([...healthy, ...sparse]);
+    const vehicles = (ts) => [
+      ...healthy.map(([trip], i) => ({
+        id: `w${i}`,
+        route: '23',
+        trip,
+        lat: 40 + i * 0.01,
+        lon: -75.1,
+        ts,
+      })),
+      ...sparse.slice(0, 2).map(([trip], i) => ({
+        id: `x${i}`,
+        route: '24',
+        trip,
+        lat: 39 + i * 0.01,
+        lon: -75.3,
+        ts,
+      })),
+    ];
+    const run = (stepMin) => {
+      const state = { routeCoverage: { 23: 1, 24: 1 }, updated_at: NOW - 60 * MIN };
+      for (let t = NOW - 60 * MIN + stepMin * MIN; t <= NOW; t += stepMin * MIN) {
+        tick({ vehicles: vehicles(t), sched: s, state, incidents: new Map(), now: t });
+        state.updated_at = t;
+      }
+      return state.routeCoverage[24];
+    };
+    // An hour at 25% pulls a 3-hour memory a third of the way down, either way.
+    expect(run(2)).toBeCloseTo(run(10), 2);
+    expect(run(10)).toBeGreaterThan(0.7);
+    expect(run(10)).toBeLessThan(0.8);
+  });
+
   it('attaches to an active SEPTA alert on the route, and keeps it when the alert refreshes', () => {
     const raw = {
       alert_id: '77',

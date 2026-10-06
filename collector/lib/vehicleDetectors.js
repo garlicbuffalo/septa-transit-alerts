@@ -30,8 +30,14 @@ import metroStations from '../../src/lib/metroStations.json' with { type: 'json'
 import { classifyRoute } from './network.js';
 import { distanceM, vehicleNoun } from './vehicles.js';
 
-export const VEHICLE_SOURCES = new Set(['gap', 'bunching', 'ghost', 'pulse-held']);
-const ID_PREFIX = { gap: 'gap', bunching: 'bunching', ghost: 'ghost', 'pulse-held': 'held' };
+export const VEHICLE_SOURCES = new Set(['gap', 'bunching', 'ghost', 'pulse-held', 'thin-gap']);
+const ID_PREFIX = {
+  gap: 'gap',
+  bunching: 'bunching',
+  ghost: 'ghost',
+  'pulse-held': 'held',
+  'thin-gap': 'thin-gap',
+};
 
 export const DETECTOR_CONFIG = {
   // A gap counts when vehicles are at least this far apart (minutes) AND at
@@ -44,6 +50,13 @@ export const DETECTOR_CONFIG = {
   // not tracked, at most `maxRatio` tracked — and the route normally tracks
   // at least `typicalRatio` (so chronically untracked routes stay quiet).
   ghost: { minScheduled: 4, minMissing: 3, maxRatio: 0.5, typicalRatio: 0.75 },
+  // Thin gap, for routes too sparse for the ghost check (fewer than
+  // ghost.minScheduled trips in progress): no vehicle on the tracker for
+  // max(`headwayFactor` × the scheduled spacing, `minWindowMin`) of continuous
+  // scheduled service, on a route that's normally well tracked.
+  thinGap: { headwayFactor: 2, minWindowMin: 60 },
+  // How long the "how well is this route usually tracked" average remembers.
+  coverageMemoryMs: 3 * 60 * 60 * 1000,
   // Held: vehicles that moved under `maxMoveM` across reports at least
   // `minStationaryMin` apart, `minVehicles` of them within `clusterM`.
   held: { maxMoveM: 50, minStationaryMin: 10, minVehicles: 2, clusterM: 600 },
@@ -135,6 +148,17 @@ function metroScope(mode, route, behind, ahead) {
 }
 
 // --- Condition finding -----------------------------------------------------------
+
+// The shortest scheduled spacing (minutes) among a route's directions with
+// service right now, or null when the schedule can't say.
+function scheduledHeadway(schedule, route, now) {
+  let best = null;
+  for (const dir of [0, 1]) {
+    const h = schedule.headwayMin(route, dir, now);
+    if (h && (best == null || h < best)) best = h;
+  }
+  return best;
+}
 
 /**
  * Find the disruption conditions present right now.
@@ -241,6 +265,7 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
         description: `~${gapMin} min between ${routeName(mode, route)} ${noun}${toward ? ` toward ${toward}` : ''} — scheduled every ~${headwayMin} min${extra}`,
         details: {
           kind: 'gap',
+          direction_id: direction,
           gap_min: gapMin,
           headway_min: headwayMin,
           cancelled_between: worstGap.cancelledBetween,
@@ -296,6 +321,7 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
         description: `${group.length} ${routeName(mode, route)} ${noun}${toward ? ` toward ${toward}` : ''} running together${near ? ` near ${near}` : ''} — ~${Math.round(worstBunch.distance)} m apart, scheduled ~${Math.round(worstBunch.spacing)} min apart`,
         details: {
           kind: 'bunching',
+          direction_id: direction,
           vehicle_count: group.length,
           distance_m: Math.round(worstBunch.distance),
           scheduled_spacing_min: Math.round(worstBunch.spacing),
@@ -401,6 +427,13 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
   stats.feedHealthy = !(stats.scheduled >= 20 && coverage < cfg.minSystemCoverage);
   const typical = state.routeCoverage ?? {};
   const ghostEnabled = stats.scheduled >= 20 && coverage >= cfg.minSystemCoverage;
+  // Exponential average over time, so it remembers ~coverageMemoryMs whether
+  // polls come every 2 minutes or every 10.
+  const sinceLastMs = state.updated_at
+    ? Math.min(now - state.updated_at, 60 * 60 * 1000)
+    : 10 * 60 * 1000;
+  const alpha = 1 - Math.exp(-Math.max(0, sinceLastMs) / cfg.coverageMemoryMs);
+  const lastSeen = state.routeLastSeen ?? {};
   for (const r of perRoute) {
     if (r.scheduled < 2) continue;
     const ratio = r.tracked / r.scheduled;
@@ -434,10 +467,57 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
         },
       });
     }
-    // Slow-moving average (~3 hours) of how well this route is usually tracked.
-    if (ghostEnabled) typical[r.route] = usual == null ? ratio : usual * 0.95 + ratio * 0.05;
+    // Thin gap: a sparse route with nothing on the tracker for long enough to
+    // have missed two trips. The silence clock only runs during scheduled
+    // service (see routeLastSeen below), so overnight breaks don't count.
+    const headway = scheduledHeadway(schedule, r.route, now);
+    if (lastSeen[r.route] == null) lastSeen[r.route] = now; // start the clock
+    const silentMs = now - lastSeen[r.route];
+    const windowMin = headway
+      ? Math.max(cfg.thinGap.headwayFactor * headway, cfg.thinGap.minWindowMin)
+      : null;
+    if (
+      ghostEnabled &&
+      windowMin &&
+      r.tracked === 0 &&
+      r.scheduled < cfg.ghost.minScheduled &&
+      usual != null &&
+      usual >= cfg.ghost.typicalRatio &&
+      silentMs >= windowMin * 60000
+    ) {
+      const silentMin = Math.round(silentMs / 60000);
+      const noun = vehicleNoun(mode, r.route);
+      conditions.set(`thin-gap|${mode}|${r.route}`, {
+        source: 'thin-gap',
+        mode,
+        route: r.route,
+        direction: null,
+        scope: { from: null, to: null, stations: [] },
+        metric: silentMin,
+        onsetTs: lastSeen[r.route],
+        description: `No ${routeName(mode, r.route)} ${noun} on SEPTA's tracker for ~${silentMin} min — scheduled every ~${Math.round(headway)} min`,
+        details: {
+          kind: 'thin-gap',
+          silent_min: silentMin,
+          headway_min: Math.round(headway),
+          missed_trips: Math.floor(silentMin / headway),
+          scheduled: r.scheduled,
+        },
+      });
+    }
+    // Time-weighted average of how well this route is usually tracked.
+    if (ghostEnabled) typical[r.route] = usual == null ? ratio : usual + alpha * (ratio - usual);
   }
   state.routeCoverage = typical;
+  // A route counts as "seen" whenever a vehicle is on the tracker or nothing
+  // is scheduled to be running, so silence measures missed service only.
+  const inService = new Set(perRoute.map((r) => r.route));
+  for (const route of byRoute.keys()) lastSeen[route] = now;
+  for (const key of schedule.byRouteDir.keys()) {
+    const route = key.split('|')[0];
+    if (!inService.has(route)) lastSeen[route] = now;
+  }
+  state.routeLastSeen = lastSeen;
   return { conditions, stats };
 }
 
@@ -458,6 +538,7 @@ const RESOLVED_TEXT = {
   bunching: (n) => `${n[0].toUpperCase()}${n.slice(1)} spread out again.`,
   ghost: (n) => `${n[0].toUpperCase()}${n.slice(1)} back on the tracker.`,
   'pulse-held': (n) => `${n[0].toUpperCase()}${n.slice(1)} moving again.`,
+  'thin-gap': (n) => `${n[0].toUpperCase()}${n.slice(1)} back on the tracker.`,
 };
 
 function buildDetection(id, c, onsetTs, now) {
@@ -474,7 +555,7 @@ function buildDetection(id, c, onsetTs, now) {
     },
     lifecycle: {
       first_seen_ts: now,
-      onset_ts: onsetTs,
+      onset_ts: c.onsetTs ?? onsetTs,
       resolved_ts: null,
       active: true,
       duration_ms: null,

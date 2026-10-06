@@ -15,9 +15,25 @@ export function createPoster({ db, client, log = () => {}, now = () => Date.now(
   const latest = db.prepare(
     'SELECT * FROM posts WHERE subject = ? AND kind = ? AND dry_run = ? ORDER BY ts DESC, id DESC LIMIT 1',
   );
+  const countStmt = db.prepare(
+    'SELECT COUNT(*) AS n FROM posts WHERE subject = ? AND kind = ? AND dry_run = ?',
+  );
   const skipGet = db.prepare('SELECT reason FROM skips WHERE subject = ?');
   const skipPut = db.prepare('INSERT OR IGNORE INTO skips (subject, reason, ts) VALUES (?, ?, ?)');
   const dry = client.dryRun ? 1 : 0;
+  const byUri = db.prepare('SELECT * FROM posts WHERE uri = ? LIMIT 1');
+  const newestInThread = db.prepare(
+    'SELECT * FROM posts WHERE root_uri = ? AND dry_run = ? ORDER BY ts DESC, id DESC LIMIT 1',
+  );
+
+  // A reply ref continuing the recorded thread of `uri`, or null.
+  function recordedThread(uri) {
+    const row = byUri.get(uri);
+    if (!row) return null;
+    const root = { uri: row.root_uri ?? row.uri, cid: row.root_cid ?? row.cid };
+    const leaf = newestInThread.get(root.uri, dry) ?? row;
+    return { root, parent: { uri: leaf.uri, cid: leaf.cid } };
+  }
 
   return {
     client,
@@ -32,6 +48,9 @@ export function createPoster({ db, client, log = () => {}, now = () => Date.now(
       let replyRef = reply;
       if (typeof reply === 'string') {
         replyRef = await client.replyRef(account, reply);
+        // Dry-run "posts" live only in memory; rebuild the thread from the
+        // recorded rows after a restart.
+        if (!replyRef && client.dryRun) replyRef = recordedThread(reply);
         if (!replyRef) log(`poster: ${reply} is gone; posting ${kind} ${subject} unthreaded`);
       }
       const res = await client.post(account, { ...opts, ...(replyRef && { reply: replyRef }) });
@@ -55,6 +74,32 @@ export function createPoster({ db, client, log = () => {}, now = () => Date.now(
     /** The most recent post of this kind about this subject (this mode only). */
     find(subject, kind) {
       return latest.get(subject, kind, dry) ?? null;
+    },
+
+    /** How many posts of this kind about this subject (this mode only). */
+    count(subject, kind) {
+      return countStmt.get(subject, kind, dry).n;
+    },
+
+    /**
+     * Record that an existing post also covers another subject (a rollup
+     * post listing several detections), so each can link to it.
+     */
+    alias({ account, kind, subject, post }) {
+      insert.run({
+        account,
+        kind,
+        subject,
+        uri: post.uri,
+        cid: post.cid,
+        url: post.url,
+        root_uri: post.root_uri ?? post.uri,
+        root_cid: post.root_cid ?? post.cid,
+        parent_uri: post.parent_uri ?? null,
+        ts: now(),
+        text: null,
+        dry_run: dry,
+      });
     },
 
     skipped(subject) {

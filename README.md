@@ -23,6 +23,7 @@ A collector polls SEPTA's public APIs every few minutes (every 2 on the [bot ser
   - **Bunching** — mid-route vehicles scheduled at least 8 minutes apart running within 250 m of each other.
   - **Missing vehicles** — at most half of a route's in-progress trips on the tracker (and at least three missing), on a route that's usually well tracked.
   - **Held in place** — two or more vehicles on a route stopped mid-route, within 600 m of each other, for 10+ minutes.
+  - **Silent route** — a low-frequency route (too few trips in progress for the missing-vehicles check) with nothing on the tracker for long enough to have missed two scheduled trips (at least an hour), on a route that's usually well tracked. Only time during scheduled service counts.
 
   A condition must persist for at least 6 minutes, across at least two ticks, to open a detection, and be absent for as long to resolve it. If SEPTA has an active, unplanned alert on the same route, the detection attaches to that incident; otherwise it's a bot-only incident. When the tracker covers under half of a busy system's trips (a feed problem), detections are held as they are. Thresholds live in `DETECTOR_CONFIG` in [`collector/lib/vehicleDetectors.js`](collector/lib/vehicleDetectors.js).
 - **Elevator outages** ([elevator API](https://www3.septa.org/api/elevator/index.php)) at SEPTA Metro and Regional Rail stations, archived separately on the accessibility page.
@@ -93,8 +94,8 @@ The [bot server](bot/README.md) posts what the collector sees to four Bluesky ac
 | Account | Posts | Status |
 |---|---|---|
 | `alerts` | SEPTA's significant alerts, with a map of the affected stretch, and a threaded ✅ reply when SEPTA clears them | Live |
-| `metro` | SEPTA Metro gaps, bunching and stuck trains | Planned |
-| `bus` | Bus gaps, bunching and stuck buses | Planned |
+| `metro` | SEPTA Metro gaps, bunching, stuck trolleys and trains, silent routes, and an hourly roundup of missing vehicles, with maps | Live |
+| `bus` | The same for buses, plus clusters of several routes' buses stopped together | Live |
 | `rail` | Regional Rail delays, cancellations and recaps | Planned |
 
 Set the `BLUESKY_HANDLES` repository variable (e.g. `alerts=alerts.example.org,metro=metro.example.org,bus=bus.example.org,rail=rail.example.org`) to list the accounts in the site's About, Subscribe, and Browse menus. The bots are a port of [cta-insights](https://github.com/cailinpitt/cta-insights), the bots behind Chicago Transit Alerts.

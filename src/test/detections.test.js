@@ -38,6 +38,9 @@ describe('collector detection evidence chips', () => {
     expect(
       formatEvidenceChip(rec('bus', '23', { kind: 'held', busCount: 1, vehicle_count: 1 })),
     ).toBe('1 bus held');
+    expect(
+      formatEvidenceChip(rec('bus', '35', { kind: 'thin-gap', silent_min: 70, headway_min: 30 })),
+    ).toBe('no buses on the tracker for ~70 min · scheduled every ~30 min');
   });
 
   it("summarizes a route's cancelled trips", () => {

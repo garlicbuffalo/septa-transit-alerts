@@ -23,6 +23,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { eachCsvRow, GTFS_URL, parseCsvLine, readZip } from './gtfsFiles.js';
 import { classifyRoute } from './network.js';
+import { buildRouteShapes, SHAPES_FILE } from './shapes.js';
 import { easternParts, easternToEpoch } from './time.js';
 
 export const SCHEDULE_VERSION = 1;
@@ -160,7 +161,8 @@ function safeRead(zip, name) {
   }
 }
 
-async function downloadBusFeed() {
+/** Download SEPTA's GTFS and open the bus/Metro feed inside it. */
+export async function downloadBusFeed() {
   const res = await fetch(GTFS_URL, { signal: AbortSignal.timeout(120_000) });
   if (!res.ok) throw new Error(`HTTP ${res.status} downloading ${GTFS_URL}`);
   const outer = readZip(Buffer.from(await res.arrayBuffer()));
@@ -192,12 +194,17 @@ export async function loadSchedule({ cacheDir, fixturesDir, now = Date.now(), lo
   }
   if (cached && now - cached.built_at < MAX_CACHE_AGE_MS) return Schedule.from(cached);
   try {
-    const index = buildScheduleIndex(await downloadBusFeed(), now);
+    const zip = await downloadBusFeed();
+    const index = buildScheduleIndex(zip, now);
     if (cacheDir) {
       await mkdir(cacheDir, { recursive: true });
-      const tmp = join(cacheDir, `${CACHE_FILE}.tmp`);
-      await writeFile(tmp, JSON.stringify(index));
-      await rename(tmp, join(cacheDir, CACHE_FILE));
+      await writeAtomic(join(cacheDir, CACHE_FILE), JSON.stringify(index));
+      // Route shapes come from the same download (used by the bot's maps).
+      try {
+        await writeAtomic(join(cacheDir, SHAPES_FILE), JSON.stringify(buildRouteShapes(zip, now)));
+      } catch (err) {
+        log(`schedule: route shapes failed (${err.message})`);
+      }
     }
     log(
       `schedule: rebuilt from GTFS ${index.feed_version ?? ''} (${Object.keys(index.trips).length} trips)`,
@@ -207,6 +214,12 @@ export async function loadSchedule({ cacheDir, fixturesDir, now = Date.now(), lo
     log(`schedule: GTFS download failed (${err.message})${cached ? '; using stale cache' : ''}`);
     return cached ? Schedule.from(cached) : null;
   }
+}
+
+async function writeAtomic(path, text) {
+  const tmp = `${path}.tmp`;
+  await writeFile(tmp, text);
+  await rename(tmp, path);
 }
 
 const dateKeyCompact = ({ year, month, day }) =>

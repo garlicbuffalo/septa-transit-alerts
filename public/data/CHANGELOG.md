@@ -8,6 +8,19 @@ syndication feeds (`/feed.xml` and the per-line/route feeds under `/feed/`).
 Newest first. If you build on this data, watch this file before pinning to the
 format.
 
+## 2026-10-06 — Detection posts and silent routes
+
+- New detection source **`thin-gap`** (id prefix `thin-gap-`): a low-frequency
+  bus or Metro route with nothing on SEPTA's tracker for at least an hour (two
+  scheduled trips), with `lifecycle.onset_ts` backdated to when the route was
+  last seen. `evidence.details`: `{ kind, silent_min, headway_min,
+  missed_trips, scheduled }`.
+- `gap` and `bunching` details carry `direction_id` (the GTFS direction).
+- Vehicle detections now link their Bluesky posts: `detections[].post_url` (the
+  metro or bus bot's post, or the hourly rollup listing a missing-vehicles
+  detection) and `resolved_post_url` (its ✅ reply, for stuck vehicles and
+  silent routes).
+
 ## 2026-10-06 — Bluesky post links
 
 - `official_alert.post_url` now links to the alerts bot's Bluesky post of the
