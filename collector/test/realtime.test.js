@@ -129,6 +129,14 @@ describe('schedule index', () => {
     expect(times.startTs).toBe(easternToEpoch(2026, 10, 7, 1, 10));
   });
 
+  it("places a trip listed the night before on tomorrow's service", () => {
+    const s = Schedule.from(buildScheduleIndex(zip, NOW));
+    // t1 runs at 10 AM; at 11 PM it's nearer tomorrow's run than today's.
+    const late = easternToEpoch(2026, 10, 6, 23, 0);
+    expect(s.tripTimes('t1', late).date).toEqual({ year: 2026, month: 10, day: 7 });
+    expect(s.tripTimes('t1', NOW).date).toEqual({ year: 2026, month: 10, day: 6 });
+  });
+
   it('measures scheduled spacing around a moment', () => {
     const trips = [0, 10, 20, 30, 40].map((m, i) => [`x${i}`, '17', 0, at(10, m), at(11, m)]);
     expect(schedule(trips).headwayMin('17', 0, NOW)).toBe(10);

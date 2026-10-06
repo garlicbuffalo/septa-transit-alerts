@@ -269,20 +269,20 @@ export class Schedule {
   }
 
   /**
-   * The two service dates a moment can belong to — its own Eastern calendar
-   * date and the day before (for after-midnight trips) — each with the
-   * moment's offset in seconds past that date's midnight.
+   * The service dates a moment can belong to — its own Eastern calendar date
+   * and the day before (for after-midnight trips), plus the day after when
+   * `withTomorrow` — each with the moment's offset in seconds past that
+   * date's midnight.
    */
-  serviceDays(ts) {
+  serviceDays(ts, withTomorrow = false) {
     const p = easternParts(ts);
-    const today = { year: p.year, month: p.month, day: p.day };
-    const prev = new Date(Date.UTC(p.year, p.month - 1, p.day - 1));
-    const yesterday = {
-      year: prev.getUTCFullYear(),
-      month: prev.getUTCMonth() + 1,
-      day: prev.getUTCDate(),
+    const shift = (n) => {
+      const d = new Date(Date.UTC(p.year, p.month - 1, p.day + n));
+      return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
     };
-    return [today, yesterday].map((date) => {
+    const days = [shift(0), shift(-1)];
+    if (withTomorrow) days.push(shift(1));
+    return days.map((date) => {
       const midnight = easternToEpoch(date.year, date.month, date.day);
       return { date, midnight, sec: Math.round((ts - midnight) / 1000) };
     });
@@ -347,15 +347,16 @@ export class Schedule {
   }
 
   /**
-   * Absolute scheduled start/end of a trip on the service date it runs near
-   * `ts` (today's date, or yesterday's for an after-midnight trip). Null when
-   * its service doesn't run on either date.
+   * Absolute scheduled start/end of a trip on the service date whose run is
+   * nearest `ts` — yesterday's (an after-midnight trip), today's, or
+   * tomorrow's (a cancellation published the night before). Null when its
+   * service runs on none of them.
    */
   tripTimes(tripId, ts) {
     const t = this.trip(tripId);
     if (!t) return null;
     let best = null;
-    for (const day of this.serviceDays(ts)) {
+    for (const day of this.serviceDays(ts, true)) {
       if (!this.serviceRuns(t.service, day.date)) continue;
       const startTs = day.midnight + t.startSec * 1000;
       const endTs = day.midnight + t.endSec * 1000;
