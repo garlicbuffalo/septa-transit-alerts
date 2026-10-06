@@ -1,26 +1,34 @@
 name: Collect SEPTA data
 
-# One collector tick: poll SEPTA's alerts, TrainView, and elevator feeds, fold
-# them into the archive on the `data` branch, and redeploy the site when
-# something rider-visible changed (an incident opened, resolved, or was
-# edited, or an elevator went out or came back). deploy.yml's own schedule is
-# the catch-up net for everything else (running delay figures, timestamps).
+# The collector, run on GitHub Actions: poll SEPTA's alerts, TrainView,
+# elevator, vehicle, and trip feeds, fold them into the archive on the `data`
+# branch, and redeploy the site when something rider-visible changed (an
+# incident opened, resolved, or was edited, or an elevator went out or came
+# back), and at least every DEPLOY_EVERY_MIN for everything else (running
+# delay figures, timestamps).
 #
 # The `data` branch holds only the published data files (the collector's
-# state). It's rewritten as a single commit on every run, so the repository
+# state). It's rewritten as a single commit on every tick, so the repository
 # doesn't accumulate a commit per tick; the monthly shards are the archive.
 #
-# GitHub may delay or skip scheduled runs under load; the collector is
-# idempotent, so a late tick just catches up.
+# GitHub's cron is best effort: it fires late, rarely, or not at all, worst on
+# new repositories and short intervals (on the first day, a 10-minute schedule
+# fired once in ten hours). So each run keeps itself going: it collects every
+# TICK_MIN for RUN_MIN, then dispatches the next run. The schedule is only the
+# restart net for when that chain breaks (a cancelled or failed run, an
+# outage); a scheduled run that finds the next run already queued behind this
+# one runs as that next run, so there's still one chain. Only one run collects
+# at a time (the concurrency group).
 #
 # When the bot server (bot/) is running, it is the collector: it polls every
 # couple of minutes and publishes the data branch itself, marking its commits
-# "· server". This workflow then stands down, and takes over again on its own
-# if the server's last snapshot is more than SERVER_GRACE_MIN old.
+# "· server". This workflow then stands down and ends its chain, and the next
+# scheduled run takes over again once the server's last snapshot is more than
+# SERVER_GRACE_MIN old.
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '7,37 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -28,6 +36,9 @@ permissions:
   actions: write
 
 env:
+  TICK_MIN: 10
+  RUN_MIN: 50
+  DEPLOY_EVERY_MIN: 30
   SERVER_GRACE_MIN: 20
 
 concurrency:
@@ -37,7 +48,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v6
 
@@ -46,7 +57,7 @@ jobs:
           node-version: 24
 
       # The collector distills SEPTA's GTFS schedule into .collector-cache once
-      # a day; keep it between runs so most ticks skip the ~20 MB download.
+      # a day; keep it between runs so most runs skip the ~20 MB download.
       - name: Date key
         id: day
         run: echo "day=$(TZ=America/New_York date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
@@ -60,56 +71,109 @@ jobs:
             collector-schedule-
 
       # The collector has no npm dependencies, so no `npm ci` here.
-      - name: Check out the data branch
-        run: |
-          if git ls-remote --exit-code --heads origin data >/dev/null; then
-            git fetch --depth=1 origin data
-            git worktree add --detach data-branch FETCH_HEAD
-          else
-            echo "No data branch yet — starting an empty archive."
-            git worktree add --orphan -b data data-branch
-          fi
-
-      - name: Check for the bot server
-        id: server
-        working-directory: data-branch
-        run: |
-          active=false
-          if git rev-parse -q --verify HEAD >/dev/null; then
-            subject="$(git log -1 --format=%s)"
-            age_min=$(( ($(date +%s) - $(git log -1 --format=%ct)) / 60 ))
-            if [[ "$subject" == *"· server"* && $age_min -lt $SERVER_GRACE_MIN ]]; then
-              active=true
-              echo "The bot server published ${age_min} min ago; standing down."
-            fi
-          fi
-          echo "active=$active" >> "$GITHUB_OUTPUT"
-
       - name: Collect
-        id: collect
-        if: steps.server.outputs.active != 'true'
-        run: |
-          set -o pipefail
-          node collector/collect.js --data-dir data-branch --cache-dir .collector-cache | tee collect-summary.json
-          echo "changed=$(jq -r '.changed // 0' collect-summary.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Publish the data branch
-        if: steps.collect.outcome == 'success'
-        working-directory: data-branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          if git rev-parse -q --verify HEAD >/dev/null && git diff --cached --quiet HEAD; then
-            echo "No data changes."
-            exit 0
-          fi
-          # Parentless commit, force-pushed: the branch is always one snapshot.
-          commit="$(git commit-tree "$(git write-tree)" -m "Data snapshot $(date -u +%Y-%m-%dT%H:%M:%SZ)")"
-          git push --force origin "$commit:refs/heads/data"
 
-      - name: Redeploy the site
-        if: steps.collect.outcome == 'success' && steps.collect.outputs.changed != '0'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run deploy.yml --ref "${{ github.event.repository.default_branch }}"
+          # Check out the latest data branch, which the last tick (or the
+          # server) may have replaced.
+          checkout_data() {
+            git worktree remove --force data-branch 2>/dev/null || true
+            git branch -D data 2>/dev/null || true
+            if git ls-remote --exit-code --heads origin data >/dev/null; then
+              git fetch --depth=1 origin data
+              git worktree add --detach data-branch FETCH_HEAD
+            else
+              echo "No data branch yet — starting an empty archive."
+              git worktree add --orphan -b data data-branch
+            fi
+          }
+
+          # True while the bot server's last snapshot is fresh.
+          server_active() {
+            git -C data-branch rev-parse -q --verify HEAD >/dev/null || return 1
+            local subject age_min
+            subject="$(git -C data-branch log -1 --format=%s)"
+            age_min=$(( ($(date +%s) - $(git -C data-branch log -1 --format=%ct)) / 60 ))
+            if [[ "$subject" == *"· server"* && $age_min -lt $SERVER_GRACE_MIN ]]; then
+              echo "The bot server published ${age_min} min ago; standing down."
+              return 0
+            fi
+            return 1
+          }
+
+          # Parentless commit, force-pushed: the branch is always one snapshot.
+          publish() {
+            git -C data-branch add -A
+            if git -C data-branch rev-parse -q --verify HEAD >/dev/null && git -C data-branch diff --cached --quiet HEAD; then
+              echo "No data changes."
+              return 0
+            fi
+            local commit
+            commit="$(git -C data-branch commit-tree "$(git -C data-branch write-tree)" -m "Data snapshot $(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+            git -C data-branch push --force origin "$commit:refs/heads/data"
+          }
+
+          # One collector tick. Exits STAND_DOWN when the server is collecting.
+          STAND_DOWN=75
+          tick() {
+            checkout_data
+            if server_active; then exit "$STAND_DOWN"; fi
+            node collector/collect.js --data-dir data-branch --cache-dir .collector-cache | tee collect-summary.json
+            publish
+            local changed now
+            changed="$(jq -r '.changed // 0' collect-summary.json)"
+            now=$(date +%s)
+            if [[ "$changed" != 0 || $(( now - last_deploy )) -ge $(( DEPLOY_EVERY_MIN * 60 )) ]]; then
+              gh workflow run deploy.yml --ref "$DEFAULT_BRANCH"
+              echo "$now" > .last-deploy
+            fi
+          }
+
+          # Each tick runs in its own errexit subshell, so a failed tick (a
+          # SEPTA outage, a rejected push) is reported without ending the run.
+          set +e
+          start=$(date +%s)
+          last_deploy=0
+          failed=0
+          standing_down=false
+          while :; do
+            tick_start=$(date +%s)
+            echo "::group::Tick $(date -u +%H:%M:%SZ)"
+            ( set -eo pipefail; tick )
+            status=$?
+            [[ -f .last-deploy ]] && last_deploy="$(cat .last-deploy)"
+            echo "::endgroup::"
+            if (( status == STAND_DOWN )); then standing_down=true; break; fi
+            if (( status != 0 )); then
+              echo "::error::Tick failed (exit $status)."
+              failed=$((failed + 1))
+            fi
+            next=$(( tick_start + TICK_MIN * 60 ))
+            (( next - start >= RUN_MIN * 60 )) && break
+            wait_s=$(( next - $(date +%s) ))
+            (( wait_s > 0 )) && sleep "$wait_s"
+          done
+
+          # Hand off to the next run, unless one is already queued behind this
+          # one (a scheduled run that fired meanwhile).
+          if $standing_down; then
+            echo "Not dispatching the next run while the server collects."
+          elif [[ -n "$(gh run list --workflow collect.yml --limit 20 --json databaseId,status \
+                  --jq ".[] | select(.databaseId != ${GITHUB_RUN_ID}) | select(.status == \"queued\" or .status == \"pending\" or .status == \"waiting\" or .status == \"requested\") | .databaseId")" ]]; then
+            echo "The next run is already queued."
+          elif gh workflow run collect.yml --ref "$DEFAULT_BRANCH"; then
+            echo "Dispatched the next run."
+          else
+            echo "::error::Couldn't dispatch the next run; the schedule will restart collecting."
+            failed=$((failed + 1))
+          fi
+
+          if (( failed > 0 )); then
+            echo "::error::${failed} step(s) failed this run."
+            exit 1
+          fi

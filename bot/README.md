@@ -12,7 +12,7 @@ The always-on half of the project. It runs on a small server and:
   | `bus` | The same for buses, plus clusters of several routes' buses stopped together |
   | `rail` | Regional Rail delays, cancellations, speed maps, and recaps *(phase 4)* |
 
-- **Publishes the site's data.** It pushes the `data` branch and triggers deploys, and links every incident to its Bluesky post. While the server publishes, the [collect workflow](../.github/workflows/collect.yml) stands down. If the server goes quiet for 20 minutes, the workflow takes over again by itself.
+- **Publishes the site's data.** It pushes the `data` branch and triggers deploys, and links every incident to its Bluesky post. While the server publishes, the [collect workflow](../.github/workflows/collect.yml) stands down. If the server goes quiet for 20 minutes, the workflow's next scheduled run takes over again by itself (GitHub's cron can be slow to fire; *Actions → Collect SEPTA data → Run workflow* takes over at once).
 
 Everything defaults to **dry run**. The service collects and renders every post (text, alt text, map) into `/var/lib/septa-bots/assets`, but posts and publishes nothing until you say so.
 
@@ -68,7 +68,7 @@ You need:
 | Record and post the system timelapses now | `sudo septa-bots snapshot` (15 minutes; `snapshot 3` for 3) |
 | Turn videos off | set `VIDEOS=0`, restart |
 | Stop posting at once | set `BOT_MODE=dry-run`, restart |
-| Hand collecting back to GitHub Actions | set `PUBLISH=0`, restart; the workflow resumes within 20 minutes |
+| Hand collecting back to GitHub Actions | set `PUBLISH=0`, restart, then run *Actions → Collect SEPTA data → Run workflow* (or wait 20+ minutes for its schedule) |
 
 **State** lives in `/var/lib/septa-bots`:
 
