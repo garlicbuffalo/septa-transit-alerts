@@ -15,8 +15,9 @@ on:
       - 'tailwind.config.*'
       - '.github/workflows/deploy.yml'
   # Data refreshes. collect.yml dispatches this workflow whenever the collector
-  # sees a rider-visible change, and the schedule below is the catch-up net
-  # (running delay figures, "updated" timestamps, any missed dispatch). Both
+  # sees a rider-visible change and at least every 30 minutes otherwise (running
+  # delay figures, "updated" timestamps); the schedule below is the backstop for
+  # when the collector isn't running on Actions or a dispatch is missed. Both
   # rebuild with the latest `data` branch snapshot and skip tests/lint, since
   # the code was already gated when it landed on main.
   schedule:
