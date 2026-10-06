@@ -16,9 +16,14 @@ const RAIL_BY_TRAINVIEW = new Map(
   Object.entries(RAIL_LINES).map(([key, info]) => [info.trainView.toLowerCase(), key]),
 );
 
-/** Hyphenate a SEPTA bus route name the way busRoutes.json keys do. */
+/**
+ * Hyphenate a SEPTA bus route name the way busRoutes.json keys do. GTFS and
+ * the alerts API space-separate ("L1 OWL"); TransitView underscores ("L1_OWL").
+ */
 export function busRouteKey(raw) {
-  return String(raw).trim().replace(/\s+/g, '-');
+  return String(raw)
+    .trim()
+    .replace(/[\s_]+/g, '-');
 }
 
 /**

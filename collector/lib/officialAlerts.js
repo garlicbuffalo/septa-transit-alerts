@@ -163,15 +163,17 @@ function buildIncident(part, existing, now) {
   };
   if (versions && versions.length > 1) official.versions = versions;
 
+  // Bot detections attached by the vehicle detectors ride along unchanged.
+  const detections = existing?.detections ?? [];
   return {
     id: part.id,
     agency: 'septa',
     mode: part.mode,
     routes: part.routes,
-    sources: ['septa'],
+    sources: detections.length > 0 ? ['septa', 'bot'] : ['septa'],
     lifecycle,
     official_alert: official,
-    detections: [],
+    detections,
     status: null,
   };
 }

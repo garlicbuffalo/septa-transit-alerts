@@ -177,6 +177,17 @@ function formatCardDate(incident) {
 // repeated. Kept as one const so the two orderings can't drift apart.
 const BOT_IMPACT = 'Disruption detected';
 
+// Rider-facing impact for a bot-only incident with a collector sentence
+// ("Long gaps", "Cancelled bus trips"), or null to fall back to BOT_IMPACT.
+function botImpact(incident) {
+  if (incident.headline || !incident.bot_description) return null;
+  return summarizeSignals(
+    observationSignals(incident),
+    incident.kind,
+    incident.line ?? incident.routes?.[0] ?? null,
+  );
+}
+
 function summarize(incident) {
   if (incident.headline) {
     return {
@@ -195,6 +206,10 @@ function summarize(incident) {
     };
   }
   const accent = accentFor(incident);
+  // Bus and Metro detections carry the collector's sentence ("~38 min between
+  // Route 17 buses …"): lead with the impact and let the sentence explain.
+  const impact = botImpact(incident);
+  if (impact) return { title: `${impact} · ${accent.label}`, subtitle: incident.bot_description };
   return {
     title: `${BOT_IMPACT} · ${accent.label}`,
     subtitle: describeObservation(incident),
@@ -279,10 +294,13 @@ function buildHtmlStub(shell, { id, title, subtitle, accent, incident }) {
   // impact to avoid repeating it ("L1 · Disruption detected"). Alert titles
   // keep the label prefix — a bare headline like "Detour: Construction"
   // otherwise names no route.
+  const impact = botImpact(incident);
   const ogTitle = (
-    incident.headline || title !== `${BOT_IMPACT} · ${accent.label}`
-      ? `${accent.label} · ${title}`
-      : `${accent.label} · ${BOT_IMPACT}`
+    impact
+      ? `${accent.label} · ${impact}`
+      : incident.headline || title !== `${BOT_IMPACT} · ${accent.label}`
+        ? `${accent.label} · ${title}`
+        : `${accent.label} · ${BOT_IMPACT}`
   ).slice(0, 200);
   const desc = subtitle.slice(0, 280);
   // Inject JSON-LD just before </head>. `<` inside the JSON has to be escaped

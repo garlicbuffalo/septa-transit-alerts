@@ -427,6 +427,16 @@ describe('collect (fixtures end to end)', () => {
     expect(detour.map((i) => i.mode).sort()).toEqual(['bus', 'metro']);
     const access = JSON.parse(await readFile(join(dir, 'accessibility.json'), 'utf8'));
     expect(access.outages.filter((o) => o.lifecycle.active)).toHaveLength(6);
+    // Bus and Metro trip cancellations, placed with the fixture schedule.
+    const cancels = recent.incidents.find((i) => i.id === 'trip-cancellations-2026-10-05-17');
+    expect(cancels.detections[0].description).toBe(
+      '3 Route 17 trips cancelled — 6:40 PM, 8:20 PM, 9:10 PM (3 of 30 scheduled)',
+    );
+    expect(ids).toContain('trip-cancellations-2026-10-05-t1');
+    // A late Route 17 bus opens a gap candidate (confirmed on the next tick).
+    expect(summary.sources.transitView).toMatchObject({ vehicles: 8, conditions: 1 });
+    const state = JSON.parse(await readFile(join(dir, '_collector-state.json'), 'utf8'));
+    expect(Object.keys(state.candidates)).toEqual(['gap|bus|17|0']);
     // Everything is new on the first run.
     expect(summary.changed).toBe(summary.incidents + access.outages.length);
   });

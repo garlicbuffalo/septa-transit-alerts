@@ -307,9 +307,18 @@ export function officialRecordFromIncident(inc) {
 // User-visible signal categories for SEPTA Metro and bus detections — the
 // chips and stacked-bar segments. Order is the display order. An observation's
 // detection_source is one of these (or 'roundup', in which case the precise
-// signal kinds live in `signals`). The collector doesn't emit Metro/bus
-// detections yet; the vocabulary is kept so those detectors can slot in.
-export const SIGNAL_TYPES = ['gap', 'bunching', 'ghost', 'pulse-cold', 'pulse-held', 'thin-gap'];
+// signal kinds live in `signals`). The collector emits gap, bunching, ghost,
+// pulse-held (from vehicle positions) and trip-cancellations (from SEPTA's
+// trip feed); pulse-cold and thin-gap are kept for compatibility.
+export const SIGNAL_TYPES = [
+  'gap',
+  'bunching',
+  'ghost',
+  'pulse-cold',
+  'pulse-held',
+  'thin-gap',
+  'trip-cancellations',
+];
 
 // Source categories for the filter chip. Each incident falls into exactly
 // one bucket after `groupIncidentRecords` runs:
@@ -337,6 +346,8 @@ export const SIGNAL_LABELS = {
   // covers the 47 routes outside the curated gap/ghost lists, which have no
   // other detector coverage.
   'thin-gap': 'low-frequency route silent',
+  // Bus and Metro trips SEPTA cancelled (one detection per route per day).
+  'trip-cancellations': 'cancelled trips',
   // Regional Rail detection_source values. Cancellation is the commuter-rail
   // analog of a ghost; delay is the analog of a gap. 'cancellation-inferred' is
   // a scheduled train the bot never saw run, that SEPTA didn't flag (hedged).
@@ -356,6 +367,7 @@ const SIGNAL_IMPACT = {
   'pulse-cold': (v) => `stretch without ${v}`,
   'pulse-held': (v) => `${v} held in place`,
   'thin-gap': () => 'route not running',
+  'trip-cancellations': (v) => `cancelled ${v === 'buses' ? 'bus trips' : 'trips'}`,
   cancellation: () => 'cancelled trains',
   'cancellation-inferred': (v) => `${v} not seen running`,
   delay: () => 'late trains',
@@ -367,16 +379,17 @@ const SIGNAL_IMPACT = {
 // gaps, …") — and rather than truncating to "+N more", which hid what was
 // happening. A roundup carries at most ~3 distinct signals in practice, so the
 // full list stays short. Returns null when there are no signals. `kind` is
-// 'bus' | 'metro' (defaults to trains).
+// 'bus' | 'metro' (defaults to trains); `line` picks "trolleys" for trolley lines.
 /**
  * @param {string[]} signals
  * @param {string} [kind]
+ * @param {string | null} [line]
  * @returns {string | null}
  */
-export function summarizeSignals(signals, kind) {
+export function summarizeSignals(signals, kind, line = null) {
   const uniq = [...new Set(signals || [])];
   if (uniq.length === 0) return null;
-  const v = kind === 'bus' ? 'buses' : 'trains';
+  const v = vehicleWord(kind, line);
   const phrases = uniq.map((s) =>
     SIGNAL_IMPACT[s] ? SIGNAL_IMPACT[s](v) : (SIGNAL_LABELS[s] ?? s),
   );
@@ -385,6 +398,18 @@ export function summarizeSignals(signals, kind) {
   else if (phrases.length === 2) text = `${phrases[0]} and ${phrases[1]}`;
   else text = `${phrases.slice(0, -1).join(', ')}, and ${phrases[phrases.length - 1]}`;
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+// Rider-facing plural vehicle noun: buses, trolleys (T, G, and D lines), or trains.
+/**
+ * @param {string} kind
+ * @param {string | null} [line]
+ * @returns {string}
+ */
+export function vehicleWord(kind, line = null) {
+  if (kind === 'bus') return 'buses';
+  if (kind === 'metro' && /^(t\d|g1|d\d)$/.test(line ?? '')) return 'trolleys';
+  return 'trains';
 }
 
 // Compact human-readable summary of the bot's evidence for this observation
@@ -412,6 +437,26 @@ export function formatEvidenceChip(incident) {
   }
   const ev = incident.evidence;
   if (!ev || typeof ev !== 'object') return null;
+  const nounLine = incident.line ?? incident.obs_line ?? incident.routes?.[0] ?? null;
+  // Shapes emitted by the SEPTA collector (collector/lib/vehicleDetectors.js,
+  // collector/lib/tripCancellations.js).
+  if (ev.kind === 'gap' && ev.gap_min != null) {
+    return ev.headway_min
+      ? `~${ev.gap_min} min gap · scheduled every ~${ev.headway_min} min`
+      : `~${ev.gap_min} min gap`;
+  }
+  if (ev.kind === 'bunching' && ev.vehicle_count != null) {
+    const noun = vehicleWord(incident.kind, nounLine);
+    return `${ev.vehicle_count} ${noun} within ${ev.distance_m ?? '?'} m`;
+  }
+  if (ev.kind === 'ghost' && ev.scheduled != null) {
+    return `${ev.tracked} of ${ev.scheduled} scheduled on the tracker`;
+  }
+  if (ev.kind === 'trip-cancellations' && ev.cancelled != null) {
+    return ev.scheduled
+      ? `${ev.cancelled} of ${ev.scheduled} trips cancelled`
+      : `${ev.cancelled} trip${ev.cancelled === 1 ? '' : 's'} cancelled`;
+  }
   // Train pulse evidence has the canonical fields. The held subtree exists
   // when the candidate was a held-cluster (or inferred-held from cold).
   if (ev.held && typeof ev.held === 'object' && ev.held.trainCount != null) {
@@ -421,10 +466,14 @@ export function formatEvidenceChip(incident) {
     const countLabel = `${ev.held.trainCount} ${ev.held.trainCount === 1 ? single : noun} held`;
     return min != null ? `${countLabel} · ${min} min stationary` : countLabel;
   }
-  // Bus held shape (no nested .held — fields live at the top level).
-  if (ev.kind === 'held' && ev.busCount != null) {
+  // Held shape (no nested .held — fields live at the top level). Buses carry
+  // busCount; the SEPTA collector also sets vehicle_count for every mode.
+  if (ev.kind === 'held' && (ev.busCount ?? ev.vehicle_count) != null) {
+    const count = ev.busCount ?? ev.vehicle_count;
     const min = ev.stationaryMs ? Math.round(ev.stationaryMs / 60000) : null;
-    const countLabel = `${ev.busCount} ${ev.busCount === 1 ? 'bus' : 'buses'} held`;
+    const plural = vehicleWord(incident.kind, nounLine);
+    const single = plural === 'buses' ? 'bus' : plural.slice(0, -1);
+    const countLabel = `${count} ${count === 1 ? single : plural} held`;
     return min != null ? `${countLabel} · ${min} min stationary` : countLabel;
   }
   // Train cold evidence.
@@ -483,7 +532,11 @@ export function observationSignals(obs) {
  */
 export function botSummaryText(incident) {
   const { primary } = splitObservations(incident);
-  const summary = summarizeSignals(observationSignals(primary), legacyKind(incident));
+  const summary = summarizeSignals(
+    observationSignals(primary),
+    legacyKind(incident),
+    primary?.line ?? null,
+  );
   if (summary) return summary;
   if (primary?.detection_source === 'roundup') return 'Multiple simultaneous disruptions detected';
   return 'Service disruption detected';
@@ -649,10 +702,28 @@ export function isPlannedWork(incident) {
   return isPlannedIncident(incident, incidentLifecycle(incident).first_seen_ts ?? 0);
 }
 
+// Whether an incident is a bot-only record of a route's cancelled trips for the
+// day (collector/lib/tripCancellations.js).
+/**
+ * @param {Incident} incident
+ * @returns {boolean}
+ */
+export function isTripCancellations(incident) {
+  const dets = incidentDetections(incident);
+  return (
+    !officialAlert(incident) &&
+    dets.length > 0 &&
+    dets.every(
+      (d) => d.source === 'trip-cancellations' || d.detection_source === 'trip-cancellations',
+    )
+  );
+}
+
 /**
  * Three-way bucket for the homepage's active list:
  *   'planned'    — scheduled / advance-notice work (see {@link isPlannedIncident})
- *   'delay'      — a routine in-progress delay (a single Regional Rail train running late)
+ *   'delay'      — a routine in-progress delay (a single Regional Rail train running
+ *                  late) or a route's cancelled trips for the day
  *   'disruption' — everything else live (gaps, ghosts, cancellations, and
  *                  reroutes without a fixed window)
  * @param {Incident} incident
@@ -662,6 +733,7 @@ export function isPlannedWork(incident) {
 export function incidentCategory(incident, now = Date.now()) {
   if (isPlannedIncident(incident, now)) return 'planned';
   if (railIncidentStatus(incident)?.source === 'delay') return 'delay';
+  if (isTripCancellations(incident)) return 'delay';
   return 'disruption';
 }
 

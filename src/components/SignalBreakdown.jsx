@@ -14,6 +14,7 @@ const SIGNAL_COLORS = {
   'pulse-cold': '#94a3b8', // slate-400
   'pulse-held': '#64748b', // slate-500
   'thin-gap': '#8b5cf6', // violet-500 — most extreme absence (whole route silent)
+  'trip-cancellations': '#e11d48', // rose-600 — trips SEPTA cancelled
 };
 
 // Regional Rail's signal vocabulary is cancellations + delays, not SEPTA gap/ghost

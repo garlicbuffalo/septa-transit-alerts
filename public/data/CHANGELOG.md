@@ -8,6 +8,19 @@ syndication feeds (`/feed.xml` and the per-line/route feeds under `/feed/`).
 Newest first. If you build on this data, watch this file before pinning to the
 format.
 
+## 2026-10-06 — Bus and Metro detections
+
+- **New detection sources** on bus and SEPTA Metro incidents: `gap`, `bunching`,
+  `ghost` (missing vehicles), and `pulse-held`, inferred from TransitView vehicle
+  positions against SEPTA's GTFS schedule; and `trip-cancellations`, one
+  incident per route per service day from SEPTA's GTFS-realtime trip feed
+  (`trip-cancellations-<YYYY-MM-DD>-<route>`). Shapes are in
+  [`/llms-full.txt`](/llms-full.txt).
+- Detections can now attach to an official SEPTA incident on the same route,
+  making `sources` `["septa", "bot"]`.
+- `daily-counts.json` and `aggregates.json` count the new bot incidents like any
+  other incident.
+
 ## 2026-10-06 — Initial release
 
 First published version of the SEPTA data, produced by the collector in

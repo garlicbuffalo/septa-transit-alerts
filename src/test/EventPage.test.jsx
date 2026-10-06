@@ -563,8 +563,9 @@ describe('EventPage', () => {
       Promise.resolve({ ok: true, json: () => Promise.resolve(V2_PAYLOAD) }),
     );
     render(<EventPage eventId="v2thingap" />);
+    // The detector's sentence is both the page title and the detection entry.
     await waitFor(() => {
-      expect(screen.getByText(/Route 21 thin-service gap/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Route 21 thin-service gap/).length).toBeGreaterThan(0);
     });
     // Each hourly update is its own entry on the Per bot rail, between the
     // detection and the resolution.

@@ -33,6 +33,9 @@ export function describeText(incident) {
     const seg = `${displayStationName(primary.from_station)} → ${displayStationName(primary.to_station)}`;
     return primary.direction_label ? `${seg} (${primary.direction_label})` : seg;
   }
+  // No stretch to name (bus routes, route-wide signals): the collector's
+  // sentence ("~38 min between Route 17 buses …") says more than a summary.
+  if (primary?.bot_description) return primary.bot_description;
   return botSummaryText(incident);
 }
 
@@ -58,5 +61,6 @@ export function describe(incident, stationIndex) {
       </>
     );
   }
+  if (primary?.bot_description) return primary.bot_description;
   return botSummaryText(incident);
 }

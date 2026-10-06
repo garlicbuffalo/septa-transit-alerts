@@ -2,8 +2,8 @@
 // on its own; the caller only applies a source's changes when its fetch
 // succeeded, so a flaky endpoint can never mass-resolve live incidents.
 //
-// A `fixturesDir` (CLI --fixtures) swaps every network read for a JSON file of
-// the same name, for tests and offline development.
+// A `fixturesDir` (CLI --fixtures) swaps every network read for a fixture file
+// (FIXTURE_FILES), for tests and offline development.
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -15,6 +15,13 @@ export const ENDPOINTS = {
   trainView: 'https://www3.septa.org/api/TrainView/index.php',
   // Out-of-service elevators across SEPTA Metro and Regional Rail stations.
   elevators: 'https://www3.septa.org/api/elevator/index.php',
+  // Live positions for every tracked bus and SEPTA Metro vehicle, with the GTFS
+  // trip each is running and its schedule deviation (`late`, minutes).
+  transitView: 'https://www3.septa.org/api/TransitViewAll/index.php',
+  // GTFS-realtime TripUpdates for buses and SEPTA Metro (protobuf). Cancelled
+  // trips carry schedule_relationship CANCELED — the day's cancellations are
+  // published ahead of time.
+  tripUpdates: 'https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb',
   // One train's stops for today with scheduled / estimated / actual times.
   railSchedule: (trainNo) =>
     `https://www3.septa.org/api/RRSchedules/index.php?req1=${encodeURIComponent(trainNo)}`,
@@ -24,6 +31,8 @@ const FIXTURE_FILES = {
   alerts: 'alerts.json',
   trainView: 'trainview.json',
   elevators: 'elevators.json',
+  transitView: 'transitview.json',
+  tripUpdates: 'trip-updates.pb',
 };
 
 async function fetchJson(url, { timeoutMs = 20000, retries = 2 } = {}) {
@@ -45,8 +54,27 @@ async function fetchJson(url, { timeoutMs = 20000, retries = 2 } = {}) {
   throw new Error(`${url}: ${lastErr?.message ?? lastErr}`);
 }
 
+async function fetchBinary(url, { timeoutMs = 20000, retries = 2 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: { 'user-agent': 'septa-transit-alerts collector' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+  throw new Error(`${url}: ${lastErr?.message ?? lastErr}`);
+}
+
 /**
- * Build the source readers. Each returns parsed JSON or throws.
+ * Build the source readers. Each returns parsed JSON (tripUpdates: raw
+ * protobuf bytes) or throws.
  * @param {{ fixturesDir?: string | null }} [opts]
  */
 export function createSources({ fixturesDir = null } = {}) {
@@ -59,6 +87,11 @@ export function createSources({ fixturesDir = null } = {}) {
     alerts: read('alerts'),
     trainView: read('trainView'),
     elevators: read('elevators'),
+    transitView: read('transitView'),
+    async tripUpdates() {
+      if (fixturesDir) return readFile(join(fixturesDir, FIXTURE_FILES.tripUpdates));
+      return fetchBinary(ENDPOINTS.tripUpdates);
+    },
     async railSchedule(trainNo) {
       if (fixturesDir) {
         try {

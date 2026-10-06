@@ -13,6 +13,7 @@ import {
   incidentCategory,
   incidentHeadlineText,
   incidentLifecycle,
+  isTripCancellations,
   legacyKind,
   modeLabel,
   officialAlert,
@@ -637,7 +638,7 @@ function DelaySection({ incidents, now, highlightedIds }) {
   const labelGroups = groups.length > 1;
   return (
     <CollapsibleBand
-      label="Delays"
+      label={incidents.some(isTripCancellations) ? 'Delays & cancellations' : 'Delays'}
       count={incidents.length}
       dotClass="bg-amber-500"
       textClass="text-amber-700 dark:text-amber-500"

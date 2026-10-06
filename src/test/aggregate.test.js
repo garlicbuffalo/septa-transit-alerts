@@ -95,9 +95,9 @@ describe('computeDisruptionMinutes', () => {
       active: false,
       _incidentId: 'closure',
     });
-    expect(
-      computeDisruptionMinutes([closure], [gap], { now: NOW, lines }).disruptedMinutes,
-    ).toBe(60);
+    expect(computeDisruptionMinutes([closure], [gap], { now: NOW, lines }).disruptedMinutes).toBe(
+      60,
+    );
     // The same alert unplanned counts in full (capped by the 30-day window).
     expect(
       computeDisruptionMinutes([{ ...closure, planned: false }], [], { now: NOW, lines })

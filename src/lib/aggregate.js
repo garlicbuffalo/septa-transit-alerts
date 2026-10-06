@@ -883,6 +883,9 @@ export function computeDisruptionMinutes(
   }
   for (const o of standaloneObs) {
     if (o.line == null) continue;
+    // A day's cancelled trips are one record spanning the service day; the
+    // missing service shows up as gaps and missing vehicles instead.
+    if (o.detection_source === 'trip-cancellations') continue;
     add(`${o.kind}:${o.line}`, o.ts, o.resolved_ts);
   }
 

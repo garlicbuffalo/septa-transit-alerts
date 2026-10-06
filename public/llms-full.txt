@@ -9,6 +9,8 @@ A collector polls SEPTA's public APIs about every 10 minutes and records:
 - **Official alerts** from SEPTA's alerts feed — service advisories, real-time alerts, and short-term (≤72h) bus detours across SEPTA Metro, bus, and Regional Rail. Long-running construction detours and station-amenity notices (parking, ticket offices, waiting rooms) are excluded. Each alert is an incident from when SEPTA posted it until it leaves the feed or its stated end passes.
 - **Regional Rail delays** — trains SEPTA's TrainView feed reports running 15+ minutes late; active while late, resolved when the train recovers or arrives.
 - **Regional Rail cancellations** — trains SEPTA marks cancelled, anchored to the scheduled departure.
+- **Bus and Metro trip cancellations** — trips SEPTA marks CANCELED in its GTFS-realtime trip feed (often hours ahead), one incident per route per service day (`trip-cancellations-<YYYY-MM-DD>-<route>`), active until the last cancelled trip's scheduled end.
+- **Detected disruptions** — live bus, trolley, and M1 positions (TransitView) compared with SEPTA's GTFS schedule: gaps, bunching, missing vehicles, and vehicles held in place (see the glossary below). A condition must hold on two consecutive ~10-minute checks to open and be absent for two to resolve. When SEPTA has an active, unplanned alert on the same route, the detection is attached to that incident (`sources: ["septa", "bot"]`); otherwise it's a bot-only incident with an id like `gap-2026-10-06-17-0-0745`. The subway lines (L1, B1–B3) report no positions and get no position-based detections.
 - **Elevator outages** at SEPTA Metro and Regional Rail stations (separate `accessibility.json`).
 
 Every incident has a `mode` of `metro`, `bus`, or `regional_rail`. Route keys:
@@ -123,6 +125,46 @@ A Regional Rail delay:
 }
 ```
 
+A bus gap (vehicle-position detection):
+
+```jsonc
+{
+  "id": "gap-2026-10-06-17-0-0745",
+  "agency": "septa",
+  "mode": "bus",
+  "routes": ["17"],
+  "sources": ["bot"],
+  "lifecycle": { "first_seen_ts": …, "resolved_ts": null, "active": true, "duration_ms": null },
+  "official_alert": null,
+  "detections": [
+    {
+      "id": "gap-2026-10-06-17-0-0745",
+      "source": "gap",                // gap | bunching | ghost | pulse-held | trip-cancellations
+      "scope": {
+        "route": "17",
+        "from_station": null,         // Metro (trolley/M1) detections name the nearest stations
+        "to_station": null,
+        "stations": [],
+        "direction": "south",
+        "direction_label": "toward 20th-Johnston"
+      },
+      "lifecycle": { "first_seen_ts": …, "onset_ts": …, "resolved_ts": null, "active": true, "duration_ms": null },
+      "post_url": null,
+      "resolved_post_url": null,
+      "description": "~38 min between Route 17 buses toward 20th-Johnston — scheduled every ~15 min",
+      "evidence": {
+        "details": { "kind": "gap", "gap_min": 38, "headway_min": 15, "cancelled_between": 0, "vehicles": ["7480", "7483"], "worst": 38, "last_seen_ts": … },
+        "updates": [ { "ts": …, "description": "…" } ],
+        "resolved_description": null  // e.g. "Route 17 buses back to normal spacing." once resolved
+      }
+    }
+  ],
+  "status": null
+}
+```
+
+`evidence.details` by source: `gap` — `gap_min`, `headway_min`, `cancelled_between`; `bunching` — `vehicle_count`, `distance_m`, `scheduled_spacing_min`, `headway_min`; `ghost` — `scheduled`, `tracked`, `missing`, `cancelled`, `usual_tracked_pct`; `pulse-held` (`kind: "held"`) — `vehicle_count`, `stationaryMs`; `trip-cancellations` — `service_date`, `cancelled`, `scheduled`, and `trips[]` (`trip_id`, `direction`, `start_ts`, `end_ts`, `origin`, `destination`).
+
 ## accessibility.json shape
 
 ```jsonc
@@ -164,8 +206,15 @@ Timestamps are ISO 8601 (UTC); `routes` and `stations` are semicolon-separated w
 
 - `delay` — a Regional Rail train running 15+ minutes late (TrainView).
 - `cancellation` — a Regional Rail train SEPTA marked cancelled (TrainView).
+- `trip-cancellations` — a bus or Metro route's trips SEPTA cancelled for one service day (GTFS-realtime).
+- `gap` — two consecutive vehicles of a route pattern at least 20 minutes and twice the scheduled spacing apart (spacing = scheduled start + minutes late).
+- `bunching` — mid-route vehicles scheduled at least 8 minutes apart running within 250 m of each other.
+- `ghost` — at most half of a route's in-progress trips on SEPTA's tracker (at least three missing), on a route that's usually well tracked.
+- `pulse-held` — two or more vehicles on a route stopped mid-route within 600 m of each other for 10+ minutes.
 
-The site also understands Metro/bus detector sources (`gap`, `bunching`, `ghost`, `pulse-cold`, `pulse-held`, `thin-gap`, `roundup`) for future detectors; the collector does not emit them yet.
+The site also understands `pulse-cold`, `thin-gap`, and `roundup` from the Chicago project's data shape; the SEPTA collector doesn't emit them.
+
+"Disrupted time" figures on the site count unplanned disruptions only: planned work (SEPTA maintenance/construction advisories, advance-notice windows) is excluded, and so are `trip-cancellations` spans.
 
 ## Etiquette
 

@@ -14,3 +14,5 @@ public/data/*
 !public/data/CHANGELOG.md
 # A local checkout of the `data` branch (see collect.yml / README).
 /data-branch/
+# The collector's GTFS schedule cache (`npm run collect`).
+/.collector-cache/

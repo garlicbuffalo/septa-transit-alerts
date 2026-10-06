@@ -37,6 +37,20 @@ jobs:
         with:
           node-version: 24
 
+      # The collector distills SEPTA's GTFS schedule into .collector-cache once
+      # a day; keep it between runs so most ticks skip the ~20 MB download.
+      - name: Date key
+        id: day
+        run: echo "day=$(TZ=America/New_York date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the schedule cache
+        uses: actions/cache@v5
+        with:
+          path: .collector-cache
+          key: collector-schedule-${{ steps.day.outputs.day }}
+          restore-keys: |
+            collector-schedule-
+
       # The collector has no npm dependencies, so no `npm ci` here.
       - name: Check out the data branch
         run: |
@@ -52,7 +66,7 @@ jobs:
         id: collect
         run: |
           set -o pipefail
-          node collector/collect.js --data-dir data-branch | tee collect-summary.json
+          node collector/collect.js --data-dir data-branch --cache-dir .collector-cache | tee collect-summary.json
           echo "changed=$(jq -r '.changed // 0' collect-summary.json)" >> "$GITHUB_OUTPUT"
 
       - name: Publish the data branch

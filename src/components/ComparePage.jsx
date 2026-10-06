@@ -339,6 +339,8 @@ const SIGNAL_COLORS = {
   ghost: '#6366f1',
   'pulse-cold': '#94a3b8',
   'pulse-held': '#64748b',
+  'thin-gap': '#8b5cf6',
+  'trip-cancellations': '#e11d48',
   // Regional Rail detection sources — its signal vocabulary is cancellations + delays,
   // not SEPTA gap/bunching/ghost set.
   cancellation: '#dc2626',

@@ -73,7 +73,8 @@ function copyFromDir(dir) {
   }
   cpSync(dir, OUT_DIR, {
     recursive: true,
-    filter: (src) => !/(^|[/\\])(\.git|CHANGELOG\.md|README\.md)$/.test(src),
+    // Skip git metadata, docs, and the collector's private state (`_…` files).
+    filter: (src) => !/(^|[/\\])(\.git|CHANGELOG\.md|README\.md|_[^/\\]*)$/.test(src),
   });
   console.log(`fetch-data: copied ${dir} -> ${OUT_DIR}`);
 }

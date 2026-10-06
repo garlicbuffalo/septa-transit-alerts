@@ -38,6 +38,21 @@ export default function AboutContent() {
           to the train's scheduled departure.
         </li>
         <li>
+          <strong>Cancelled bus and Metro trips</strong> — trips SEPTA marks cancelled in its
+          real-time trip feed (often hours ahead, when a run has no operator), grouped into one
+          record per route per day with each trip's scheduled time.
+        </li>
+        <li>
+          <strong>Detected disruptions</strong> — the collector compares where SEPTA's buses and
+          trolleys are against the timetable and flags <em>long gaps</em> (vehicles twice as far
+          apart as scheduled, and at least 20 minutes), <em>bunching</em> (vehicles scheduled well
+          apart running together), <em>missing vehicles</em> (far fewer of a route's trips on
+          SEPTA's tracker than usual), and <em>vehicles held in place</em> (two or more stopped
+          mid-route for 10+ minutes). A condition has to show up on two checks in a row before it's
+          recorded, and when SEPTA has an alert out for the same route the detection is attached to
+          it.
+        </li>
+        <li>
           <strong>Elevator outages</strong> — out-of-service elevators at SEPTA Metro and Regional
           Rail stations, kept on the{' '}
           <a className={LINK} href="/accessibility">
@@ -51,11 +66,18 @@ export default function AboutContent() {
         SEPTA's station list, so line maps and station pages can show where disruptions happen.
       </p>
 
-      <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">Not covered yet</h3>
+      <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">Limits</h3>
       <p>
-        SEPTA Metro and bus disruptions appear here only when SEPTA posts an alert about them. The
-        site has room for bot-detected Metro and bus disruptions — long gaps between vehicles,
-        bunching, missing trips — but the collector doesn't detect those yet.
+        The subway lines (L1 and B1–B3) don't report train positions, so gaps and bunching can only
+        be detected on buses, trolleys, and the M1. "Missing vehicles" means missing from SEPTA's
+        tracker: a bus with a broken locator looks the same as one that never left the depot, so
+        it's only flagged when a route that's normally well tracked suddenly isn't.
+      </p>
+      <p>
+        "Disrupted time" figures count unplanned disruptions only. Planned work — scheduled
+        closures, construction, and maintenance — is listed but not counted, and a day's cancelled
+        trips show up through the gaps and missing vehicles they cause rather than as one long
+        disruption.
       </p>
 
       <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">Updates</h3>

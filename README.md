@@ -17,11 +17,21 @@ A collector polls SEPTA's public APIs every ~10 minutes:
 - **Official SEPTA alerts** ([`/api/v2/alerts`](https://www3.septa.org/api/v2/alerts/)) — service advisories, real-time alerts, and short-term (≤72h) bus detours for SEPTA Metro, buses, and Regional Rail. Each alert is an incident from when SEPTA posted it until it leaves the feed or its stated end passes; edits to the text are kept as versions. Long-running construction detours and station-amenity notices (parking, ticket offices, waiting rooms) are left out. Affected stations are matched from the alert text against SEPTA's GTFS station list.
 - **Regional Rail delays** ([TrainView](https://www3.septa.org/api/TrainView/index.php)) — any train running 15+ minutes late becomes an incident, updated as its lateness changes and resolved when it recovers or arrives. Each is anchored to the train's scheduled departure from [RRSchedules](https://www3.septa.org/api/RRSchedules/index.php?req1=9233).
 - **Regional Rail cancellations** — trains TrainView marks cancelled, shown as "upcoming" until their scheduled departure.
+- **Bus and Metro trip cancellations** ([GTFS-realtime trip updates](https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb)) — SEPTA marks cancelled trips in its real-time feed, often hours ahead. They're grouped into one incident per route per service day ("14 Route 16 trips cancelled — 4:41 AM, 5:08 AM, …"), with each trip's scheduled time and terminals from SEPTA's GTFS schedule. The incident stays active until the last cancelled trip's scheduled end; trips that leave the feed before they were due are treated as reinstated.
+- **Detected disruptions** ([TransitView](https://www3.septa.org/api/TransitViewAll/index.php) vehicle positions against the GTFS schedule), for buses, trolleys, and the M1:
+  - **Gap** — two consecutive vehicles of one route pattern at least 20 minutes and twice the scheduled spacing apart. Spacing is each vehicle's scheduled start plus how late it's running; cancelled trips in between count toward the gap, and spacing across a trip that isn't on the tracker isn't guessed at.
+  - **Bunching** — mid-route vehicles scheduled at least 8 minutes apart running within 250 m of each other.
+  - **Missing vehicles** — at most half of a route's in-progress trips on the tracker (and at least three missing), on a route that's usually well tracked.
+  - **Held in place** — two or more vehicles on a route stopped mid-route, within 600 m of each other, for 10+ minutes.
+
+  A condition must show up on two consecutive ticks to open a detection and be absent for two to resolve it. If SEPTA has an active, unplanned alert on the same route, the detection attaches to that incident; otherwise it's a bot-only incident. When the tracker covers under half of a busy system's trips (a feed problem), detections are held as they are. Thresholds live in `DETECTOR_CONFIG` in [`collector/lib/vehicleDetectors.js`](collector/lib/vehicleDetectors.js).
 - **Elevator outages** ([elevator API](https://www3.septa.org/api/elevator/index.php)) at SEPTA Metro and Regional Rail stations, archived separately on the accessibility page.
 
 SEPTA Metro uses the 2025 line names: L1 (Market-Frankford), B1/B2/B3 (Broad Street Line, Express, Broad-Ridge Spur), M1 (Norristown High Speed Line), T1–T5 (subway-surface trolleys), G1 (Girard), and D1/D2 (Media and Sharon Hill). Search also understands the old names ("MFL", "BSL", "Route 101").
 
-**Not covered yet.** The Chicago site also infers disruptions from live vehicle positions (gaps, bunching, missing vehicles, stalled trains). The UI supports those detections, but this collector doesn't produce them for SEPTA Metro or buses yet — SEPTA's [TransitView](https://www3.septa.org/api/TransitViewAll/index.php) feed would be the source. Bus trip cancellations aren't tracked either.
+**Limits.** The subway lines (L1, B1–B3) appear in TransitView only as schedule-based placeholders without positions, so position-based detection can't cover them; their cancellations and SEPTA's alerts still do. "Missing vehicles" means missing from SEPTA's tracker, which can't tell a broken locator from a bus that never ran — hence the comparison with each route's usual tracking.
+
+**Disrupted time** (line pages, system health, compare, homepage) counts unplanned disruptions only: SEPTA maintenance and construction advisories, advance-notice closures, and other planned work are listed but not counted. A route's cancelled trips for the day aren't counted as one long disruption either; the gaps and missing vehicles they cause are.
 
 ## What you see
 
@@ -83,11 +93,11 @@ SEPTA APIs ──► collect.yml (every ~10 min) ──► `data` branch ──�
                node collector/collect.js        one snapshot      npm run build    site + /data/*
 ```
 
-1. **Collect.** [`.github/workflows/collect.yml`](.github/workflows/collect.yml) runs [`collector/collect.js`](collector/collect.js) on a 10-minute schedule. It loads the archive from the `data` branch, applies the latest alerts, TrainView, and elevator feeds, and rewrites the published files: `alerts-recent.json`, monthly `alerts/<YYYY-MM>.json` shards, `incidents/by-line/<key>.json`, `alerts-index.json`, `aggregates.json`, `daily-counts.json`, and `accessibility.json`. The `data` branch is force-pushed as a single commit each run, so it never accumulates history; the monthly shards are the archive.
+1. **Collect.** [`.github/workflows/collect.yml`](.github/workflows/collect.yml) runs [`collector/collect.js`](collector/collect.js) on a 10-minute schedule. It loads the archive from the `data` branch, applies the latest alerts, TrainView, elevator, TransitView, and trip-update feeds, and rewrites the published files: `alerts-recent.json`, monthly `alerts/<YYYY-MM>.json` shards, `incidents/by-line/<key>.json`, `alerts-index.json`, `aggregates.json`, `daily-counts.json`, and `accessibility.json`. The `data` branch is force-pushed as a single commit each run, so it never accumulates history; the monthly shards are the archive. It also holds `_collector-state.json`, the detectors' memory between ticks (last vehicle positions, pending and active detections, each route's usual tracking), which isn't deployed with the site. SEPTA's GTFS schedule is distilled into a ~2 MB index once a day and kept in the Actions cache (`--cache-dir`).
 2. **Deploy.** When the collector sees a rider-visible change (an incident opening, resolving, or getting new text, or an elevator going out or coming back), it dispatches [`deploy.yml`](.github/workflows/deploy.yml). A 30-minute schedule catches everything else. The build copies the `data` branch into `public/data/` ([`scripts/fetch-data.js`](scripts/fetch-data.js)), builds the Vite app, and runs the postbuild steps: per-page and per-event share cards (Playwright), Atom/JSON feeds, the sitemap, and the CSV.
 3. **Serve.** The site reads its data same-origin from `/data/` and re-polls `alerts-recent.json` every 5 minutes while open.
 
-The collector has no dependencies beyond Node 24, and is a plain script: you can run it from cron on any machine instead (`node collector/collect.js --data-dir <dir>`), as long as the build can see the directory.
+The collector has no dependencies beyond Node 24, and is a plain script: you can run it from cron on any machine instead (`node collector/collect.js --data-dir <dir> --cache-dir <dir>`), as long as the build can see the data directory. Run it every 10 minutes or so: the detectors' two-tick confirmation assumes roughly that spacing.
 
 Static reference data — Metro and Regional Rail stations, line shapes, and the bus route list — is generated from [SEPTA's GTFS bundle](https://www3.septa.org/developer/gtfs_public.zip) by [`scripts/build-reference-data.js`](scripts/build-reference-data.js) into `src/lib/*.json`.
 
@@ -137,7 +147,7 @@ Other entry points:
 
 - `node collector/collect.js --data-dir <dir> --fixtures collector/test/fixtures --now 1791244200000` builds a deterministic data directory from captured SEPTA responses (CI builds the site against this).
 - `DATA_DIR=<dir> npm run build` builds against a specific data directory, e.g. a checkout of the `data` branch.
-- `npm run reference-data` downloads SEPTA's GTFS bundle and regenerates the station, shape, and route JSON (or pass a local `gtfs_public.zip`: `npm run reference-data -- path/to/gtfs_public.zip`).
+- `npm run reference-data` downloads SEPTA's GTFS bundle and regenerates the station, shape, and route JSON. To use a local copy of the bundle: `node scripts/build-reference-data.js path/to/gtfs_public.zip && npx biome format --write src/lib`.
 - `npm run brand-assets` re-renders the PNG icons and the homepage share card (`public/og-image.png`) from their SVG/HTML sources.
 - `CHROMIUM_PATH=/path/to/chromium` makes the Playwright steps use an existing Chromium instead of Playwright's download.
 - [`debugging/`](debugging/DEBUGGING.md) has helpers for inspecting one event and rendering its share card.
