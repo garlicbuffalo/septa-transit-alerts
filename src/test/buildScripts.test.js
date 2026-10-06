@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { pickIncidents } from '../../scripts/prerender-events.js';
+import { buildHtmlStub, pickIncidents } from '../../scripts/prerender-events.js';
 import * as incidentsLib from '../lib/incidents.js';
 import { incidentRecords } from '../lib/incidents.js';
 import { incident, officialAlertFromAgency } from './v2TestHelpers.js';
@@ -146,6 +146,31 @@ describe('incidentRecords wire → row contract', () => {
     const picked = pickIncidents({ incidents: [grouped], ...flat });
     // The official alert and its detection collapse into one event page.
     expect([...picked.keys()]).toEqual(['alert-136615']);
+  });
+
+  it('builds a noindex /resolved stub that shares the canonical URL', () => {
+    const shell = readFileSync(resolve(__dirname, '../../index.html'), 'utf8');
+    const inc = { headline: 'Shuttle Busing', kind: 'metro', routes: ['b1'], first_seen_ts: 0 };
+    const args = {
+      id: 'alert-9',
+      title: 'Shuttle Busing',
+      subtitle: 'Resolved',
+      accent: { label: 'B1' },
+      incident: inc,
+    };
+    const base = buildHtmlStub(shell, args);
+    const resolved = buildHtmlStub(shell, { ...args, variant: 'resolved' });
+    expect(base).not.toContain('noindex');
+    expect(resolved.match(/<meta name="robots"[^>]*>/g)).toEqual([
+      '<meta name="robots" content="noindex, follow" />',
+    ]);
+    expect(resolved).toMatch(/<link rel="canonical" href="[^"]*\/event\/alert-9" \/>/);
+    expect(resolved).toMatch(
+      /<meta property="og:url" content="[^"]*\/event\/alert-9\/resolved" \/>/,
+    );
+    expect(resolved).toMatch(
+      /<meta property="og:image" content="[^"]*\/event\/alert-9\/resolved\/og\.jpg" \/>/,
+    );
   });
 
   it('expands v2 official_alert and detections into incident-derived records', () => {

@@ -1,0 +1,29 @@
+[Unit]
+Description=SEPTA Transit Alerts bots (collector and Bluesky poster)
+Documentation=https://github.com/garlicbuffalo/septa-transit-alerts/blob/main/bot/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=septa-bots
+Group=septa-bots
+WorkingDirectory=/opt/septa-transit-alerts
+EnvironmentFile=/etc/septa-bots.env
+Environment=STATE_DIR=/var/lib/septa-bots
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node bot/main.js
+Restart=always
+RestartSec=15
+# Let a running post or video finish on stop/restart.
+TimeoutStopSec=180
+
+# Hardening: the service writes only its state directory.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/septa-bots
+
+[Install]
+WantedBy=multi-user.target

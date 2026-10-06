@@ -154,12 +154,17 @@ jobs:
       #   DATA_BASE_URL  optional: serve data from another origin instead of
       #                  /data (e.g. raw.githubusercontent.com for the data
       #                  branch, so the live site updates without a redeploy)
+      #   BLUESKY_HANDLES optional: the bot accounts' handles, which turns on
+      #                  the site's "Follow on Bluesky" links, as
+      #                  "alerts=handle,metro=handle,bus=handle,rail=handle"
       - run: npm run build
         env:
           DATA_DIR: ${{ steps.data.outputs.exists == 'true' && format('{0}/data-branch', github.workspace) || '' }}
           SITE_URL: ${{ vars.SITE_URL }}
           VITE_SITE_URL: ${{ vars.SITE_URL }}
           VITE_DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+          BLUESKY_HANDLES: ${{ vars.BLUESKY_HANDLES }}
+          VITE_BLUESKY_HANDLES: ${{ vars.BLUESKY_HANDLES }}
 
       - uses: actions/upload-pages-artifact@v5
         with:

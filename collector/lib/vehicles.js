@@ -18,7 +18,7 @@ const LATE_SENTINEL = 900;
  * @returns {{ vehicles: Array<{
  *   id: string, label: string, mode: 'bus' | 'metro', route: string, tripId: string | null,
  *   directionName: string | null, destination: string | null, lat: number, lon: number,
- *   lateMin: number | null, nextStopSequence: number | null, nextStopName: string | null,
+ *   heading: number | null, lateMin: number | null, nextStopSequence: number | null, nextStopName: string | null,
  *   reportTs: number }>, placeholders: number, stale: number }}
  */
 export function normalizeTransitView(payload, now) {
@@ -55,6 +55,7 @@ export function normalizeTransitView(payload, now) {
           destination: v.destination ?? null,
           lat,
           lon,
+          heading: Number.isFinite(Number(v.heading)) ? Number(v.heading) : null,
           lateMin: Number.isFinite(late) && Math.abs(late) < LATE_SENTINEL ? late : null,
           nextStopSequence: v.next_stop_sequence != null ? Number(v.next_stop_sequence) : null,
           nextStopName: v.next_stop_name ?? null,

@@ -24,6 +24,10 @@ const HOUR_MS = 60 * 60 * 1000;
 export const DETOUR_MAX_WINDOW_MS = 72 * HOUR_MS;
 // An alert still listed this long after its stated end is treated as over.
 const EXPIRED_GRACE_MS = HOUR_MS;
+// An alert must be missing from the feed for two successful fetches spanning
+// at least this long before it resolves, so a feed blip doesn't close it (and
+// trigger a "cleared" post) only for it to reappear a minute later.
+export const ALERT_CLEAR_MS = 4 * 60 * 1000;
 
 const AMENITY_RE =
   /\b(parking|waiting room|ticket office|fare (sales|products?)|validators?|restrooms?|is now the)\b/i;
@@ -153,9 +157,10 @@ function buildIncident(part, existing, now) {
     id: part.alertId,
     headline: part.headline,
     description: part.description,
-    post_url: null,
+    // Bluesky links, filled in by the bot service; kept across rebuilds.
+    post_url: prevAlert?.post_url ?? null,
     source_url: part.sourceUrl,
-    resolved_reply_url: null,
+    resolved_reply_url: prevAlert?.resolved_reply_url ?? null,
     lifecycle: { ...lifecycle },
     scope: part.scope,
     agency_event_window: part.window,
@@ -197,14 +202,25 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
  * official incidents missing from the feed resolve. Resolution is skipped when
  * the feed looks truncated (under half the currently-active set), so an API
  * hiccup can't mass-close live incidents.
+ *
+ * With `misses` (persistent per-alert state, e.g. the collector's state file),
+ * a missing alert resolves only once it has been absent for two fetches
+ * spanning ALERT_CLEAR_MS, backdated to when it first went missing. Without
+ * it, a missing alert resolves at once.
  * @param {Map<string, object>} incidents
  * @param {object[]} rawAlerts
  * @param {number} now
+ * @param {{ misses?: Record<string, {first: number, ticks: number}> | null, clearMs?: number }} [opts]
  * @returns {{ changed: Set<string>, stats: object }}
  */
-export function applyOfficialAlerts(incidents, rawAlerts, now) {
+export function applyOfficialAlerts(
+  incidents,
+  rawAlerts,
+  now,
+  { misses = null, clearMs = ALERT_CLEAR_MS } = {},
+) {
   const changed = new Set();
-  const stats = { feed: 0, included: 0, opened: 0, resolved: 0, skipped: {} };
+  const stats = { feed: 0, included: 0, opened: 0, resolved: 0, pending: 0, skipped: {} };
   const parts = [];
   for (const raw of rawAlerts || []) {
     stats.feed += 1;
@@ -239,12 +255,32 @@ export function applyOfficialAlerts(incidents, rawAlerts, now) {
   stats.truncated = truncated;
   if (!truncated) {
     for (const inc of activeOfficial) {
-      if (seen.has(inc.id)) continue;
+      if (seen.has(inc.id)) {
+        if (misses) delete misses[inc.id];
+        continue;
+      }
       const end = inc.official_alert.agency_event_window?.end_ts;
-      const resolvedAt = end != null && end < now ? end : now;
+      let resolvedAt = end != null && end < now ? end : now;
+      if (misses && !(end != null && end < now)) {
+        const miss = misses[inc.id] ?? { first: now, ticks: 0 };
+        miss.ticks += 1;
+        misses[inc.id] = miss;
+        if (miss.ticks < 2 || now - miss.first < clearMs) {
+          stats.pending += 1;
+          continue;
+        }
+        resolvedAt = miss.first;
+      }
+      if (misses) delete misses[inc.id];
       incidents.set(inc.id, resolveIncident(inc, resolvedAt));
       changed.add(inc.id);
       stats.resolved += 1;
+    }
+  }
+  if (misses) {
+    // Forget misses for alerts that are no longer active for any reason.
+    for (const id of Object.keys(misses)) {
+      if (!incidents.get(id)?.lifecycle?.active) delete misses[id];
     }
   }
   return { changed, stats };

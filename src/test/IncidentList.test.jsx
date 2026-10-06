@@ -94,7 +94,7 @@ describe('IncidentList', () => {
 
   it('shows both source links for a merged incident', () => {
     render(<IncidentList incidents={[mergedInc()]} />);
-    expect(screen.getByText('Via SEPTA →')).toBeInTheDocument();
+    expect(screen.getByText('Alert on Bluesky →')).toBeInTheDocument();
     expect(screen.getByText('Bot detection (gap) →')).toBeInTheDocument();
   });
 

@@ -143,6 +143,14 @@ describe('buildEntryRecord', () => {
     expect(rec.categories).toContainEqual({ term: 'route-17', label: 'Route 17' });
   });
 
+  it("links the bots' Bluesky post when there is one", () => {
+    const post = 'https://bsky.app/profile/did:plc:alerts/post/3k2j';
+    const rec = buildEntryRecord(alertInc({ post_url: post }), { now: NOW });
+    expect(rec.blueskyUrl).toBe(post);
+    expect(rec.contentHtml).toContain(`<a href="${post}">View the post on Bluesky →</a>`);
+    expect(buildEntryRecord(alertInc(), { now: NOW }).contentHtml).not.toContain('Bluesky');
+  });
+
   it("doesn't repeat a route the headline already names", () => {
     const rec = buildEntryRecord(alertInc({ headline: 'L1 Service Suspended' }), { now: NOW });
     expect(rec.title).toBe('L1 Service Suspended');

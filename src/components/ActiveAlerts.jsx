@@ -199,8 +199,9 @@ function ActiveCard({ incident, now, isNew, typicalDurations, stationIndex, show
   const { description } = describeIncident(incident, stationIndex);
   const eventId = incident.id;
   const postUrl = alert ? alert.post_url : (primary?.post_url ?? null);
-  // SEPTA alerts have no permalinks; link the route's SEPTA.org page instead.
-  const sourceUrl = postUrl ? null : (alert?.source_url ?? null);
+  // SEPTA alerts have no permalinks of their own; link the route's SEPTA.org
+  // page alongside the bot's Bluesky post.
+  const sourceUrl = alert?.source_url ?? null;
 
   const allRoutes = Array.isArray(incident.routes) ? incident.routes : [];
   // Responsive split: the first chunk shows at every width; the next chunk
@@ -310,14 +311,24 @@ function ActiveCard({ incident, now, isNew, typicalDurations, stationIndex, show
           );
         })()}
         <div className="flex flex-wrap gap-3 mt-1.5">
-          {(postUrl || sourceUrl) && (
+          {postUrl && (
             <a
-              href={postUrl || sourceUrl}
+              href={postUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-blue-500 hover:text-blue-400 hover:underline"
             >
-              {postUrl ? 'View post →' : 'SEPTA.org →'}
+              View on Bluesky →
+            </a>
+          )}
+          {sourceUrl && (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-500 hover:text-blue-400 hover:underline"
+            >
+              SEPTA.org →
             </a>
           )}
           <ShareLink eventId={eventId} />

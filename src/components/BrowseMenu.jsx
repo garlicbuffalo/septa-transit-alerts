@@ -3,6 +3,7 @@ import { busRouteDisplayId, compareBusRoutes } from '../lib/busRoutes.js';
 import { METRO_LINE_ORDER, METRO_LINES } from '../lib/metroLines.js';
 import { RAIL_LINE_ORDER, RAIL_LINES } from '../lib/railLines.js';
 import { buildRailStationIndex } from '../lib/railStations.js';
+import { BLUESKY_ACCOUNTS } from '../lib/site.js';
 import { buildStationIndex } from '../lib/stations.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -263,6 +264,29 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
                 </span>
                 Privacy
               </a>
+
+              {/* The Bluesky bots that post these alerts and detections. */}
+              {BLUESKY_ACCOUNTS.length > 0 && (
+                <div className="mt-3">
+                  <p className={SUB_LABEL}>Follow on Bluesky</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {BLUESKY_ACCOUNTS.map((bot) => (
+                      <a
+                        key={bot.key}
+                        href={bot.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        role="menuitem"
+                        title={bot.description}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-gh-subtle text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gh-border transition-colors"
+                      >
+                        <span aria-hidden="true">{bot.emoji}</span>
+                        {bot.label}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* Metro & Bus group — SEPTA Metro lines, bus routes, and Metro stations. */}

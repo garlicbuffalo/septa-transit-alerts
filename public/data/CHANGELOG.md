@@ -8,6 +8,21 @@ syndication feeds (`/feed.xml` and the per-line/route feeds under `/feed/`).
 Newest first. If you build on this data, watch this file before pinning to the
 format.
 
+## 2026-10-06 — Bluesky post links
+
+- `official_alert.post_url` now links to the alerts bot's Bluesky post of the
+  SEPTA alert (`https://bsky.app/profile/<did>/post/<rkey>`), and
+  `official_alert.resolved_reply_url` to its threaded "✅ SEPTA has cleared"
+  reply. Both stay `null` for alerts the bot didn't post (it posts significant
+  alerts only) and for anything from before it started.
+- Official alerts now resolve only after being missing from SEPTA's feed for two
+  polls at least 4 minutes apart, with `resolved_ts` backdated to the first
+  miss, so feed blips no longer close and reopen incidents.
+- Bus and Metro detections open after persisting at least 6 minutes (and close
+  after 6 minutes absent) rather than after two polls.
+- Feeds: entries link "View the post on Bluesky" when there is one, and the JSON
+  Feed's `external_url` prefers the Bluesky post over the SEPTA.org page.
+
 ## 2026-10-06 — Bus and Metro detections
 
 - **New detection sources** on bus and SEPTA Metro incidents: `gap`, `bunching`,

@@ -1,3 +1,5 @@
+import { BLUESKY_ACCOUNTS } from '../lib/site.js';
+
 const LINK = 'text-blue-500 hover:text-blue-400 hover:underline';
 
 export default function AboutContent() {
@@ -17,8 +19,8 @@ export default function AboutContent() {
         Where the data comes from
       </h3>
       <p>
-        A collector polls SEPTA's public real-time APIs about every 10 minutes and keeps a running
-        record of what it sees:
+        A collector polls SEPTA's public real-time APIs every few minutes and keeps a running record
+        of what it sees:
       </p>
       <ul className="list-disc list-outside ml-5 space-y-2">
         <li>
@@ -48,7 +50,7 @@ export default function AboutContent() {
           apart as scheduled, and at least 20 minutes), <em>bunching</em> (vehicles scheduled well
           apart running together), <em>missing vehicles</em> (far fewer of a route's trips on
           SEPTA's tracker than usual), and <em>vehicles held in place</em> (two or more stopped
-          mid-route for 10+ minutes). A condition has to show up on two checks in a row before it's
+          mid-route for 10+ minutes). A condition has to persist for about six minutes before it's
           recorded, and when SEPTA has an alert out for the same route the detection is attached to
           it.
         </li>
@@ -65,6 +67,26 @@ export default function AboutContent() {
         Station names in alert text ("Shuttle busing between Olney and Fern Rock") are matched to
         SEPTA's station list, so line maps and station pages can show where disruptions happen.
       </p>
+
+      {BLUESKY_ACCOUNTS.length > 0 && (
+        <>
+          <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">Bluesky bots</h3>
+          <p>
+            The same pipeline posts to Bluesky as it goes, one account per stream. Each incident
+            here links to its post, and the post links back here.
+          </p>
+          <ul className="list-disc list-outside ml-5 space-y-1">
+            {BLUESKY_ACCOUNTS.map((bot) => (
+              <li key={bot.key}>
+                <a className={LINK} href={bot.url} target="_blank" rel="noopener noreferrer">
+                  @{bot.handle}
+                </a>{' '}
+                — {bot.description}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">Limits</h3>
       <p>

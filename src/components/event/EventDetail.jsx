@@ -384,11 +384,11 @@ export function EventDetail({ incident, incidents, alerts, observations, station
   const obsResolvedUrl =
     isMerged && !lifecycle.active ? (primary?.resolved_post_url ?? null) : null;
   const eventId = incident.id;
-  // The main post link: SEPTA's announcement post when present, else the bot
-  // post. SEPTA alerts have no permalinks of their own, so an unposted alert
-  // links the route's SEPTA.org page instead (`sourceUrl`).
+  // The main post link: the alerts bot's Bluesky post of SEPTA's alert when
+  // present, else the detection bot's post. SEPTA alerts have no permalinks
+  // of their own, so the route's SEPTA.org page is linked alongside.
   const primaryUrl = official ? official.post_url : (primary?.post_url ?? null);
-  const sourceUrl = official && !official.post_url ? (official.source_url ?? null) : null;
+  const sourceUrl = official ? (official.source_url ?? null) : null;
 
   // Single-train Regional Rail cancellation: replaces the ongoing/resolved pill and the
   // duration framing with the train's schedule (this isn't an open disruption
@@ -1278,7 +1278,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
             rel="noopener noreferrer"
             className="text-xs text-blue-500 hover:text-blue-400 hover:underline"
           >
-            {isMerged ? `Via ${agency} →` : 'View post →'}
+            {isMerged ? 'Alert on Bluesky →' : 'View on Bluesky →'}
           </a>
         )}
         {sourceUrl && (

@@ -55,9 +55,9 @@ Every incident-bearing file (`alerts-recent.json`, the monthly shards, the per-l
     "id": "136615",                   // SEPTA's alert id ("D17471" for detours)
     "headline": "Shuttle Busing Between Olney and Fern Rock Transit Center",
     "description": "Bus service replaces trains from Olney to Fern Rock …",
-    "post_url": null,
+    "post_url": "https://bsky.app/profile/did:plc:…/post/3m…",  // the alerts bot's Bluesky post, or null
     "source_url": "https://www.septa.org/schedules/B1",
-    "resolved_reply_url": null,
+    "resolved_reply_url": null,       // its threaded ✅ "cleared" reply, once posted
     "lifecycle": { /* same fields as above */ },
     "scope": {
       "from_station": "Olney Transit Center",
@@ -149,7 +149,7 @@ A bus gap (vehicle-position detection):
         "direction_label": "toward 20th-Johnston"
       },
       "lifecycle": { "first_seen_ts": …, "onset_ts": …, "resolved_ts": null, "active": true, "duration_ms": null },
-      "post_url": null,
+      "post_url": null,               // the detection bot's Bluesky post, when there is one
       "resolved_post_url": null,
       "description": "~38 min between Route 17 buses toward 20th-Johnston — scheduled every ~15 min",
       "evidence": {

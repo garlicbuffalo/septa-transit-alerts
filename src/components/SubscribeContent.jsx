@@ -3,7 +3,7 @@ import { BUS_ROUTE_NAMES, compareBusRoutes, formatBusRoute } from '../lib/busRou
 import { dataUrl } from '../lib/dataSource.js';
 import { METRO_LINE_ORDER, metroLineFullName } from '../lib/metroLines.js';
 import { RAIL_LINE_ORDER, railLineFullName } from '../lib/railLines.js';
-import { SITE_ORIGIN } from '../lib/site.js';
+import { BLUESKY_ACCOUNTS, SITE_ORIGIN } from '../lib/site.js';
 
 const LINK = 'text-blue-500 hover:text-blue-400 hover:underline';
 const FEED_URL = `${SITE_ORIGIN}/feed.xml`;
@@ -65,11 +65,34 @@ export default function SubscribeContent() {
 
   return (
     <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-      <h3 className="font-semibold text-slate-700 dark:text-slate-200">RSS / Atom feed</h3>
+      {BLUESKY_ACCOUNTS.length > 0 && (
+        <>
+          <h3 className="font-semibold text-slate-700 dark:text-slate-200">Follow on Bluesky</h3>
+          <p>
+            The bots that feed this archive post to Bluesky in real time. Follow whichever you ride:
+          </p>
+          <ul className="list-disc list-outside ml-5 space-y-1">
+            {BLUESKY_ACCOUNTS.map((bot) => (
+              <li key={bot.key}>
+                <a className={LINK} href={bot.url} target="_blank" rel="noopener noreferrer">
+                  @{bot.handle}
+                </a>{' '}
+                — {bot.description}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <h3
+        className={`font-semibold text-slate-700 dark:text-slate-200${BLUESKY_ACCOUNTS.length > 0 ? ' pt-3' : ''}`}
+      >
+        RSS / Atom feed
+      </h3>
       <p>
-        An Atom feed of the 50 most recent incidents — official SEPTA alerts plus detected Regional
-        Rail delays and cancellations, across every line and route. Drop the URL below into any feed
-        reader to follow along.
+        An Atom feed of the 50 most recent incidents — official SEPTA alerts plus bot-detected
+        disruptions, across every line and route. Drop the URL below into any feed reader to follow
+        along.
       </p>
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Capped at 50 entries, which typically covers the last 3–7 days depending on how active the
