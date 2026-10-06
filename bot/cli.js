@@ -6,6 +6,8 @@
 //   node bot/cli.js once           one observe + collect tick, then exit
 //   node bot/cli.js map <id>       render the alert map for an incident in
 //                                  the data directory to the assets folder
+//   node bot/cli.js snapshot [min] record and post the bus and Metro system
+//                                  snapshots now (default 15 minutes)
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createBlueskyClient } from './lib/bluesky.js';
@@ -99,10 +101,34 @@ async function map(id) {
   db.close();
 }
 
+async function snapshot(minutes) {
+  const { pipeline, db } = createRuntime(config);
+  await pipeline.loadShapes();
+  if (!(await pipeline.checkVideo())) {
+    throw new Error(`timelapses are off (VIDEOS=0, or no ffmpeg at "${config.ffmpegPath}")`);
+  }
+  const durationMs = minutes * 60_000;
+  const started = pipeline.startSnapshots({ durationMs, slot: `manual-${Date.now()}` });
+  if (!started.length) throw new Error('no snapshot started');
+  log(`recording ${started.join(' and ')} for ${minutes} min…`);
+  const until = Date.now() + durationMs + 25_000;
+  while (Date.now() < until) {
+    const tick = Date.now();
+    const r = await pipeline.sampleCaptures();
+    log(`sample: ${r.samples} positions`);
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, tick + 15_000 - Date.now())));
+  }
+  for (let r = await pipeline.renderCaptures(); r; r = await pipeline.renderCaptures()) {
+    log(`render: ${JSON.stringify(r)}`);
+  }
+  db.close();
+}
+
 if (command === 'check') await check();
 else if (command === 'once') await once();
 else if (command === 'map' && args[0]) await map(args[0]);
+else if (command === 'snapshot') await snapshot(Number(args[0]) || 15);
 else {
-  log('usage: node bot/cli.js check | once | map <incident-id>');
+  log('usage: node bot/cli.js check | once | map <incident-id> | snapshot [minutes]');
   process.exit(2);
 }

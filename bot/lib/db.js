@@ -83,6 +83,43 @@ const MIGRATIONS = [
   CREATE UNIQUE INDEX detection_events_subject ON detection_events (subject);
   CREATE INDEX detection_events_route ON detection_events (source, route, ts);
   `,
+  `
+  -- Timelapse recordings: positions sampled every 15 seconds for a window,
+  -- then rendered to a video and posted (a reply under a detection post, or a
+  -- system snapshot). routes and focus are JSON; routes is null for every
+  -- route of the mode. status: capturing → rendering → done | failed | skipped.
+  CREATE TABLE captures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    account TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    routes TEXT,
+    focus TEXT,
+    reply_uri TEXT,
+    start_ts INTEGER NOT NULL,
+    end_ts INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'capturing',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    updated_ts INTEGER,
+    note TEXT
+  );
+  CREATE UNIQUE INDEX captures_subject ON captures (subject, kind);
+  CREATE INDEX captures_status ON captures (status, end_ts);
+
+  -- One row per vehicle report during a capture (t is SEPTA's report time).
+  CREATE TABLE capture_samples (
+    capture_id INTEGER NOT NULL,
+    vehicle_id TEXT NOT NULL,
+    label TEXT,
+    route TEXT NOT NULL,
+    t INTEGER NOT NULL,
+    lat REAL NOT NULL,
+    lon REAL NOT NULL,
+    late_min REAL,
+    PRIMARY KEY (capture_id, vehicle_id, t)
+  ) WITHOUT ROWID;
+  `,
 ];
 
 /**
@@ -138,10 +175,21 @@ export function clearCooldown(db, keys) {
   for (const key of keys) del.run(key);
 }
 
-/** Delete old observations and expired cooldowns. */
+/**
+ * Delete old observations, expired cooldowns, and finished captures' samples
+ * (the capture rows themselves stay a month, as a record).
+ */
 export function pruneDb(db, now, { observationRetentionDays }) {
-  const cutoff = now - observationRetentionDays * 24 * 60 * 60 * 1000;
+  const DAY = 24 * 60 * 60 * 1000;
+  const cutoff = now - observationRetentionDays * DAY;
   const observations = db.prepare('DELETE FROM observations WHERE ts < ?').run(cutoff).changes;
   const cooldowns = db.prepare('DELETE FROM cooldowns WHERE expires_at < ?').run(now).changes;
-  return { observations, cooldowns };
+  const samples = db
+    .prepare(
+      `DELETE FROM capture_samples WHERE capture_id IN
+         (SELECT id FROM captures WHERE status IN ('done', 'failed', 'skipped') OR end_ts < ?)`,
+    )
+    .run(now - DAY).changes;
+  db.prepare('DELETE FROM captures WHERE end_ts < ?').run(now - 30 * DAY);
+  return { observations, cooldowns, samples };
 }

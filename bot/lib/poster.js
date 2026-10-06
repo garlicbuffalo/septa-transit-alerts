@@ -41,16 +41,21 @@ export function createPoster({ db, client, log = () => {}, now = () => Date.now(
 
     /**
      * Post and record it. `reply` may be a reply ref or an at:// URI to
-     * continue that post's thread.
+     * continue that post's thread. If that post is gone, the reply posts
+     * unthreaded, or not at all with `requireParent` (returning null).
      * @returns {Promise<{ uri: string, cid: string, url: string } | null>}
      */
-    async post({ account, kind, subject = null, reply = null, ...opts }) {
+    async post({ account, kind, subject = null, reply = null, requireParent = false, ...opts }) {
       let replyRef = reply;
       if (typeof reply === 'string') {
         replyRef = await client.replyRef(account, reply);
         // Dry-run "posts" live only in memory; rebuild the thread from the
         // recorded rows after a restart.
         if (!replyRef && client.dryRun) replyRef = recordedThread(reply);
+        if (!replyRef && requireParent) {
+          log(`poster: ${reply} is gone; not posting ${kind} ${subject}`);
+          return null;
+        }
         if (!replyRef) log(`poster: ${reply} is gone; posting ${kind} ${subject} unthreaded`);
       }
       const res = await client.post(account, { ...opts, ...(replyRef && { reply: replyRef }) });

@@ -5,6 +5,10 @@
 //   collect      every 2 minutes: run the collector on the latest positions,
 //                post to Bluesky from its beforePublish hook, link the posts
 //                into the data, and publish the data branch
+//   sample       every 15 seconds while a timelapse is recording: poll the
+//                routes it follows (or the whole feed, for a snapshot)
+//   render       every 30 seconds: render a finished timelapse and post it
+//   snapshot     5 times a day: start the bus and Metro system snapshots
 //   housekeeping hourly: prune old observations and dry-run assets
 //   backup       nightly: a consistent copy of the database
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
@@ -16,7 +20,15 @@ import { linkAlertPosts, postAlerts } from '../features/alerts.js';
 import { postCrossBunching } from '../features/crossBunching.js';
 import { linkDetectionPosts, postDetections } from '../features/detections.js';
 import { maybePostGhostRollups } from '../features/ghosts.js';
+import {
+  renderDueCapture,
+  sampleCaptures,
+  startDetectionCapture,
+  startSnapshots,
+  VIDEO_LIMITS,
+} from '../features/timelapse.js';
 import { renderAlertMap } from '../map/lineMap.js';
+import { ffmpegAvailable } from '../video/encode.js';
 import { pruneDb } from './db.js';
 import { recordObservations } from './observations.js';
 import { ensureRouteShapes } from './shapes.js';
@@ -43,6 +55,11 @@ export function createPipeline({
 }) {
   const latest = { transitView: null, trainView: null };
   let shapes = null;
+  // Timelapses need ffmpeg; checkVideo() confirms it's there.
+  let videoReady = false;
+  const limits = { ...VIDEO_LIMITS, dailyPerAccount: config.videoDailyCap };
+  const timelapse = () =>
+    videoReady ? (opts) => startDetectionCapture(db, opts, { limits }) : null;
 
   // Each feature runs on its own: one failing never stops the others (or
   // the data from publishing).
@@ -73,6 +90,38 @@ export function createPipeline({
         log,
       });
       return shapes;
+    },
+
+    /** Turn timelapses on if they're enabled and ffmpeg runs. */
+    async checkVideo() {
+      videoReady = config.videos && (await ffmpegAvailable(config.ffmpegPath));
+      return videoReady;
+    },
+
+    /** Poll positions for running timelapse captures (every 15 seconds). */
+    sampleCaptures() {
+      return sampleCaptures({ db, sources, now: now(), log });
+    },
+
+    /** Render and post the next finished timelapse, if any. */
+    renderCaptures() {
+      if (!videoReady) return null;
+      return renderDueCapture({
+        db,
+        poster,
+        shapes,
+        basemap,
+        now: now(),
+        ffmpeg: config.ffmpegPath,
+        limits,
+        log,
+      });
+    },
+
+    /** Start the bus and Metro system snapshots. */
+    startSnapshots(opts = {}) {
+      if (!videoReady) return [];
+      return startSnapshots(db, { now: now(), hasAccount: poster.client.hasAccount, ...opts });
     },
 
     async observe() {
@@ -143,6 +192,7 @@ export function createPipeline({
               vehicles,
               shapes,
               basemap,
+              timelapse: timelapse(),
               now: tickNow,
               maxAgeMs: config.postMaxAgeMs,
               log,
@@ -159,6 +209,7 @@ export function createPipeline({
               poster,
               shapes,
               basemap,
+              timelapse: timelapse(),
               now: tickNow,
               log,
             }),

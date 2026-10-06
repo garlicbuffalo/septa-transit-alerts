@@ -8,7 +8,7 @@ The always-on half of the project. It runs on a small server and:
   | Account | Posts |
   |---|---|
   | `alerts` | SEPTA's significant alerts, with a map when the alert names a stretch of line, and a threaded ✅ reply when SEPTA clears them |
-  | `metro` | SEPTA Metro gaps, bunching, stuck vehicles, and silent routes, each with a map; an hourly roundup of routes with vehicles missing from the tracker |
+  | `metro` | SEPTA Metro gaps, bunching, stuck vehicles, and silent routes, each with a map; an hourly roundup of routes with vehicles missing from the tracker; timelapse videos |
   | `bus` | The same for buses, plus clusters of several routes' buses stopped together |
   | `rail` | Regional Rail delays, cancellations, speed maps, and recaps *(phase 4)* |
 
@@ -21,7 +21,7 @@ Everything defaults to **dry run**. The service collects and renders every post 
 You need:
 
 - an Ubuntu 22.04 or 24.04 server (1 vCPU and 2 GB of RAM is plenty, e.g. Hetzner CX22 or a DigitalOcean $6 droplet);
-- the four Bluesky accounts, each with an app password;
+- the four Bluesky accounts, each with an app password and a verified email address (Bluesky only takes videos from verified accounts);
 - a Mapbox public token;
 - a fine-grained GitHub token for this repository with **Contents: read and write** and **Actions: read and write**.
 
@@ -31,7 +31,7 @@ You need:
    curl -fsSL https://raw.githubusercontent.com/garlicbuffalo/septa-transit-alerts/main/bot/deploy/setup.sh | sudo bash
    ```
 
-   This installs Node.js, ffmpeg, SQLite and fonts, and clones the repo to `/opt/septa-transit-alerts`. It creates the `septa-bots` user and the systemd service, then starts the service in dry-run mode.
+   This installs Node.js, ffmpeg (for the timelapses), SQLite and fonts, and clones the repo to `/opt/septa-transit-alerts`. It creates the `septa-bots` user and the systemd service, then starts the service in dry-run mode.
 
 2. **Configure.** Fill in the credentials:
 
@@ -52,7 +52,7 @@ You need:
 
    Each collector tick logs one line, e.g. `collect: 48 active, 0 changed`.
 
-5. **Review dry-run posts.** Would-be posts collect in `/var/lib/septa-bots/assets/<date>/`: a `.json` with the text, plus the image. Alerts that were already up when posting started are never posted, so expect only new ones.
+5. **Review dry-run posts.** Would-be posts collect in `/var/lib/septa-bots/assets/<date>/`: a `.json` with the text, plus the image or video. Alerts that were already up when posting started are never posted, so expect only new ones. `sudo septa-bots snapshot 3` records a 3-minute system timelapse right away, to check videos render.
 
 6. **Go live.** Set `BOT_MODE=live` and `PUBLISH=1` in `/etc/septa-bots.env`, then restart.
 
@@ -65,6 +65,8 @@ You need:
 | Update to the latest `main` | `sudo septa-bots update` |
 | One manual tick | `sudo septa-bots once` |
 | Re-render an alert's map | `sudo septa-bots map alert-136615` |
+| Record and post the system timelapses now | `sudo septa-bots snapshot` (15 minutes; `snapshot 3` for 3) |
+| Turn videos off | set `VIDEOS=0`, restart |
 | Stop posting at once | set `BOT_MODE=dry-run`, restart |
 | Hand collecting back to GitHub Actions | set `PUBLISH=0`, restart; the workflow resumes within 20 minutes |
 
@@ -72,7 +74,7 @@ You need:
 
 | Path | What it holds |
 |---|---|
-| `bots.sqlite` | Every post (so restarts never double-post and threads continue), recent vehicle positions, cooldowns |
+| `bots.sqlite` | Every post (so restarts never double-post and threads continue), recent vehicle positions, cooldowns, timelapse recordings |
 | `data/` | The checkout of the `data` branch |
 | `cache/` | The daily GTFS schedule index |
 | `bluesky-sessions/` | Cached logins, so the accounts stay under Bluesky's login limits |
@@ -84,7 +86,8 @@ You need:
 ## How it works
 
 ```
-main.js            scheduler: observe (1 min), collect (2 min), housekeeping, backup
+main.js            scheduler: observe (1 min), collect (2 min), timelapse sample (15 s) and
+                   render (30 s), snapshots, housekeeping, backup
 lib/pipeline.js    observe → collect (../collector) → post + link (beforePublish hook) → publish
 lib/bluesky.js     Bluesky client: cached sessions, images/video/link cards/quotes, threading, retries
                    + the dry-run client with the same interface
@@ -95,7 +98,9 @@ features/detections.js  gap / bunching / stuck / silent-route posts, caps, follo
 features/ghosts.js      hourly missing-vehicle roundups
 features/crossBunching.js  several routes' vehicles stopped together
 features/history.js     detection history: daily caps and "📊" callouts
+features/timelapse.js   timelapse recordings: start, sample, render, post
 map/               Mapbox basemap + SVG overlay rendering (projection, drawing, line and route maps)
+video/             timelapses: vehicle tracks, scenes, frame rendering, ffmpeg encoding
 lib/shapes.js      route shapes from GTFS (built with the collector's daily schedule)
 ```
 
@@ -111,6 +116,8 @@ Each feature decides what to post from the collector's incidents. It records wha
 | Silent route | How long the route has had nothing on the tracker, then hourly replies and a ✅ |
 | Missing vehicles | One roundup per account at 7 past each hour, listing the routes that opened in the last hour |
 | Cross-route cluster | 4+ vehicles from 2+ routes stopped together (bot-only, not a site incident) |
+
+**Timelapses.** After a gap, bunching, or cluster post, the bot follows the vehicles in it for 10 minutes, polling their route every 15 seconds, and replies with a 10-second video: the vehicles numbered (or L and N) as on the map, with trails, the route's other vehicles as dots, and a live readout. The reply says what happened: "Still bunched: 3 buses within 520 ft (was 370 ft)", "The buses spread out: 370 ft → 0.42 mi from first to last", "The gap between #3787 (L) and #3314 (N) went from 2.40 mi to 2.10 mi", or "3 of the 4 buses had moved on". At 8 and 11 AM and 2, 5, and 8 PM, each account also posts a 15-minute system timelapse: every tracked bus, or every Metro trolley and M1 car, colored by how late it's running. Bluesky caps video uploads per account per day, so each account gets at most one timelapse reply per kind per hour and 20 videos a day in all (`VIDEO_DAILY_CAP`), 5 of them kept for the snapshots.
 
 Each route gets at most one post per kind per hour, and a few per day: 3 gaps, 3 bunches, 4 stuck-vehicle posts and 3 silent stretches. A detection 25% worse than everything already posted for the route that day posts anyway. Posts carry history callouts ("📊 2nd Route 23 gap reported today · biggest gap vs schedule on this route in 30 days"). When a detection is attached to a SEPTA alert, the alerts account quotes it into that alert's thread, up to 3 per thread.
 
@@ -143,7 +150,8 @@ The bots are a port of [cta-insights](https://github.com/cailinpitt/cta-insights
 - linear reply threads;
 - posting that's recorded so it never repeats;
 - segment maps for alerts;
-- cleared replies with a `/resolved` link card.
+- cleared replies with a `/resolved` link card;
+- timelapse videos (frame interpolation, dropout bridging, comet trails, and the ffmpeg settings).
 
 cta-insights is licensed under the ISC license:
 

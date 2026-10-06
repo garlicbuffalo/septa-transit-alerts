@@ -31,6 +31,14 @@ describe('config', () => {
     expect(c.accounts.alerts).toEqual({ identifier: 'alerts.example', password: 'pw' });
     expect(c.accounts.bus).toBeNull();
   });
+
+  it('turns timelapses on by default, under the daily video cap', () => {
+    expect(loadConfig({})).toMatchObject({ videos: true, ffmpegPath: 'ffmpeg', videoDailyCap: 20 });
+    expect(loadConfig({ VIDEOS: '0', VIDEO_DAILY_CAP: '10' })).toMatchObject({
+      videos: false,
+      videoDailyCap: 10,
+    });
+  });
 });
 
 describe('database', () => {

@@ -21,7 +21,7 @@ jobs:
 
   # The bot service (bot/) is its own package with native dependencies
   # (sharp, better-sqlite3); its tests run against the collector's fixtures and
-  # never touch the network.
+  # never touch the network. ffmpeg is for the timelapse encoding test.
   bot:
     runs-on: ubuntu-latest
     steps:
@@ -35,7 +35,7 @@ jobs:
             package-lock.json
             bot/package-lock.json
 
-      - run: sudo apt-get install -y fonts-inter
+      - run: sudo apt-get update -q && sudo apt-get install -y -q fonts-inter ffmpeg
 
       - run: npm ci
 
