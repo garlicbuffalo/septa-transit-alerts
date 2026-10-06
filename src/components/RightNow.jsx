@@ -40,7 +40,8 @@ function LaneStatus({ activeCount, scheduledCount }) {
 function LaneAllClear({ label }) {
   return (
     <div className="rounded-lg border border-green-200 dark:border-green-900 bg-green-50/60 dark:bg-green-950/20 px-3 py-2.5 text-xs text-green-700/90 dark:text-green-400/90">
-      No active {label} disruptions right now.
+      No active {label} disruptions right now.{' '}
+      <span className="opacity-75">Go get yourself a wooder ice.</span>
     </div>
   );
 }

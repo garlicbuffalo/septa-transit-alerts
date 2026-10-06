@@ -497,17 +497,21 @@ export default function App() {
                 governs the active-now count and every stat below — a rider
                 almost always cares about one network at a time. */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400">Showing</span>
-              <div className="inline-flex rounded-lg border border-slate-300 dark:border-gh-border overflow-hidden text-xs font-semibold">
+              <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400">
+                Showing
+              </span>
+              {/* Segmented control: full-width with equal segments on phones,
+                  like a native app's scope switcher; compact from sm up. */}
+              <div className="flex w-full sm:w-auto sm:inline-flex rounded-xl sm:rounded-lg bg-slate-200/70 dark:bg-gh-subtle p-1 sm:p-0.5 text-sm sm:text-xs font-semibold">
                 {NETWORK_OPTIONS.map(([value, label]) => (
                   <button
                     type="button"
                     key={value}
                     onClick={() => setSelectedNetwork(value)}
-                    className={`px-3 py-1 transition-colors ${
+                    className={`flex-1 sm:flex-none px-3 py-1.5 sm:py-1 rounded-lg sm:rounded-md transition-colors ${
                       selectedNetwork === value
-                        ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
-                        : 'bg-transparent text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-gh-border/40'
+                        ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-200 dark:text-slate-900'
+                        : 'bg-transparent text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100'
                     }`}
                     aria-pressed={selectedNetwork === value}
                   >
@@ -562,7 +566,8 @@ export default function App() {
                         All clear
                       </p>
                       <p className="text-xs text-green-700/80 dark:text-green-400/80">
-                        No active {NETWORK_LABELS[selectedNetwork]} disruptions right now.
+                        No active {NETWORK_LABELS[selectedNetwork]} disruptions right now. Go get
+                        yourself a wooder ice.
                       </p>
                     </div>
                   </section>

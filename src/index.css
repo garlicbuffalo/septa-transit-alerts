@@ -88,3 +88,35 @@ html.dark {
     animation: none !important;
   }
 }
+
+/* App-like touch behavior: no grey flash on tap (links and buttons carry
+   their own pressed/hover states). */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The page runs edge to edge (`viewport-fit=cover` in index.html), so the
+   header, footer, and tab bar pad themselves for the notch / home indicator.
+   The insets are 0 in an ordinary browser tab. */
+.site-header {
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+.site-footer {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab-bar {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+/* Phones: reserve room under the footer for the fixed bottom tab bar
+   (TabBar.jsx, ~3.5rem tall) so the last links aren't hidden behind it. */
+@media (max-width: 639px) {
+  .site-footer {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+}

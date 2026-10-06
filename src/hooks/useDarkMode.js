@@ -17,7 +17,7 @@ export function useDarkMode() {
     // Keep the browser chrome (theme-color) in sync with the in-app toggle,
     // which can diverge from the OS preference the media-scoped metas track.
     // Dropping `media` lets the resolved choice win over the OS-based pair.
-    const color = dark ? '#0d1117' : '#f8fafc';
+    const color = dark ? '#161b22' : '#ffffff';
     for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
       meta.setAttribute('content', color);
       meta.removeAttribute('media');
