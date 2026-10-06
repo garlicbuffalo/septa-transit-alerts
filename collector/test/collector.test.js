@@ -134,6 +134,46 @@ describe('applyOfficialAlerts', () => {
     expect([...incidents.values()].every((i) => i.lifecycle.active)).toBe(true);
   });
 
+  it('with miss tracking, resolves only after two misses spanning a few minutes', () => {
+    const incidents = new Map();
+    const misses = {};
+    applyOfficialAlerts(incidents, [alert()], NOW, { misses });
+    // One miss: pending, still active.
+    let { stats } = applyOfficialAlerts(incidents, [], NOW + 2 * MIN, { misses });
+    expect(stats.pending).toBe(1);
+    expect(incidents.get('alert-500').lifecycle.active).toBe(true);
+    // Back in the feed: the miss is forgotten.
+    applyOfficialAlerts(incidents, [alert()], NOW + 4 * MIN, { misses });
+    expect(misses).toEqual({});
+    // Two misses, but only 2 minutes apart: still pending.
+    applyOfficialAlerts(incidents, [], NOW + 6 * MIN, { misses });
+    ({ stats } = applyOfficialAlerts(incidents, [], NOW + 8 * MIN, { misses }));
+    expect(stats.pending).toBe(1);
+    // A third, 4+ minutes after the first: resolved, backdated to the first miss.
+    ({ stats } = applyOfficialAlerts(incidents, [], NOW + 10 * MIN, { misses }));
+    expect(stats.resolved).toBe(1);
+    expect(incidents.get('alert-500').lifecycle.resolved_ts).toBe(NOW + 6 * MIN);
+    expect(misses).toEqual({});
+  });
+
+  it('keeps the Bluesky links the bot service wrote', () => {
+    const incidents = new Map();
+    applyOfficialAlerts(incidents, [alert()], NOW);
+    const inc = incidents.get('alert-500');
+    incidents.set('alert-500', {
+      ...inc,
+      official_alert: {
+        ...inc.official_alert,
+        post_url: 'https://bsky.app/profile/did:plc:x/post/1',
+        resolved_reply_url: null,
+      },
+    });
+    applyOfficialAlerts(incidents, [alert({ message: '<p>Edited.</p>' })], NOW + 10 * MIN);
+    expect(incidents.get('alert-500').official_alert.post_url).toBe(
+      'https://bsky.app/profile/did:plc:x/post/1',
+    );
+  });
+
   it('closes an alert still listed well past its stated end', () => {
     const incidents = new Map();
     const stale = alert({ start: '2026-10-01 09:30:00.000', end: '2026-10-02 14:00:00.000' });
@@ -399,6 +439,31 @@ describe('collect (fixtures end to end)', () => {
   });
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
+  });
+
+  it('runs the beforePublish hook and takes source overrides', async () => {
+    const seen = {};
+    const { summary } = await collect({
+      dataDir: dir,
+      fixturesDir: FIXTURES,
+      now: NOW,
+      log: () => {},
+      sources: { elevators: async () => [] },
+      beforePublish: async ({ incidents, now }) => {
+        seen.count = incidents.size;
+        seen.now = now;
+        const first = [...incidents.values()].find((i) => i.official_alert);
+        first.official_alert.post_url = 'https://bsky.app/profile/did:plc:x/post/hook';
+        return { touched: first.id };
+      },
+    });
+    expect(seen.count).toBeGreaterThan(0);
+    expect(seen.now).toBe(NOW);
+    expect(summary.sources.elevators.active ?? 0).toBe(0);
+    const recent = JSON.parse(await readFile(join(dir, 'alerts-recent.json'), 'utf8'));
+    expect(
+      recent.incidents.find((i) => i.id === summary.hook.touched).official_alert.post_url,
+    ).toBe('https://bsky.app/profile/did:plc:x/post/hook');
   });
 
   it('builds a complete data directory from captured SEPTA responses', async () => {

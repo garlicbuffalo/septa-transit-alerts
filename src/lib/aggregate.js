@@ -33,6 +33,13 @@ function getMerge(alerts, observations) {
   return result;
 }
 
+// The /event/:id permalink for a record: its incident id. Records built
+// without one (hand-made test fixtures) fall back to the Bluesky post rkey,
+// which /event/:id also resolves.
+function eventIdOf(rec) {
+  return rec._incidentId ?? postUrlRkey(rec.post_url) ?? postUrlRkey(rec.obs_post_url) ?? null;
+}
+
 const PHILLY_TZ = 'America/New_York';
 const phillyHourFmt = new Intl.DateTimeFormat('en-US', {
   timeZone: PHILLY_TZ,
@@ -1078,10 +1085,9 @@ export function computeCohortDurationStats(
 
   const { merged, standaloneObs } = getMerge(alerts, observations);
 
-  const incidentEventId =
-    postUrlRkey(incident.post_url) ?? postUrlRkey(incident.obs_post_url) ?? null;
+  const incidentEventId = eventIdOf(incident);
   const isSelf = (other) => {
-    const otherId = postUrlRkey(other.post_url) ?? postUrlRkey(other.obs_post_url) ?? null;
+    const otherId = eventIdOf(other);
     return otherId != null && incidentEventId != null && otherId === incidentEventId;
   };
 
@@ -1356,7 +1362,7 @@ export function buildWeekSummary(alerts, observations, weekStartUtc, now = Date.
       resolved_ts: m.resolved_ts,
       duration_ms: m.duration_ms,
       headline: m.headline ?? null,
-      post_url: m.post_url ?? m.obs_post_url ?? null,
+      id: eventIdOf(m),
     })),
     ...standaloneAlerts.map((a) => ({
       ts: a.first_seen_ts,
@@ -1366,7 +1372,7 @@ export function buildWeekSummary(alerts, observations, weekStartUtc, now = Date.
       resolved_ts: a.resolved_ts,
       duration_ms: a.duration_ms,
       headline: a.headline ?? null,
-      post_url: a.post_url ?? null,
+      id: eventIdOf(a),
     })),
     ...standaloneObs.map((o) => ({
       ts: o.first_seen_ts ?? o.ts,
@@ -1376,7 +1382,7 @@ export function buildWeekSummary(alerts, observations, weekStartUtc, now = Date.
       resolved_ts: o.resolved_ts,
       duration_ms: o.duration_ms,
       headline: o.headline ?? null,
-      post_url: o.post_url ?? null,
+      id: eventIdOf(o),
     })),
   ];
 
@@ -1434,7 +1440,7 @@ export function buildWeekSummary(alerts, observations, weekStartUtc, now = Date.
         durationMs,
         active: !!inc.active,
         startTs: inc.ts,
-        id: postUrlRkey(inc.post_url),
+        id: inc.id,
       };
     }
   }
@@ -1566,7 +1572,7 @@ export function computeStatsLeaderboards(
     const durationMs = incident.duration_ms ?? endTs - startTs;
     if (durationMs <= 0) return;
     if (longestIncident && durationMs <= longestIncident.durationMs) return;
-    const id = postUrlRkey(incident.post_url) ?? postUrlRkey(incident.obs_post_url) ?? null;
+    const id = eventIdOf(incident);
     if (!id) return;
     longestIncident = {
       id,
@@ -2006,7 +2012,7 @@ export function computeRestorationDeltas(
     if (overlapMs / alertDuration < minOverlapRatio) continue;
     const deltaMs = m.resolved_ts - m.obs_resolved_ts;
     if (Math.abs(deltaMs) < minDeltaMs) continue;
-    const id = postUrlRkey(m.post_url) ?? postUrlRkey(m.obs_post_url);
+    const id = eventIdOf(m);
     if (!id) continue;
     rows.push({
       id,

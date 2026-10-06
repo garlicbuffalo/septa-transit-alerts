@@ -58,9 +58,9 @@ export default function PrivacyPage() {
 
             <h2 className={H2}>Third parties</h2>
             <p>
-              No third-party scripts, trackers, fonts, or embeds run here. Links out to SEPTA or
-              GitHub only load when you choose to click them, and those sites have their own privacy
-              policies.
+              No third-party scripts, trackers, fonts, or embeds run here. Links out to Bluesky,
+              SEPTA, or GitHub only load when you choose to click them, and those sites have their
+              own privacy policies.
             </p>
 
             <h2 className={H2}>Hosting and server logs</h2>
@@ -90,8 +90,8 @@ export default function PrivacyPage() {
             <h2 className={H2}>The data shown on the site</h2>
             <p>
               The incidents shown here are built from SEPTA's public service alerts and real-time
-              train, elevator, and schedule feeds. None of it is personal information about site
-              visitors.
+              vehicle, train, elevator, and schedule feeds, and link to the project's own public
+              Bluesky posts. None of it is personal information about site visitors.
             </p>
 
             <h2 className={H2}>Questions</h2>

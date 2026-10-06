@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { configDefaults, defineConfig } from 'vitest/config';
 import { SITE_ORIGIN } from './src/lib/site.js';
 
 // Copy `index.html` to `404.html` after build. GitHub Pages serves `404.html`
@@ -51,6 +51,9 @@ export default defineConfig({
   plugins: [react(), siteOrigin(), spaFallback()],
   base: '/',
   test: {
+    // The bot service is its own package with its own dependencies; its tests
+    // run with `npm run test:bot`.
+    exclude: [...configDefaults.exclude, 'bot/**'],
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.js'],
     globals: true,

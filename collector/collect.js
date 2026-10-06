@@ -77,6 +77,21 @@ function countChanges(before, after) {
   return changed;
 }
 
+/**
+ * One collector tick.
+ * @param {object} opts
+ * @param {string} opts.dataDir
+ * @param {string | null} [opts.cacheDir]
+ * @param {string | null} [opts.fixturesDir]
+ * @param {number} [opts.now]
+ * @param {Partial<ReturnType<typeof createSources>>} [opts.sources] replace
+ *   individual source readers (the bot service passes its latest polled
+ *   vehicle positions instead of fetching them again)
+ * @param {(ctx: { incidents: Map<string, object>, outages: Map<string, object>,
+ *   state: object, schedule: object | null, now: number, summary: object }) => Promise<object>} [opts.beforePublish]
+ *   runs after every source is applied and before the files are written; the
+ *   bot service posts to Bluesky here and links the posts into the incidents
+ */
 export async function collect({
   dataDir,
   cacheDir = null,
@@ -84,8 +99,10 @@ export async function collect({
   now = Date.now(),
   log = console.log,
   warn = console.error,
+  sources: sourceOverrides = null,
+  beforePublish = null,
 }) {
-  const sources = createSources({ fixturesDir });
+  const sources = { ...createSources({ fixturesDir }), ...(sourceOverrides ?? {}) };
   const archive = await loadArchive(dataDir);
   const state = await loadState(dataDir);
   const before = fingerprints(archive.incidents, archive.outages);
@@ -104,7 +121,10 @@ export async function collect({
   const sched = schedule.status === 'fulfilled' ? schedule.value : null;
 
   if (alerts.status === 'fulfilled') {
-    summary.sources.alerts = applyOfficialAlerts(archive.incidents, alerts.value, now).stats;
+    if (!state.alertMisses) state.alertMisses = {};
+    summary.sources.alerts = applyOfficialAlerts(archive.incidents, alerts.value, now, {
+      misses: state.alertMisses,
+    }).stats;
   } else {
     summary.sources.alerts = { error: String(alerts.reason?.message ?? alerts.reason) };
   }
@@ -182,6 +202,21 @@ export async function collect({
   }
 
   const ok = Object.values(summary.sources).some((s) => !s.error);
+  if (ok && beforePublish) {
+    try {
+      summary.hook = await beforePublish({
+        incidents: archive.incidents,
+        outages: archive.outages,
+        state,
+        schedule: sched,
+        now,
+        summary,
+      });
+    } catch (err) {
+      warn(`beforePublish: ${err.stack ?? err.message}`);
+      summary.hook = { error: err.message };
+    }
+  }
   if (ok) {
     summary.written = await publishArchive(dataDir, {
       incidents: archive.incidents,

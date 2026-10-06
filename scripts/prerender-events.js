@@ -285,8 +285,13 @@ function buildJsonLd(incident, { ogTitle, desc, url }) {
   return JSON.stringify(ld);
 }
 
-function buildHtmlStub(shell, { id, title, subtitle, accent, incident }) {
-  const url = `${SITE}/event/${id}`;
+export function buildHtmlStub(shell, { id, title, subtitle, accent, incident, variant = null }) {
+  const canonical = `${SITE}/event/${id}`;
+  // The /resolved variant is the URL the bots' "cleared" replies link to:
+  // Bluesky caches link cards by URL, so a distinct URL gets the finished
+  // ("Archived") card instead of the one cached while the incident was live.
+  // It points search engines at the canonical page and stays out of the index.
+  const url = variant === 'resolved' ? `${canonical}/resolved` : canonical;
   // og.jpg is served alongside index.html in the same directory.
   const image = `${url}/og.jpg`;
   // Link/unfurl title leads with the line/route. For bot events the card title
@@ -305,7 +310,10 @@ function buildHtmlStub(shell, { id, title, subtitle, accent, incident }) {
   const desc = subtitle.slice(0, 280);
   // Inject JSON-LD just before </head>. `<` inside the JSON has to be escaped
   // because </script> in a string literal would otherwise close the tag.
-  const jsonLd = buildJsonLd(incident, { ogTitle, desc, url }).replaceAll('<', '\\u003c');
+  const jsonLd = buildJsonLd(incident, { ogTitle, desc, url: canonical }).replaceAll(
+    '<',
+    '\\u003c',
+  );
   // BreadcrumbList trail (Home › day › this incident) — mirrors the visible
   // trail the page renders via lib/breadcrumbs, so structured data and UI agree.
   const trail = eventTrail(incident.first_seen_ts ?? incident.ts ?? null, accent.label);
@@ -314,8 +322,12 @@ function buildHtmlStub(shell, { id, title, subtitle, accent, incident }) {
     `<script type="application/ld+json">${jsonLd}</script>` +
     `\n    <script type="application/ld+json">${breadcrumbLd}</script>`;
   return shell
+    .replace(
+      /<meta name="robots"[^>]*>/,
+      variant === 'resolved' ? '<meta name="robots" content="noindex, follow" />' : (m) => m,
+    )
     .replace(/<title>[^<]*<\/title>/, `<title>${escHtml(ogTitle)} — ${SITE_NAME}</title>`)
-    .replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${escAttr(url)}" />`)
+    .replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${escAttr(canonical)}" />`)
     .replace(
       /<meta name="description"[^>]*>/,
       `<meta name="description" content="${escAttr(desc)}" />`,
@@ -452,6 +464,7 @@ async function main() {
   // only on a signature miss. The badge tracks `incident.active`, so a card
   // re-renders once when its incident resolves.
   const renders = [];
+  const resolvedDirs = [];
   const seenIds = new Set();
   for (const [id, incident] of incidents) {
     seenIds.add(id);
@@ -466,6 +479,15 @@ async function main() {
       resolve(outDir, 'index.html'),
       buildHtmlStub(shell, { id, title, subtitle, accent, incident }),
     );
+    if (!incident.active) {
+      const resolvedDir = resolve(outDir, 'resolved');
+      mkdirSync(resolvedDir, { recursive: true });
+      writeFileSync(
+        resolve(resolvedDir, 'index.html'),
+        buildHtmlStub(shell, { id, title, subtitle, accent, incident, variant: 'resolved' }),
+      );
+      resolvedDirs.push(outDir);
+    }
     const cacheDir = resolve(CACHE, id);
     const cachedPng = resolve(cacheDir, 'og.jpg');
     const cachedSig = resolve(cacheDir, 'sig');
@@ -510,6 +532,12 @@ async function main() {
     });
 
     await browser.close();
+  }
+
+  // The resolved variant shares the (already "Archived") card.
+  for (const dir of resolvedDirs) {
+    const card = resolve(dir, 'og.jpg');
+    if (existsSync(card)) copyFileSync(card, resolve(dir, 'resolved', 'og.jpg'));
   }
 
   // Sweep cache entries for events no longer in the payload so the cache

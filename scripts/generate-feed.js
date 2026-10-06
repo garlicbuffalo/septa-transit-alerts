@@ -111,6 +111,12 @@ function sourceUrl(incident) {
   return incident.source_url ?? null;
 }
 
+// The bots' Bluesky post for the incident: the alerts account's post of the
+// SEPTA alert, else the detection post.
+function blueskyUrl(incident) {
+  return incident.post_url ?? incident.obs_post_url ?? null;
+}
+
 function describeObservation(obs) {
   const stations = [obs.from_station, obs.to_station].filter(Boolean).join(' → ');
   // Rider-facing impact phrase ("fewer trains and long gaps") rather than a
@@ -246,6 +252,10 @@ function entryContentHtml(incident, thumb) {
   const meta = [routesLabel, direction].filter(Boolean).join(' · ');
   if (meta) parts.push(`<p>${escapeXml(meta)}</p>`);
   if (chip) parts.push(`<p>${escapeXml(chip)}</p>`);
+  const post = blueskyUrl(incident);
+  if (post) {
+    parts.push(`<p><a href="${escapeXml(post)}">View the post on Bluesky →</a></p>`);
+  }
   if (source) {
     parts.push(`<p><a href="${escapeXml(source)}">Route page on SEPTA.org →</a></p>`);
   }
@@ -346,6 +356,7 @@ export function buildEntryRecord(incident, { now = Date.now() } = {}) {
     contentHtml,
     categories,
     sourceUrl: source,
+    blueskyUrl: blueskyUrl(incident),
   };
 }
 
@@ -410,7 +421,7 @@ function emitJsonFeed(records, meta) {
     items: records.map((r) => ({
       id: r.id,
       url: r.link,
-      external_url: r.sourceUrl ?? undefined,
+      external_url: r.blueskyUrl ?? r.sourceUrl ?? undefined,
       title: r.title,
       summary: r.summary,
       content_html: r.contentHtml,
