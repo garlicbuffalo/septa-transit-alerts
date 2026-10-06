@@ -9,6 +9,7 @@
 //                routes it follows (or the whole feed, for a snapshot)
 //   render       every 30 seconds: render a finished timelapse and post it
 //   snapshot     5 times a day: start the bus and Metro system snapshots
+//   rail recap   Sundays and the 1st: the Regional Rail on-time recap
 //   housekeeping hourly: prune old observations and dry-run assets
 //   backup       nightly: a consistent copy of the database
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
@@ -20,6 +21,7 @@ import { linkAlertPosts, postAlerts } from '../features/alerts.js';
 import { postCrossBunching } from '../features/crossBunching.js';
 import { linkDetectionPosts, postDetections } from '../features/detections.js';
 import { maybePostGhostRollups } from '../features/ghosts.js';
+import { maybePostRailRollup, postRailRecap, recordTrains } from '../features/rail.js';
 import {
   renderDueCapture,
   sampleCaptures,
@@ -124,6 +126,11 @@ export function createPipeline({
       return startSnapshots(db, { now: now(), hasAccount: poster.client.hasAccount, ...opts });
     },
 
+    /** Post the weekly or monthly Regional Rail recap. */
+    railRecap(period) {
+      return postRailRecap({ db, poster, now: now(), period, log });
+    },
+
     async observe() {
       const t = now();
       const [tv, rr] = await Promise.allSettled([sources.transitView(), sources.trainView()]);
@@ -142,6 +149,7 @@ export function createPipeline({
         log(`observe: TrainView failed: ${rr.reason?.message ?? rr.reason}`);
       }
       const rows = recordObservations(db, t, { vehicles, trains });
+      recordTrains(db, t, trains);
       return { vehicles: vehicles.length, trains: trains.length, rows };
     },
 
@@ -201,6 +209,9 @@ export function createPipeline({
           const ghosts = await step('ghosts', () =>
             maybePostGhostRollups({ incidents, poster, db, now: tickNow, log }),
           );
+          const rail = await step('rail', () =>
+            maybePostRailRollup({ incidents, poster, db, now: tickNow, log }),
+          );
           const crossRoute = await step('cross-bunching', () =>
             postCrossBunching({
               vehicles: vehicleList,
@@ -215,7 +226,7 @@ export function createPipeline({
             }),
           );
           const linked = linkAlertPosts(incidents, poster) + linkDetectionPosts(incidents, poster);
-          return { alerts, detections, ghosts, crossRoute, linked };
+          return { alerts, detections, ghosts, rail, crossRoute, linked };
         },
       });
       let published = null;
@@ -241,6 +252,7 @@ export function createPipeline({
           (summary.hook?.ghosts?.posts
             ? `, ghost rollup ${summary.hook.ghosts.routes} routes`
             : '') +
+          (summary.hook?.rail?.posts ? `, rail roundup ${summary.hook.rail.trains} trains` : '') +
           (summary.hook?.crossRoute?.posted ? ', cross-route cluster posted' : '') +
           (published?.pushed ? ', pushed' : '') +
           (published?.deployed ? ', deploy triggered' : '') +

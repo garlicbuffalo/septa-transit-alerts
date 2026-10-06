@@ -96,7 +96,7 @@ The [bot server](bot/README.md) posts what the collector sees to four Bluesky ac
 | `alerts` | SEPTA's significant alerts, with a map of the affected stretch, and a threaded ✅ reply when SEPTA clears them | Live |
 | `metro` | SEPTA Metro gaps, bunching, stuck trolleys and trains, silent routes, and an hourly roundup of missing vehicles, with maps; a 10-minute timelapse reply under gaps and bunches; system timelapses five times a day | Live |
 | `bus` | The same for buses, plus clusters of several routes' buses stopped together | Live |
-| `rail` | Regional Rail delays, cancellations and recaps | Planned |
+| `rail` | An hourly roundup of Regional Rail cancellations and delays, and weekly and monthly on-time recaps | Live |
 
 Set the `BLUESKY_HANDLES` repository variable (e.g. `alerts=alerts.example.org,metro=metro.example.org,bus=bus.example.org,rail=rail.example.org`) to list the accounts in the site's About, Subscribe, and Browse menus. The bots are a port of [cta-insights](https://github.com/cailinpitt/cta-insights), the bots behind Chicago Transit Alerts.
 

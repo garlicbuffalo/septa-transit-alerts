@@ -149,14 +149,18 @@ describe('pipeline', () => {
     const stateDir = mkdtempSync(join(tmpdir(), 'bot-'));
     const config = loadConfig({ STATE_DIR: stateDir, FIXTURES_DIR: FIXTURES });
     const db = openDb(config.dbPath);
-    setMeta(db, client.dryRun ? 'dry_run_since' : 'live_since', 0);
+    // Posting since well before the fixtures' alerts began (0 would read as unset).
+    setMeta(db, client.dryRun ? 'dry_run_since' : 'live_since', 1);
     const poster = createPoster({ db, client, now: () => FIXTURE_NOW });
+    // An empty local remote: the real published branch would make the test
+    // depend on the network and on whatever the live detectors remember.
     const publisher = createPublisher({
       dataDir: config.dataDir,
       github: config.github,
       db,
       enabled: false,
       deployMinGapMs: 0,
+      remoteUrl: bareRemote(),
     });
     const logs = [];
     const pipeline = createPipeline({

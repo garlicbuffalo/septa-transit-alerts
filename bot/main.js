@@ -34,6 +34,12 @@ scheduler.every('collect', config.intervals.collectMs, () => pipeline.collectTic
 scheduler.every('sample', 15_000, () => pipeline.sampleCaptures());
 scheduler.every('render', 30_000, () => pipeline.renderCaptures(), { delayMs: 20_000 });
 scheduler.cron('snapshot', '0 8,11,14,17,20 * * *', () => pipeline.startSnapshots());
+scheduler.cron('rail-recap-week', '40 10 * * 0', async () =>
+  log(`rail recap: ${JSON.stringify(await pipeline.railRecap('week'))}`),
+);
+scheduler.cron('rail-recap-month', '50 10 1 * *', async () =>
+  log(`rail recap: ${JSON.stringify(await pipeline.railRecap('month'))}`),
+);
 scheduler.cron('housekeeping', '7 * * * *', async () => {
   const r = await pipeline.housekeeping();
   log(
