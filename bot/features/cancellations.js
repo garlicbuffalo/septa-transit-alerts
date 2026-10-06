@@ -22,6 +22,9 @@ export const CANCELLATION_SLOTS = [
 ];
 // Fewer cancelled trips than this in a day: no roundup.
 export const MIN_TRIPS = 3;
+// Routes listed one by one; the rest are summed in one line (SEPTA can cancel
+// 250+ bus trips on 45 routes in a day).
+export const MAX_ROUTES = 12;
 const SITE_HOST = new URL(SITE_ORIGIN).host;
 
 const ACCOUNTS = {
@@ -66,15 +69,24 @@ export function composeCancellations(account, items, { serviceDate, now, slot })
   const day = `${WEEKDAY.format(new Date(`${serviceDate}T12:00:00Z`))}, ${dayLabel(serviceDate)}`;
   const header = `🚫 Cancelled ${what} · ${day}`;
   const intro = `${slot === 0 ? 'SEPTA has cancelled' : `As of ${clockLabel(now)}, SEPTA has cancelled`} ${total} trip${total === 1 ? '' : 's'} on ${items.length} route${items.length === 1 ? '' : 's'} today:`;
-  const lines = items.map(({ inc, details }) => {
+  const listed = items.slice(0, MAX_ROUTES);
+  const rest = items.slice(MAX_ROUTES);
+  const lines = listed.map(({ inc, details }) => {
     const n = details.cancelled;
     const of = details.scheduled ? ` of ${details.scheduled}` : '';
     return `· ${routeShortLabel(mode, inc.routes[0])}: ${n}${of} trip${n === 1 && !of ? '' : 's'}`;
   });
+  if (rest.length) {
+    const trips = rest.reduce((t, x) => t + x.details.cancelled, 0);
+    lines.push(
+      `· …and ${rest.length} more route${rest.length === 1 ? '' : 's'}, ${trips} trip${trips === 1 ? '' : 's'}`,
+    );
+  }
   return {
     header,
     lines: [intro, ...lines],
-    items: [null, ...items],
+    // The summed routes link to the roundup's last post.
+    items: [null, ...listed, ...(rest.length ? [rest] : [])],
     total,
     footer: `Per SEPTA's real-time trip feed · 🔗 ${SITE_HOST}`,
   };
@@ -122,10 +134,11 @@ export async function maybePostCancellationRoundups({
         parent = res;
         stats.posts++;
         for (const i of part.lines) {
-          const item = composed.items[i];
-          if (!item) continue;
-          poster.alias({ account, kind: 'rollup', subject: subjectOf(item.det), post: res });
-          stats.routes++;
+          for (const item of [composed.items[i]].flat()) {
+            if (!item) continue;
+            poster.alias({ account, kind: 'rollup', subject: subjectOf(item.det), post: res });
+            stats.routes++;
+          }
         }
       } catch (err) {
         log(`cancellations: roundup post failed: ${err.message}`);

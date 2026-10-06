@@ -126,8 +126,10 @@ describe('cancelled-trip roundups', () => {
       db: t.db,
       now: MORNING,
     });
+    // All 30 routes link to the roundup; 12 are listed, the rest summed.
     expect(stats.routes).toBe(30);
-    expect(stats.posts).toBeGreaterThan(2);
+    expect(stats.posts).toBe(2);
+    expect(t.client.posts.at(-1).opts.text).toMatch(/· …and 18 more routes, 351 trips$/);
     expect(t.client.posts.every((p) => graphemeLength(p.opts.text) <= 300)).toBe(true);
     expect(t.client.posts[1].opts.text.split('\n')[0]).toBe(
       '🚫 Cancelled bus trips · Tue, Oct 6 (cont.)',
