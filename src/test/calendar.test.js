@@ -76,7 +76,7 @@ describe('buildCalendarMonths', () => {
     ];
     const r = buildCalendarMonths(days, { now: NOW, monthsBack: 1 });
     expect(r[0].cells[0].count).toBe(5);
-    expect(r[0].cells[0].trainCount).toBe(3);
+    expect(r[0].cells[0].metroCount).toBe(3);
     expect(r[0].cells[0].busCount).toBe(2);
     expect(r[0].cells[1].count).toBe(1);
     expect(r[0].cells[2].count).toBe(0);

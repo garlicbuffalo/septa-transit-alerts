@@ -12,7 +12,7 @@ const activeInc = (over = {}) =>
   incident({
     id: 'a1',
     kind: 'metro',
-    routes: ['red'],
+    routes: ['l1'],
     active: true,
     first_seen_ts: NOW - 20 * MIN,
     resolved_ts: null,
@@ -55,7 +55,7 @@ describe('ActiveAlerts', () => {
           activeInc({
             id: 'dl1',
             kind: 'rail',
-            routes: ['bnsf'],
+            routes: ['pao'],
             rail_status: { source: 'delay' },
             cta: { headline: 'BNSF 1282 delayed', post_url: 'https://bsky.app/profile/x/post/dl1' },
           }),
@@ -63,7 +63,7 @@ describe('ActiveAlerts', () => {
           activeInc({
             id: 'p1',
             kind: 'rail',
-            routes: ['up-n'],
+            routes: ['nor'],
             rail_status: { source: 'planned-delay' },
             cta: {
               headline: 'Track Construction Sat Jun 13',

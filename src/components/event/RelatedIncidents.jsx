@@ -10,6 +10,7 @@ import {
   incidentLifecycle,
   isPlannedIncident,
   legacyKind,
+  modeLabel,
   officialAlert,
   railIncidentStatus,
 } from '../../lib/incidents.js';
@@ -178,11 +179,13 @@ export function RelatedIncidents({ incident, incidents, stationIndex }) {
   // noise. A multi-line parent (e.g. a system-wide Regional Rail construction notice on
   // 7 lines) can't name one line — "Surrounding 24 hours on 7 Regional Rail lines" is
   // both clumsy and drops which line each row is actually on. So for those we
-  // generalize the header to the agency and turn the per-row pills on.
+  // generalize the header to the mode and turn the per-row pills on.
   const multiLine = routes.length > 1;
-  const heading = multiLine
-    ? `Surrounding 24 hours on affected ${agencyLabel(kind)} lines`
-    : `Surrounding 24 hours on ${formatRoutesLabel(kind, routes)}`;
+  const heading = !multiLine
+    ? `Surrounding 24 hours on ${formatRoutesLabel(kind, routes)}`
+    : kind === 'bus'
+      ? 'Surrounding 24 hours on affected bus routes'
+      : `Surrounding 24 hours on affected ${modeLabel(kind)} lines`;
   return (
     <section className="mt-4">
       <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">

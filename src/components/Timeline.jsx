@@ -7,7 +7,7 @@ import {
 } from '../lib/aggregate.js';
 import { busRouteName, formatBusRoute } from '../lib/busRoutes.js';
 import { hexToRgba, phillyDayUTC } from '../lib/format.js';
-import { METRO_LINE_ORDER, METRO_LINES } from '../lib/metroLines.js';
+import { METRO_LINE_ORDER, METRO_LINES, metroLineFullName } from '../lib/metroLines.js';
 import { RAIL_LINE_ORDER, RAIL_LINES } from '../lib/railLines.js';
 
 const CHICAGO_TZ = 'America/New_York';
@@ -266,7 +266,7 @@ export default function Timeline({
                           narrowing the existing view. */}
                       <a
                         href={`/line/${lineKey}`}
-                        title={relLabel ?? `Open ${info.label} Line page`}
+                        title={relLabel ?? `Open ${metroLineFullName(lineKey)} page`}
                         className="text-xs font-semibold w-full text-right hover:opacity-70 transition-opacity inline-block leading-tight"
                         style={{ color: info.color }}
                       >

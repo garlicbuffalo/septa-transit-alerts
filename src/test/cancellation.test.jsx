@@ -116,7 +116,7 @@ describe('collectUpcomingCancellations', () => {
   const other = incident({
     id: 'x',
     kind: 'rail',
-    routes: ['up-w'],
+    routes: ['wil'],
     cta: { headline: 'Signal problems' },
   });
 

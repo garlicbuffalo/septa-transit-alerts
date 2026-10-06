@@ -120,9 +120,9 @@ describe('computeAgencyEstimate', () => {
 
 describe('findIncidentNeighbors', () => {
   const incidents = [
-    incident({ id: 'a', kind: 'metro', routes: ['blue'], first_seen_ts: NOW - 3 * HOUR }),
-    incident({ id: 'b', kind: 'metro', routes: ['red'], first_seen_ts: NOW - 2 * HOUR }),
-    incident({ id: 'c', kind: 'metro', routes: ['blue'], first_seen_ts: NOW - 1 * HOUR }),
+    incident({ id: 'a', kind: 'metro', routes: ['b1'], first_seen_ts: NOW - 3 * HOUR }),
+    incident({ id: 'b', kind: 'metro', routes: ['l1'], first_seen_ts: NOW - 2 * HOUR }),
+    incident({ id: 'c', kind: 'metro', routes: ['b1'], first_seen_ts: NOW - 1 * HOUR }),
     incident({ id: 'd', kind: 'bus', routes: ['66'], first_seen_ts: NOW }),
   ];
 

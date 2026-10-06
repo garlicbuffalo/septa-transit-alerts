@@ -7,9 +7,9 @@ const DAY = 24 * 60 * 60 * 1000;
 const makeObs = (overrides = {}) => ({
   id: 1,
   kind: 'metro',
-  line: 'red',
-  from_station: 'Howard',
-  to_station: 'Jarvis',
+  line: 'l1',
+  from_station: 'Frankford Transit Center',
+  to_station: 'Arrott Transit Center',
   ts: NOW - DAY,
   resolved_ts: NOW - DAY + 10 * 60_000,
   active: false,
@@ -19,8 +19,8 @@ const makeObs = (overrides = {}) => ({
 const makeAlert = (overrides = {}) => ({
   alert_id: 1,
   kind: 'metro',
-  routes: ['red'],
-  affected_from_station: 'Howard',
+  routes: ['l1'],
+  affected_from_station: 'Frankford Transit Center',
   affected_to_station: null,
   first_seen_ts: NOW - DAY,
   resolved_ts: NOW - DAY + 60_000,
@@ -30,14 +30,14 @@ const makeAlert = (overrides = {}) => ({
 
 describe('slugifyStation', () => {
   it('lowercases and dashifies', () => {
-    expect(slugifyStation('Howard')).toBe('howard');
-    expect(slugifyStation('Clark/Division')).toBe('clark-division');
-    expect(slugifyStation("O'Hare")).toBe('o-hare');
+    expect(slugifyStation('Frankford Transit Center')).toBe('frankford-transit-center');
+    expect(slugifyStation('15th St/City Hall')).toBe('15th-st-city-hall');
+    expect(slugifyStation("St. Martin's")).toBe('st-martin-s');
   });
 
-  it('handles parenthetical line qualifiers', () => {
-    expect(slugifyStation('Central (Green)')).toBe('central-green');
-    expect(slugifyStation('Western (Brown)')).toBe('western-brown');
+  it('keeps hyphenated intersection names readable', () => {
+    expect(slugifyStation('8th-Market')).toBe('8th-market');
+    expect(slugifyStation('York-Dauphin')).toBe('york-dauphin');
   });
 
   it('returns null for empty/null input', () => {
@@ -54,30 +54,28 @@ describe('buildStationIndex', () => {
   });
 
   it('indexes both endpoints of an observation', () => {
-    const o = makeObs({ from_station: 'Howard', to_station: 'Jarvis' });
+    const o = makeObs();
     const r = buildStationIndex([], [o], { now: NOW });
-    expect(r.has('howard')).toBe(true);
-    expect(r.has('jarvis')).toBe(true);
+    expect(r.has('frankford-transit-center')).toBe(true);
+    expect(r.has('arrott-transit-center')).toBe(true);
   });
 
   it('includes every line that physically serves the station, not just lines with recent incidents', () => {
-    // Howard serves Purple + Red + Yellow per the master roster. A station
-    // page that only had a Pink (sorry, Red) incident in the window should
-    // still surface Purple and Yellow pills so visitors see the full
-    // line context — this is the Ashland (Green/Pink) bug class.
-    const obs = [makeObs({ id: 1, line: 'red' })];
+    // 8th-Market serves the L1 and the B3 (Broad-Ridge Spur) per the master
+    // roster. A station page that only had an L1 incident in the window should
+    // still surface the B3 pill so visitors see the full line context.
+    const obs = [makeObs({ id: 1, line: 'l1', from_station: '8th-Market', to_station: null })];
     const r = buildStationIndex([], obs, { now: NOW });
-    // Sorted in CTA canonical order: red, brown, green, orange, pink, purple, yellow.
-    // Howard's served set after normalization: red, purple, yellow.
-    expect(r.get('howard').lines).toEqual(['red', 'purple', 'yellow']);
+    // Sorted in SEPTA Metro canonical order.
+    expect(r.get('8th-market').lines).toEqual(['l1', 'b3']);
   });
 
-  it('normalizes raw short-code line keys so they merge with the master roster', () => {
-    // A hand-built record passes `line: 'p'` (raw CTA short code). The index
-    // should not end up with both `'p'` and `'purple'` as distinct entries.
-    const r = buildStationIndex([], [makeObs({ line: 'p' })], { now: NOW });
-    expect(r.get('howard').lines).not.toContain('p');
-    expect(r.get('howard').lines).toContain('purple');
+  it('normalizes raw uppercase line keys so they merge with the master roster', () => {
+    // A hand-built record passes `line: 'L1'` (SEPTA's GTFS route_id). The index
+    // should not end up with both `'L1'` and `'l1'` as distinct entries.
+    const r = buildStationIndex([], [makeObs({ line: 'L1' })], { now: NOW });
+    expect(r.get('frankford-transit-center').lines).not.toContain('L1');
+    expect(r.get('frankford-transit-center').lines).toContain('l1');
   });
 
   it('drops observations outside the rolling window', () => {
@@ -92,77 +90,73 @@ describe('buildStationIndex', () => {
   });
 
   it('counts alerts and observations together at a station', () => {
-    const o = makeObs({ from_station: 'Howard', to_station: null });
-    const a = makeAlert({ affected_from_station: 'Howard' });
+    const o = makeObs({ to_station: null });
+    const a = makeAlert();
     const r = buildStationIndex([a], [o], { now: NOW });
-    expect(r.get('howard').count).toBe(2);
+    expect(r.get('frankford-transit-center').count).toBe(2);
   });
 
   it('does not double-count an observation that touches a station at both endpoints', () => {
     // Same name in both endpoints is contrived but the dedup guard is real.
-    const o = makeObs({ from_station: 'Howard', to_station: 'Howard' });
+    const o = makeObs({ to_station: 'Frankford Transit Center' });
     const r = buildStationIndex([], [o], { now: NOW });
-    expect(r.get('howard').count).toBe(1);
+    expect(r.get('frankford-transit-center').count).toBe(1);
   });
 
   it('indexes alert mentioned_stations alongside the segment endpoints', () => {
-    // The Monroe sick-customer alert names a single station ("delays at
-    // Monroe") so it has no segment endpoints, only mentioned_stations.
-    // Without indexing mentions, /station/monroe-red would show no CTA
-    // alerts for this incident.
+    // A single-station alert ("11th St Station Closed") has no segment
+    // endpoints, only mentioned_stations. Without indexing mentions, the
+    // station page would show no alerts for this incident.
     const a = makeAlert({
       affected_from_station: null,
       affected_to_station: null,
-      mentioned_stations: ['Monroe (Red)'],
+      mentioned_stations: ['13th St'],
     });
     const r = buildStationIndex([a], [], { now: NOW });
-    expect(r.get('monroe-red').alerts).toContain(a);
+    expect(r.get('13th-st').alerts).toContain(a);
   });
 
   it('mentioned_stations dedupes against the segment endpoints', () => {
-    // Upstream extractor includes between/from-to results in
-    // mentioned_stations too — overlap shouldn't double-count.
+    // The collector includes between/from-to results in mentioned_stations
+    // too — overlap shouldn't double-count.
     const a = makeAlert({
-      affected_from_station: 'Howard',
       affected_to_station: null,
-      mentioned_stations: ['Howard'],
+      mentioned_stations: ['Frankford Transit Center'],
     });
     const r = buildStationIndex([a], [], { now: NOW });
-    expect(r.get('howard').alerts).toHaveLength(1);
+    expect(r.get('frankford-transit-center').alerts).toHaveLength(1);
   });
 
   it('ties an observation to inner stops via the enumerated stations fill', () => {
-    // Rockwell → Montrose on the Brown Line: the inner Western/Damen stops must
-    // tie to the incident, not just the two named endpoints.
+    // Spring Garden → York-Dauphin on the L1: the inner Front-Girard/Berks stops
+    // must tie to the incident, not just the two named endpoints.
     const o = makeObs({
-      line: 'brn',
-      from_station: 'Rockwell',
-      to_station: 'Montrose (Brown)',
-      stations: ['Rockwell', 'Western (Brown)', 'Damen (Brown)', 'Montrose (Brown)'],
+      from_station: 'Spring Garden',
+      to_station: 'York-Dauphin',
+      stations: ['Spring Garden', 'Front-Girard', 'Berks', 'York-Dauphin'],
     });
     const r = buildStationIndex([], [o], { now: NOW });
-    expect(r.get('western-brown').observations).toContain(o);
-    expect(r.get('damen-brown').observations).toContain(o);
-    expect(r.get('rockwell').observations).toContain(o);
-    expect(r.get('montrose-brown').observations).toContain(o);
+    expect(r.get('front-girard').observations).toContain(o);
+    expect(r.get('berks').observations).toContain(o);
+    expect(r.get('spring-garden').observations).toContain(o);
+    expect(r.get('york-dauphin').observations).toContain(o);
   });
 
   it('falls back to from/to when an observation has no stations fill', () => {
-    const o = makeObs({ from_station: 'Howard', to_station: 'Jarvis', stations: [] });
+    const o = makeObs({ stations: [] });
     const r = buildStationIndex([], [o], { now: NOW });
-    expect(r.get('howard').observations).toContain(o);
-    expect(r.get('jarvis').observations).toContain(o);
+    expect(r.get('frankford-transit-center').observations).toContain(o);
+    expect(r.get('arrott-transit-center').observations).toContain(o);
   });
 
   it('ties an alert to inner stops via affected_stations', () => {
     const a = makeAlert({
-      routes: ['brn'],
-      affected_from_station: 'Rockwell',
-      affected_to_station: 'Montrose (Brown)',
-      affected_stations: ['Rockwell', 'Western (Brown)', 'Damen (Brown)', 'Montrose (Brown)'],
+      affected_from_station: 'Spring Garden',
+      affected_to_station: 'York-Dauphin',
+      affected_stations: ['Spring Garden', 'Front-Girard', 'Berks', 'York-Dauphin'],
     });
     const r = buildStationIndex([a], [], { now: NOW });
-    expect(r.get('western-brown').alerts).toContain(a);
-    expect(r.get('damen-brown').alerts).toContain(a);
+    expect(r.get('front-girard').alerts).toContain(a);
+    expect(r.get('berks').alerts).toContain(a);
   });
 });

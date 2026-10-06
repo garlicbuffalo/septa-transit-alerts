@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { buildSignalsByLine } from '../lib/aggregate.js';
 import { observationSignals, SIGNAL_LABELS, SIGNAL_TYPES } from '../lib/incidents.js';
-import { METRO_LINE_ORDER, METRO_LINES } from '../lib/metroLines.js';
+import { METRO_LINE_ORDER, METRO_LINES, metroLineFullName } from '../lib/metroLines.js';
 import { normalizeRailLine, RAIL_LINE_ORDER, RAIL_LINES } from '../lib/railLines.js';
 
 // Distinct, accessible colors for each signal category. Tied to the
@@ -159,7 +159,7 @@ export default function SignalBreakdown({ observations }) {
                     labelColor={info.color}
                     counts={counts}
                     total={total}
-                    ariaPrefix={`${info.label} Line`}
+                    ariaPrefix={metroLineFullName(line)}
                   />
                 );
               })}
@@ -187,7 +187,7 @@ export default function SignalBreakdown({ observations }) {
                     labelColor={info.color}
                     counts={counts}
                     total={total}
-                    ariaPrefix={info.label}
+                    ariaPrefix={`${info.label} Line`}
                     types={RAIL_SIGNAL_TYPES}
                     colors={RAIL_SIGNAL_COLORS}
                   />

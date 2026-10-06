@@ -322,14 +322,16 @@ export function isLikelyDetectorBlip(incident) {
   return incident.resolved_ts - start < FP_FILTER_MS;
 }
 
-export function buildEntryRecord(incident) {
+// `now` decides whether the incident still has a prerendered OG card to use as
+// the entry thumbnail (see eventScope.js).
+export function buildEntryRecord(incident, { now = Date.now() } = {}) {
   const id = entryId(incident);
   const link = entryLink(incident);
   const title = entryTitle(incident);
   const summary = entrySummary(incident);
   const publishedMs = startTs(incident);
   const updatedMs = updatedTs(incident);
-  const thumb = entryThumbnail(incident, updatedMs);
+  const thumb = entryThumbnail(incident, updatedMs, now);
   const contentHtml = entryContentHtml(incident, thumb);
   const categories = entryCategories(incident);
   const source = sourceUrl(incident);
@@ -445,11 +447,11 @@ function writeFeed(records, meta, feedUpdatedIso, xmlPath, jsonPath) {
 
 // Most-recent-first slice of `pool` scoped to one route, capped at ENTRY_LIMIT.
 // `pool` is already sorted newest-first, so the slice preserves that order.
-export function scopedRecords(pool, kind, route) {
+export function scopedRecords(pool, kind, route, { now = Date.now() } = {}) {
   return pool
     .filter((i) => i.kind === kind && routesFor(i).includes(route))
     .slice(0, ENTRY_LIMIT)
-    .map(buildEntryRecord);
+    .map((i) => buildEntryRecord(i, { now }));
 }
 
 function main() {
@@ -483,7 +485,7 @@ function main() {
 
   // Global feed — unchanged URLs and <id>, so existing subscribers are
   // unaffected by the per-line additions below.
-  const globalRecords = pool.slice(0, ENTRY_LIMIT).map(buildEntryRecord);
+  const globalRecords = pool.slice(0, ENTRY_LIMIT).map((i) => buildEntryRecord(i));
   writeFeed(
     globalRecords,
     feedMeta({

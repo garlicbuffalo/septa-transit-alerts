@@ -4,6 +4,7 @@ import {
   groupOutagesByStation,
   outageDuration,
   outageHasLine,
+  outageKind,
   outagesForLine,
   outagesForStation,
   stationHref,
@@ -15,11 +16,12 @@ const NOW = 1_700_000_000_000;
 const HOUR = 60 * 60 * 1000;
 
 const outage = (over = {}) => ({
-  id: 'cta-1',
-  agency: 'cta',
-  station: { slug: 'belmont-red-brown-purple', name: 'Belmont', lines: ['red', 'brn', 'p'] },
+  id: 'metro-1',
+  agency: 'septa',
+  mode: 'metro',
+  station: { slug: '8th-market', name: '8th-Market', lines: ['l1', 'b3'] },
   unit_type: 'elevator',
-  unit_label: 'to platform',
+  unit_label: 'Eastbound',
   lifecycle: {
     first_seen_ts: NOW - 2 * HOUR,
     last_seen_ts: NOW - HOUR,
@@ -29,38 +31,49 @@ const outage = (over = {}) => ({
   ...over,
 });
 
-describe('accessibility helpers', () => {
-  it('builds CTA and Metra station links', () => {
-    expect(stationHref(outage())).toBe('/station/belmont-red-brown-purple');
-    expect(
-      stationHref(
-        outage({ agency: 'rail', station: { slug: 'aurora', name: 'Aurora', lines: ['bnsf'] } }),
-      ),
-    ).toBe('/rail/station/aurora');
+const railOutage = (over = {}) =>
+  outage({
+    id: 'rail-1',
+    mode: 'regional_rail',
+    station: { slug: 'suburban-station', name: 'Suburban Station', lines: ['pao', 'wtr'] },
+    ...over,
   });
 
-  it('matches CTA line aliases when filtering outages', () => {
+describe('accessibility helpers', () => {
+  it('maps the wire mode to a station network', () => {
+    expect(outageKind(outage())).toBe('metro');
+    expect(outageKind(railOutage())).toBe('rail');
+  });
+
+  it('builds SEPTA Metro and Regional Rail station links', () => {
+    expect(stationHref(outage())).toBe('/station/8th-market');
+    expect(stationHref(railOutage())).toBe('/rail/station/suburban-station');
+  });
+
+  it('matches line keys case-insensitively when filtering outages', () => {
     const row = outage();
-    expect(outageHasLine(row, 'brown')).toBe(true);
-    expect(outageHasLine(row, 'brn')).toBe(true);
-    expect(outageHasLine(row, 'blue')).toBe(false);
+    expect(outageHasLine(row, 'b3')).toBe(true);
+    expect(outageHasLine(row, 'B3')).toBe(true);
+    expect(outageHasLine(row, 'b1')).toBe(false);
+    expect(outageHasLine(railOutage(), 'PAO')).toBe(true);
   });
 
   it('sorts active outages by current duration', () => {
     const rows = [
-      outage({ id: 'cta-short', lifecycle: { ...outage().lifecycle, first_seen_ts: NOW - HOUR } }),
+      outage({ id: 'short', lifecycle: { ...outage().lifecycle, first_seen_ts: NOW - HOUR } }),
       outage({
-        id: 'cta-long',
+        id: 'long',
         lifecycle: { ...outage().lifecycle, first_seen_ts: NOW - 3 * HOUR },
       }),
     ];
-    expect(currentlyOut(rows, { now: NOW }).map((o) => o.id)).toEqual(['cta-long', 'cta-short']);
+    expect(currentlyOut(rows, { now: NOW }).map((o) => o.id)).toEqual(['long', 'short']);
     expect(outageDuration(rows[0], NOW)).toBe(HOUR);
+    expect(currentlyOut([...rows, railOutage()], { now: NOW, kind: 'rail' })).toHaveLength(1);
   });
 
   it('finds station-specific rows and reliability totals', () => {
     const restored = outage({
-      id: 'cta-restored',
+      id: 'metro-restored',
       lifecycle: {
         first_seen_ts: NOW - 4 * HOUR,
         last_seen_ts: NOW - 3 * HOUR,
@@ -68,51 +81,45 @@ describe('accessibility helpers', () => {
         active: false,
       },
     });
-    const rows = [outage(), restored];
-    expect(
-      outagesForStation(rows, { agency: 'cta', slug: 'belmont-red-brown-purple', now: NOW }),
-    ).toHaveLength(2);
-    const [station] = stationReliability(rows, { agency: 'cta', now: NOW });
+    const rows = [outage(), restored, railOutage()];
+    expect(outagesForStation(rows, { kind: 'metro', slug: '8th-market', now: NOW })).toHaveLength(
+      2,
+    );
+    // The same slug on the other network doesn't match.
+    expect(outagesForStation(rows, { kind: 'rail', slug: '8th-market', now: NOW })).toHaveLength(0);
+    const [station] = stationReliability(rows, { kind: 'metro', now: NOW });
     expect(station).toMatchObject({
-      agency: 'cta',
-      slug: 'belmont-red-brown-purple',
+      kind: 'metro',
+      slug: '8th-market',
       outageCount: 2,
       currentlyOut: 1,
     });
   });
 
-  it('summarizes active outages by station and agency', () => {
-    const rows = [
-      outage(),
-      outage({ id: 'cta-2' }),
-      outage({
-        id: 'metra-1',
-        agency: 'rail',
-        station: { slug: 'aurora', name: 'Aurora', lines: ['bnsf'] },
-      }),
-    ];
-    // two outages share the Belmont station, so it counts once.
-    expect(summarizeOutages(rows)).toEqual({ total: 3, stations: 2, cta: 2, rail: 1 });
+  it('summarizes active outages by station and network', () => {
+    const rows = [outage(), outage({ id: 'metro-2' }), railOutage()];
+    // Two outages share the 8th-Market station, so it counts once.
+    expect(summarizeOutages(rows)).toEqual({ total: 3, stations: 2, metro: 2, rail: 1 });
   });
 
   it('collapses multiple units at one station into a single group', () => {
     const rows = [
-      outage({ id: 'cta-1', unit_label: 'to platform' }),
-      outage({ id: 'cta-2', unit_label: 'to street' }),
+      outage({ id: 'metro-1', unit_label: 'Eastbound' }),
+      outage({ id: 'metro-2', unit_label: 'Westbound' }),
       outage({
-        id: 'cta-blue',
-        station: { slug: 'clark-lake', name: 'Clark/Lake', lines: ['blue'] },
+        id: 'metro-15th',
+        station: { slug: '15th-st', name: '15th St', lines: ['l1'] },
       }),
     ];
     const groups = groupOutagesByStation(rows);
-    expect(groups.map((g) => g.key)).toEqual(['cta:belmont-red-brown-purple', 'cta:clark-lake']);
+    expect(groups.map((g) => g.key)).toEqual(['metro:8th-market', 'metro:15th-st']);
     expect(groups[0]).toMatchObject({
-      agency: 'cta',
-      name: 'Belmont',
-      slug: 'belmont-red-brown-purple',
-      lines: ['red', 'brn', 'p'],
+      kind: 'metro',
+      name: '8th-Market',
+      slug: '8th-market',
+      lines: ['l1', 'b3'],
     });
-    expect(groups[0].outages.map((o) => o.id)).toEqual(['cta-1', 'cta-2']);
+    expect(groups[0].outages.map((o) => o.id)).toEqual(['metro-1', 'metro-2']);
   });
 
   it('keeps stations in input order so the longest-out station leads', () => {
@@ -120,12 +127,12 @@ describe('accessibility helpers', () => {
       [
         outage({
           id: 'short',
-          station: { slug: 'a', name: 'A', lines: ['red'] },
+          station: { slug: 'a', name: 'A', lines: ['l1'] },
           lifecycle: { ...outage().lifecycle, first_seen_ts: NOW - HOUR },
         }),
         outage({
           id: 'long',
-          station: { slug: 'b', name: 'B', lines: ['blue'] },
+          station: { slug: 'b', name: 'B', lines: ['b1'] },
           lifecycle: { ...outage().lifecycle, first_seen_ts: NOW - 5 * HOUR },
         }),
       ],
@@ -136,7 +143,7 @@ describe('accessibility helpers', () => {
 
   it('finds line-specific rows with active rows first', () => {
     const restored = outage({
-      id: 'cta-restored',
+      id: 'metro-restored',
       lifecycle: {
         first_seen_ts: NOW - 4 * HOUR,
         last_seen_ts: NOW - 3 * HOUR,
@@ -144,15 +151,15 @@ describe('accessibility helpers', () => {
         active: false,
       },
     });
-    const blue = outage({
-      id: 'cta-blue',
-      station: { slug: 'clark-lake', name: 'Clark/Lake', lines: ['blue'] },
+    const l1Only = outage({
+      id: 'metro-15th',
+      station: { slug: '15th-st', name: '15th St', lines: ['l1'] },
     });
-    const rows = outagesForLine([restored, blue, outage()], {
-      agency: 'cta',
-      line: 'brown',
+    const rows = outagesForLine([restored, l1Only, outage()], {
+      kind: 'metro',
+      line: 'b3',
       now: NOW,
     });
-    expect(rows.map((row) => row.id)).toEqual(['cta-1', 'cta-restored']);
+    expect(rows.map((row) => row.id)).toEqual(['metro-1', 'metro-restored']);
   });
 });

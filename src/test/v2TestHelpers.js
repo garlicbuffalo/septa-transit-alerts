@@ -1,7 +1,7 @@
 export const DEFAULT_NOW = 1_000_000_000_000;
 
-export const modeForKind = (kind) => (kind === 'rail' ? 'commuter_rail' : kind);
-export const agencyForKind = (kind) => (kind === 'rail' ? 'rail' : 'cta');
+export const modeForKind = (kind) => (kind === 'rail' ? 'regional_rail' : kind);
+export const agencyForKind = () => 'septa';
 
 export function lifecycle({
   first_seen_ts = null,
@@ -22,7 +22,7 @@ export function lifecycle({
 
 export function detectionFromObs(
   obs = {},
-  { kind: _kind = 'metro', routes = ['red'], now = DEFAULT_NOW } = {},
+  { kind: _kind = 'metro', routes = ['l1'], now = DEFAULT_NOW } = {},
 ) {
   return {
     id: obs.id ?? 1,
@@ -68,9 +68,10 @@ export function officialAlertFromAgency(
 ) {
   return {
     id: cta.alert_id ?? cta.id ?? id,
-    headline: cta.headline ?? 'Red Line Delays',
+    headline: cta.headline ?? 'L1 Delays',
     description: cta.short_description ?? cta.description ?? null,
     post_url: cta.post_url ?? null,
+    source_url: cta.source_url ?? null,
     resolved_reply_url: cta.resolved_reply_url ?? null,
     lifecycle: lifecycle({
       first_seen_ts: cta.first_seen_ts ?? first_seen_ts,
@@ -102,7 +103,7 @@ export function incident(over = {}) {
     kind = 'metro',
     agency = agencyForKind(kind),
     mode = modeForKind(kind),
-    routes = ['red'],
+    routes = ['l1'],
     first_seen_ts = DEFAULT_NOW,
     resolved_ts = null,
     active = false,
@@ -145,7 +146,7 @@ export function incident(over = {}) {
     lifecycle: lifecycle({ first_seen_ts, resolved_ts, active, duration_ms }),
     sources:
       sources ??
-      [builtOfficial ? agency : null, builtDetections.length > 0 ? 'bot' : null].filter(Boolean),
+      [builtOfficial ? 'septa' : null, builtDetections.length > 0 ? 'bot' : null].filter(Boolean),
     official_alert: builtOfficial,
     ...(official_alerts ? { official_alerts } : {}),
     detections: builtDetections,

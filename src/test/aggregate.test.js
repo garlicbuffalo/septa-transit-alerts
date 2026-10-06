@@ -26,7 +26,7 @@ const DAY = 24 * HOUR;
 const obs = (over = {}) => ({
   id: 1,
   kind: 'metro',
-  line: 'red',
+  line: 'l1',
   ts: NOW - HOUR,
   resolved_ts: NOW,
   active: false,
@@ -36,8 +36,8 @@ const obs = (over = {}) => ({
 const alert = (over = {}) => ({
   alert_id: 1,
   kind: 'metro',
-  routes: ['red'],
-  headline: 'Red Line Delays',
+  routes: ['l1'],
+  headline: 'L1 Delays',
   first_seen_ts: NOW - HOUR,
   resolved_ts: NOW,
   active: false,
@@ -48,13 +48,14 @@ const alert = (over = {}) => ({
 // serviceHoursForLine
 // ---------------------------------------------------------------------------
 describe('serviceHoursForLine', () => {
-  it('gives owl-service lines 24h/day', () => {
-    expect(serviceHoursForLine('metro', 'red')).toBe(24);
-    expect(serviceHoursForLine('metro', 'blue')).toBe(24);
+  it('has no 24h Metro rail lines (overnight L1/B1 service runs as Owl buses)', () => {
+    expect(serviceHoursForLine('metro', 'l1')).toBe(DEFAULT_SERVICE_HOURS_PER_DAY);
+    expect(serviceHoursForLine('metro', 'b1')).toBe(DEFAULT_SERVICE_HOURS_PER_DAY);
   });
 
-  it('gives other train lines and buses the default 21h/day', () => {
-    expect(serviceHoursForLine('metro', 'brown')).toBe(DEFAULT_SERVICE_HOURS_PER_DAY);
+  it('gives Metro lines and buses the default 20h/day', () => {
+    expect(DEFAULT_SERVICE_HOURS_PER_DAY).toBe(20);
+    expect(serviceHoursForLine('metro', 'm1')).toBe(DEFAULT_SERVICE_HOURS_PER_DAY);
     expect(serviceHoursForLine('bus', '66')).toBe(DEFAULT_SERVICE_HOURS_PER_DAY);
   });
 });
@@ -67,12 +68,12 @@ describe('computeDisruptionMinutes', () => {
     const out = computeDisruptionMinutes([], [obs({ ts: NOW - HOUR, resolved_ts: NOW })], {
       now: NOW,
       windowDays: 30,
-      lines: [{ kind: 'metro', line: 'red' }],
+      lines: [{ kind: 'metro', line: 'l1' }],
     });
     expect(out.disruptedMinutes).toBe(60);
-    // Red is owl service → 24h/day.
-    expect(out.serviceMinutes).toBe(24 * 30 * 60);
-    expect(out.ratio).toBeCloseTo(60 / (24 * 30 * 60), 6);
+    // L1 runs the default 20h service day.
+    expect(out.serviceMinutes).toBe(20 * 30 * 60);
+    expect(out.ratio).toBeCloseTo(60 / (20 * 30 * 60), 6);
   });
 
   it('unions overlapping spans on the same line instead of double-counting', () => {
@@ -82,18 +83,18 @@ describe('computeDisruptionMinutes', () => {
         obs({ id: 1, ts: NOW - 60 * MIN, resolved_ts: NOW - 30 * MIN }),
         obs({ id: 2, ts: NOW - 40 * MIN, resolved_ts: NOW - 10 * MIN }),
       ],
-      { now: NOW, windowDays: 30, lines: [{ kind: 'metro', line: 'red' }] },
+      { now: NOW, windowDays: 30, lines: [{ kind: 'metro', line: 'l1' }] },
     );
     // Union of [-60,-30] and [-40,-10] is [-60,-10] = 50 minutes.
     expect(out.disruptedMinutes).toBe(50);
   });
 
   it('only counts in-scope routes for a multi-route alert', () => {
-    const multi = alert({ routes: ['red', 'blue'], first_seen_ts: NOW - HOUR, resolved_ts: NOW });
+    const multi = alert({ routes: ['l1', 'b1'], first_seen_ts: NOW - HOUR, resolved_ts: NOW });
     const scoped = computeDisruptionMinutes([multi], [], {
       now: NOW,
       windowDays: 30,
-      lines: [{ kind: 'metro', line: 'red' }],
+      lines: [{ kind: 'metro', line: 'l1' }],
     });
     expect(scoped.disruptedMinutes).toBe(60);
   });
@@ -102,7 +103,7 @@ describe('computeDisruptionMinutes', () => {
     const out = computeDisruptionMinutes([], [obs({ ts: NOW - 40 * DAY, resolved_ts: NOW })], {
       now: NOW,
       windowDays: 30,
-      lines: [{ kind: 'metro', line: 'red' }],
+      lines: [{ kind: 'metro', line: 'l1' }],
     });
     // Only the last 30 days of the 40-day span count toward the numerator.
     expect(out.disruptedMinutes).toBe(30 * 24 * 60);
@@ -207,7 +208,7 @@ describe('computeSegmentRecurrence', () => {
     );
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({
-      line: 'red',
+      line: 'l1',
       fromStation: 'Belmont',
       toStation: 'Fullerton',
       count: 2,
@@ -219,13 +220,13 @@ describe('computeSegmentRecurrence', () => {
       [
         seg({ id: 1, ts: NOW - 1 * DAY }),
         seg({ id: 2, ts: NOW - 2 * DAY, detection_source: 'roundup' }),
-        seg({ id: 3, line: 'blue', ts: NOW - 1 * DAY }),
+        seg({ id: 3, line: 'b1', ts: NOW - 1 * DAY }),
       ],
-      { now: NOW, windowDays: 90, minCount: 1, lineFilter: 'red' },
+      { now: NOW, windowDays: 90, minCount: 1, lineFilter: 'l1' },
     );
     expect(out).toHaveLength(1);
     expect(out[0].count).toBe(1);
-    expect(out[0].line).toBe('red');
+    expect(out[0].line).toBe('l1');
   });
 });
 
@@ -245,7 +246,7 @@ describe('computeCohortDurationStats', () => {
   it('returns the cohort median/p90 and this incident’s duration', () => {
     const target = {
       kind: 'metro',
-      line: 'red',
+      line: 'l1',
       detection_source: 'gap',
       post_url: 'https://bsky.app/profile/x/post/self',
       first_seen_ts: NOW - 2 * HOUR,
@@ -264,7 +265,7 @@ describe('computeCohortDurationStats', () => {
   });
 
   it('returns null when the cohort is below the minimum size', () => {
-    const target = { kind: 'metro', line: 'red', detection_source: 'gap' };
+    const target = { kind: 'metro', line: 'l1', detection_source: 'gap' };
     const out = computeCohortDurationStats(target, [], [peer(11, 10), peer(12, 20)], {
       now: NOW,
       minCohort: 5,
@@ -273,7 +274,7 @@ describe('computeCohortDurationStats', () => {
   });
 
   it('returns null for an incident with no signal to bucket on', () => {
-    const transitOnly = { kind: 'metro', line: 'red' }; // no detection_source
+    const transitOnly = { kind: 'metro', line: 'l1' }; // no detection_source
     expect(computeCohortDurationStats(transitOnly, [], [], { now: NOW })).toBeNull();
   });
 });
@@ -361,9 +362,9 @@ describe('computeRestorationDeltas', () => {
       obsResolved: NOW - 20 * MIN,
     });
     a.kind = 'rail';
-    a.routes = ['up-n'];
+    a.routes = ['nor'];
     o.kind = 'rail';
-    o.line = 'up-n';
+    o.line = 'nor';
     const out = computeRestorationDeltas([a], [o], { now: NOW, windowDays: 90 });
     expect(out.matchedCount).toBe(0);
   });
@@ -374,28 +375,28 @@ describe('computeRestorationDeltas', () => {
 // ---------------------------------------------------------------------------
 describe('computeRailLeaderboards', () => {
   const mObs = (over = {}) =>
-    obs({ kind: 'rail', line: 'up-n', detection_source: 'delay', ...over });
+    obs({ kind: 'rail', line: 'nor', detection_source: 'delay', ...over });
 
   it('tallies cancellations and delays per line', () => {
     const observations = [
-      mObs({ id: 1, line: 'up-n', detection_source: 'delay' }),
-      mObs({ id: 2, line: 'up-n', detection_source: 'delay' }),
-      mObs({ id: 3, line: 'up-n', detection_source: 'cancellation' }),
-      mObs({ id: 4, line: 'bnsf', detection_source: 'cancellation-inferred' }),
-      // Non-metra and unrelated sources are ignored.
-      obs({ id: 5, kind: 'metro', line: 'red', detection_source: 'ghost' }),
+      mObs({ id: 1, line: 'nor', detection_source: 'delay' }),
+      mObs({ id: 2, line: 'nor', detection_source: 'delay' }),
+      mObs({ id: 3, line: 'nor', detection_source: 'cancellation' }),
+      mObs({ id: 4, line: 'pao', detection_source: 'cancellation-inferred' }),
+      // Non-rail and unrelated sources are ignored.
+      obs({ id: 5, kind: 'metro', line: 'l1', detection_source: 'ghost' }),
     ];
     const out = computeRailLeaderboards([], observations, { now: NOW, windowDays: 90 });
     expect(out.delayTotal).toBe(2);
     expect(out.cancellationTotal).toBe(2); // 1 confirmed + 1 inferred
-    expect(out.topDelayed).toEqual({ line: 'up-n', delays: 2, cancellations: 1, total: 3 });
-    // up-n and bnsf each have 1 cancellation → tie broken alphabetically (bnsf first).
-    expect(out.topCancelled.line).toBe('bnsf');
+    expect(out.topDelayed).toEqual({ line: 'nor', delays: 2, cancellations: 1, total: 3 });
+    // nor and pao each have 1 cancellation → tie broken alphabetically (nor first).
+    expect(out.topCancelled.line).toBe('nor');
     expect(out.hasData).toBe(true);
   });
 
-  it('counts republished Metra alerts separately', () => {
-    const alerts = [alert({ kind: 'rail', routes: ['md-n'], first_seen_ts: NOW - HOUR })];
+  it('counts Regional Rail alerts separately', () => {
+    const alerts = [alert({ kind: 'rail', routes: ['war'], first_seen_ts: NOW - HOUR })];
     const out = computeRailLeaderboards(alerts, [], { now: NOW, windowDays: 90 });
     expect(out.alertsCount).toBe(1);
     expect(out.byLine).toEqual([]);
@@ -419,7 +420,7 @@ describe('computeRailStatusCounts', () => {
     incident({
       id: 'm1',
       kind: 'rail',
-      routes: ['me'],
+      routes: ['wtr'],
       first_seen_ts: NOW - HOUR,
       resolved_ts: NOW,
       active: false,
@@ -433,19 +434,19 @@ describe('computeRailStatusCounts', () => {
       [
         railIncident({
           observations: [
-            { id: 'd1', kind: 'rail', line: 'me', detection_source: 'delay', ts: NOW - HOUR },
+            { id: 'd1', kind: 'rail', line: 'wtr', detection_source: 'delay', ts: NOW - HOUR },
             {
               id: 'c1',
               kind: 'rail',
-              line: 'me',
+              line: 'wtr',
               detection_source: 'cancellation-inferred',
               ts: NOW - HOUR,
             },
-            { id: 'd2', kind: 'rail', line: 'ri', detection_source: 'delay', ts: NOW - HOUR },
+            { id: 'd2', kind: 'rail', line: 'lan', detection_source: 'delay', ts: NOW - HOUR },
           ],
         }),
       ],
-      { now: NOW, windowDays: 90, lineFilter: 'me' },
+      { now: NOW, windowDays: 90, lineFilter: 'wtr' },
     );
     expect(out).toEqual({ cancellations: 1, delays: 1, total: 2 });
   });
@@ -463,7 +464,7 @@ describe('computeRailStatusCounts', () => {
           rail_status: { source: 'cancellation', train_number: '123' },
         }),
       ],
-      { now: NOW, windowDays: 90, lineFilter: 'me' },
+      { now: NOW, windowDays: 90, lineFilter: 'wtr' },
     );
     expect(out).toEqual({ cancellations: 1, delays: 1, total: 2 });
   });
@@ -480,7 +481,7 @@ describe('computeRailStatusCounts', () => {
           rail_status: { source: 'planned-delay', train_number: null },
         }),
       ],
-      { now: NOW, windowDays: 90, lineFilter: 'me' },
+      { now: NOW, windowDays: 90, lineFilter: 'wtr' },
     );
     expect(out).toEqual({ cancellations: 0, delays: 0, total: 0 });
   });
@@ -492,11 +493,11 @@ describe('computeRailStatusCounts', () => {
           cta: { headline: 'ME train #121 delayed' },
           rail_status: { source: 'delay', train_number: '121' },
           observations: [
-            { id: 'd1', kind: 'rail', line: 'me', detection_source: 'delay', ts: NOW - HOUR },
+            { id: 'd1', kind: 'rail', line: 'wtr', detection_source: 'delay', ts: NOW - HOUR },
           ],
         }),
       ],
-      { now: NOW, windowDays: 90, lineFilter: 'me' },
+      { now: NOW, windowDays: 90, lineFilter: 'wtr' },
     );
     expect(out).toEqual({ cancellations: 0, delays: 1, total: 1 });
   });
@@ -512,11 +513,11 @@ describe('computeRailStatusCounts', () => {
         }),
         railIncident({
           observations: [
-            { id: 'd1', kind: 'rail', line: 'me', detection_source: 'delay', ts: old },
+            { id: 'd1', kind: 'rail', line: 'wtr', detection_source: 'delay', ts: old },
           ],
         }),
       ],
-      { now: NOW, windowDays: 90, lineFilter: 'me' },
+      { now: NOW, windowDays: 90, lineFilter: 'wtr' },
     );
     expect(out).toEqual({ cancellations: 0, delays: 0, total: 0 });
   });
@@ -530,7 +531,7 @@ describe('computeRailCancellationDelayStats', () => {
     incident({
       id: 'm1',
       kind: 'rail',
-      routes: ['me'],
+      routes: ['wtr'],
       first_seen_ts: NOW - HOUR,
       resolved_ts: NOW,
       active: false,
@@ -541,7 +542,7 @@ describe('computeRailCancellationDelayStats', () => {
   const cancelObs = ({ id = 'c', depTs = NOW - DAY, origin = 'Chicago Union' } = {}) => ({
     id,
     kind: 'rail',
-    line: 'me',
+    line: 'wtr',
     detection_source: 'cancellation',
     ts: depTs,
     onset_ts: depTs,
@@ -550,7 +551,7 @@ describe('computeRailCancellationDelayStats', () => {
   const delayObs = ({ id = 'd', ts = NOW - DAY } = {}) => ({
     id,
     kind: 'rail',
-    line: 'me',
+    line: 'wtr',
     detection_source: 'delay',
     ts,
   });
@@ -571,7 +572,7 @@ describe('computeRailCancellationDelayStats', () => {
         }),
         railIncident({ id: 'm2', observations: [delayObs({ id: 'd2' }), delayObs({ id: 'd3' })] }),
       ],
-      { now: NOW, windowDays: 90, lineFilter: 'me' },
+      { now: NOW, windowDays: 90, lineFilter: 'wtr' },
     );
     expect(out.cancellations.count).toBe(2);
     expect(out.delays.count).toBe(2);
@@ -591,7 +592,7 @@ describe('computeRailCancellationDelayStats', () => {
           ],
         }),
       ],
-      { now: NOW, windowDays: 90, lineFilter: 'me' },
+      { now: NOW, windowDays: 90, lineFilter: 'wtr' },
     );
     expect(out.cancellations.byOrigin).toEqual([
       { origin: 'Chicago Union', count: 2 },
@@ -604,7 +605,7 @@ describe('computeRailCancellationDelayStats', () => {
   it('reports recency of the most recent cancelled departure in hours', () => {
     const out = computeRailCancellationDelayStats(
       [railIncident({ observations: [cancelObs({ depTs: NOW - 5 * HOUR })] })],
-      { now: NOW, windowDays: 90, lineFilter: 'me' },
+      { now: NOW, windowDays: 90, lineFilter: 'wtr' },
     );
     expect(out.cancellations.hoursSinceLast).toBe(5);
   });
@@ -617,7 +618,7 @@ describe('computeRailCancellationDelayStats', () => {
           rail_status: { source: 'planned-delay', train_number: null },
         }),
       ],
-      { now: NOW, windowDays: 90, lineFilter: 'me' },
+      { now: NOW, windowDays: 90, lineFilter: 'wtr' },
     );
     expect(out.total).toBe(0);
   });
@@ -626,7 +627,7 @@ describe('computeRailCancellationDelayStats', () => {
     const out = computeRailCancellationDelayStats([], {
       now: NOW,
       windowDays: 90,
-      lineFilter: 'me',
+      lineFilter: 'wtr',
     });
     expect(out.total).toBe(0);
     expect(out.cancellations.hoursSinceLast).toBeNull();
@@ -657,7 +658,7 @@ describe('buildBusIncidentsByDay', () => {
   });
 
   it('ignores train incidents', () => {
-    const out = buildBusIncidentsByDay([], [obs({ kind: 'metro', line: 'red' })], 90, NOW);
+    const out = buildBusIncidentsByDay([], [obs({ kind: 'metro', line: 'l1' })], 90, NOW);
     expect(out.topRoutes).toHaveLength(0);
     expect(Object.keys(out.byRoute)).toHaveLength(0);
   });

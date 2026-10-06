@@ -77,7 +77,7 @@ const DAY = 24 * 60 * 60 * 1000;
 const makeAlert = (overrides = {}) => ({
   alert_id: 1,
   kind: 'metro',
-  routes: ['red'],
+  routes: ['l1'],
   first_seen_ts: NOW - DAY,
   active: false,
   resolved_ts: NOW - DAY + 30 * 60_000,
@@ -87,15 +87,15 @@ const makeAlert = (overrides = {}) => ({
 const makeObs = (overrides = {}) => ({
   id: 1,
   kind: 'metro',
-  line: 'red',
+  line: 'l1',
   ts: NOW - DAY,
   active: false,
   resolved_ts: NOW - DAY + 30 * 60_000,
   ...overrides,
 });
 
-const modeForKind = (kind) => (kind === 'rail' ? 'commuter_rail' : kind);
-const agencyForKind = (kind) => (kind === 'rail' ? 'rail' : 'cta');
+const modeForKind = (kind) => (kind === 'rail' ? 'regional_rail' : kind);
+const agencyForKind = () => 'septa';
 const lifecycle = ({ first_seen_ts, ts, onset_ts, resolved_ts, active, duration_ms }) => ({
   first_seen_ts: first_seen_ts ?? ts ?? null,
   onset_ts: onset_ts ?? null,
@@ -168,7 +168,7 @@ let _incSeq = 0;
 const aInc = (over = {}) => {
   const {
     kind = 'metro',
-    routes = ['red'],
+    routes = ['l1'],
     first_seen_ts = NOW - DAY,
     resolved_ts = NOW - DAY + 30 * 60_000,
     active = false,
@@ -184,7 +184,7 @@ const aInc = (over = {}) => {
     mode: modeForKind(kind),
     routes,
     lifecycle: lifecycle(base),
-    sources: observations?.length ? [agencyForKind(kind), 'bot'] : [agencyForKind(kind)],
+    sources: observations?.length ? ['septa', 'bot'] : ['septa'],
     official_alert: alertFromAgency(base, { alert_id: 'a', headline: 'Red Line Delays', ...cta }),
     detections: (observations ?? []).map((o) => detectionFromObs(kind, routes, o)),
     status: rail_status ? { type: rail_status.source, ...rail_status } : null,
@@ -194,7 +194,7 @@ const aInc = (over = {}) => {
 const oInc = (over = {}) => {
   const {
     kind = 'metro',
-    routes = ['red'],
+    routes = ['l1'],
     first_seen_ts = NOW - DAY,
     resolved_ts = NOW - DAY + 30 * 60_000,
     active = false,
@@ -230,29 +230,30 @@ describe('filterIncidents', () => {
     expect(result).toHaveLength(2);
   });
 
-  it('agency filter scopes to CTA or Metra; CTA line filter ignores Metra', () => {
-    const cta = aInc({ kind: 'metro', routes: ['red'] });
-    const metra = aInc({ kind: 'rail', routes: ['up-w'] });
-    expect(filterIncidents([cta, metra])).toHaveLength(2); // null = all
-    expect(filterIncidents([cta, metra], { agencies: ['rail'] })).toEqual([metra]);
-    expect(filterIncidents([cta, metra], { agencies: ['cta'] })).toEqual([cta]);
-    // A CTA line selection must NOT hide Metra (the agency filter governs it).
-    expect(filterIncidents([cta, metra], { lines: ['red'] })).toHaveLength(2);
+  it('network filter scopes to Metro & Bus or Regional Rail; Metro line filter ignores rail', () => {
+    const metro = aInc({ kind: 'metro', routes: ['l1'] });
+    const bus = aInc({ kind: 'bus', routes: ['17'] });
+    const rail = aInc({ kind: 'rail', routes: ['pao'] });
+    expect(filterIncidents([metro, bus, rail])).toHaveLength(3); // null = all
+    expect(filterIncidents([metro, bus, rail], { networks: ['rail'] })).toEqual([rail]);
+    expect(filterIncidents([metro, bus, rail], { networks: ['transit'] })).toEqual([metro, bus]);
+    // A Metro line selection must NOT hide Regional Rail (the network filter governs it).
+    expect(filterIncidents([metro, rail], { lines: ['l1'] })).toHaveLength(2);
   });
 
   it('filters incidents by train line', () => {
-    const out = filterIncidents([aInc({ routes: ['red'] }), aInc({ routes: ['blue'] })], {
-      lines: ['red'],
+    const out = filterIncidents([aInc({ routes: ['l1'] }), aInc({ routes: ['b1'] })], {
+      lines: ['l1'],
     });
     expect(out).toHaveLength(1);
-    expect(out[0].routes).toContain('red');
+    expect(out[0].routes).toContain('l1');
   });
 
   it('filters train observation incidents by line', () => {
-    const blue = oInc({ routes: ['blue'], obs: { id: 2, line: 'blue' } });
-    const out = filterIncidents([oInc(), blue], { lines: ['red'] });
+    const blue = oInc({ routes: ['b1'], obs: { id: 2, line: 'b1' } });
+    const out = filterIncidents([oInc(), blue], { lines: ['l1'] });
     expect(out).toHaveLength(1);
-    expect(out[0].routes).toContain('red');
+    expect(out[0].routes).toContain('l1');
   });
 
   it('hides old resolved incidents when startTs is set', () => {
@@ -270,7 +271,7 @@ describe('filterIncidents', () => {
 
   it('hides bus incidents when showBus is false', () => {
     const bus = oInc({ kind: 'bus', routes: ['66'], obs: { id: 2, kind: 'bus', line: '66' } });
-    const train = oInc({ obs: { id: 3, kind: 'metro', line: 'red' } });
+    const train = oInc({ obs: { id: 3, kind: 'metro', line: 'l1' } });
     const out = filterIncidents([bus, train], { showBus: false });
     expect(out).toHaveLength(1);
     expect(out[0].mode).toBe('metro');
@@ -278,7 +279,7 @@ describe('filterIncidents', () => {
 
   it('shows bus incidents independently of train line filter', () => {
     const bus = oInc({ kind: 'bus', routes: ['66'], obs: { id: 2, kind: 'bus', line: '66' } });
-    expect(filterIncidents([bus], { lines: ['red'], showBus: true })).toHaveLength(1);
+    expect(filterIncidents([bus], { lines: ['l1'], showBus: true })).toHaveLength(1);
   });
 
   it('filters bus incidents by selected bus routes', () => {
@@ -291,13 +292,13 @@ describe('filterIncidents', () => {
 
   it('hides bus alert incidents when showBus is false', () => {
     const bus = aInc({ kind: 'bus', routes: ['22'] });
-    const train = aInc({ kind: 'metro', routes: ['red'] });
+    const train = aInc({ kind: 'metro', routes: ['l1'] });
     const out = filterIncidents([bus, train], { showBus: false });
     expect(out).toHaveLength(1);
     expect(out[0].mode).toBe('metro');
   });
 
-  // selectedDay narrows to a single Chicago calendar day. Reference day is the
+  // selectedDay narrows to a single Philadelphia calendar day. Reference day is the
   // UTC midnight of NOW's Chicago day; helpers below construct timestamps
   // relative to it.
   describe('selectedDay', () => {
@@ -331,7 +332,7 @@ describe('incidentHeadlineText', () => {
   it('summarizes Metra alert incidents that contain multiple delayed trains', () => {
     const inc = aInc({
       kind: 'rail',
-      routes: ['ri'],
+      routes: ['lan'],
       cta: {
         headline: 'RID #428 Delayed',
         short_description:
@@ -341,7 +342,7 @@ describe('incidentHeadlineText', () => {
         {
           id: 'metra-1003',
           kind: 'rail',
-          line: 'ri',
+          line: 'lan',
           detection_source: 'delay',
           train_number: '426',
           ts: NOW,
@@ -349,7 +350,7 @@ describe('incidentHeadlineText', () => {
         {
           id: 'metra-1004',
           kind: 'rail',
-          line: 'ri',
+          line: 'lan',
           detection_source: 'delay',
           train_number: '428',
           ts: NOW,
@@ -357,19 +358,19 @@ describe('incidentHeadlineText', () => {
       ],
     });
 
-    expect(incidentHeadlineText(inc)).toBe('Rock Island trains #426 and #428 delayed');
+    expect(incidentHeadlineText(inc)).toBe('Lansdale/Doylestown Line trains #426 and #428 delayed');
   });
 
   it('summarizes single-train Metra alert incidents from the train identity', () => {
     const inc = aInc({
       kind: 'rail',
-      routes: ['ri'],
+      routes: ['lan'],
       cta: { headline: 'RID #418 on the move.' },
       observations: [
         {
           id: 'metra-1004',
           kind: 'rail',
-          line: 'ri',
+          line: 'lan',
           detection_source: 'delay',
           train_number: '418',
           ts: NOW,
@@ -377,13 +378,13 @@ describe('incidentHeadlineText', () => {
       ],
     });
 
-    expect(incidentHeadlineText(inc)).toBe('Rock Island train #418 delayed');
+    expect(incidentHeadlineText(inc)).toBe('Lansdale/Doylestown Line train #418 delayed');
   });
 
   it('uses the earliest official version as the stable CTA incident title', () => {
     const inc = aInc({
       kind: 'metro',
-      routes: ['red'],
+      routes: ['l1'],
       cta: {
         headline: 'Red Line Service Resuming Normal Routing',
         versions: [
@@ -415,7 +416,7 @@ describe('incidentHeadlineText', () => {
 const makeAlertForMerge = (overrides = {}) => ({
   alert_id: 1,
   kind: 'metro',
-  routes: ['red'],
+  routes: ['l1'],
   headline: 'Red Line Delays',
   first_seen_ts: NOW,
   last_seen_ts: NOW + 20 * 60_000,
@@ -429,7 +430,7 @@ const makeAlertForMerge = (overrides = {}) => ({
 const makeObsForMerge = (overrides = {}) => ({
   id: 1,
   kind: 'metro',
-  line: 'red',
+  line: 'l1',
   from_station: 'Jarvis',
   to_station: '95th/Dan Ryan',
   ts: NOW + 5 * 60_000,
@@ -585,27 +586,27 @@ describe('buildIncidentsByDay', () => {
   it('puts a single-day alert in the correct day bucket', () => {
     const alert = {
       kind: 'metro',
-      routes: ['red'],
+      routes: ['l1'],
       first_seen_ts: NOW - DAY, // 1 day ago
       resolved_ts: NOW - DAY + 60 * 60_000,
       active: false,
     };
     const result = buildIncidentsByDay([alert], [], 7, NOW);
-    expect(result.red[1]).toBe(1); // dayIdx 1 = yesterday
+    expect(result.l1[1]).toBe(1); // dayIdx 1 = yesterday
   });
 
   it('counts an incident that spans multiple days in each day', () => {
     const alert = {
       kind: 'metro',
-      routes: ['blue'],
+      routes: ['b1'],
       first_seen_ts: NOW - 3 * DAY,
       resolved_ts: NOW - DAY,
       active: false,
     };
     const result = buildIncidentsByDay([alert], [], 7, NOW);
-    expect(result.blue[1]).toBe(1);
-    expect(result.blue[2]).toBe(1);
-    expect(result.blue[3]).toBe(1);
+    expect(result.b1[1]).toBe(1);
+    expect(result.b1[2]).toBe(1);
+    expect(result.b1[3]).toBe(1);
   });
 
   it('ignores bus observations', () => {
@@ -620,39 +621,39 @@ describe('buildIncidentsByDay', () => {
     const base = NOW - 2 * DAY;
     const alert = {
       kind: 'metro',
-      routes: ['green'],
+      routes: ['t1'],
       first_seen_ts: base,
       resolved_ts: base + 30 * 60_000,
       _incidentId: 'g1',
     };
     const obs = {
       kind: 'metro',
-      line: 'green',
+      line: 't1',
       ts: base + 5 * 60_000,
       resolved_ts: base + 35 * 60_000,
       _incidentId: 'g1',
     };
     const result = buildIncidentsByDay([alert], [obs], 7, NOW);
-    expect(result.green[2]).toBe(1);
+    expect(result.t1[2]).toBe(1);
   });
 
   it('counts two distinct non-overlapping incidents separately', () => {
-    // Two alerts on the same line, both within the same Chicago calendar day.
+    // Two alerts on the same line, both within the same Philadelphia calendar day.
     const base = NOW - 2 * DAY;
     const alert1 = {
       kind: 'metro',
-      routes: ['green'],
+      routes: ['t1'],
       first_seen_ts: base,
       resolved_ts: base + 30 * 60_000,
     };
     const alert2 = {
       kind: 'metro',
-      routes: ['green'],
+      routes: ['t1'],
       first_seen_ts: base + 60 * 60_000,
       resolved_ts: base + 90 * 60_000,
     };
     const result = buildIncidentsByDay([alert1, alert2], [], 7, NOW);
-    expect(result.green[2]).toBe(2);
+    expect(result.t1[2]).toBe(2);
   });
 });
 
@@ -680,52 +681,52 @@ describe('computeSummaryStats', () => {
   it('computes a separate most-affected and quietest line for Metra', () => {
     const alerts = [
       // CTA train leader.
-      makeAlert({ alert_id: 1, routes: ['red'], first_seen_ts: NOW - 1 * DAY }),
-      makeAlert({ alert_id: 2, routes: ['red'], first_seen_ts: NOW - 2 * DAY }),
+      makeAlert({ alert_id: 1, routes: ['l1'], first_seen_ts: NOW - 1 * DAY }),
+      makeAlert({ alert_id: 2, routes: ['l1'], first_seen_ts: NOW - 2 * DAY }),
       // Metra: BNSF is the most-affected line; UP-N's lone old incident makes
       // it the quietest.
-      makeAlert({ alert_id: 3, kind: 'rail', routes: ['bnsf'], first_seen_ts: NOW - 1 * DAY }),
-      makeAlert({ alert_id: 4, kind: 'rail', routes: ['bnsf'], first_seen_ts: NOW - 3 * DAY }),
-      makeAlert({ alert_id: 5, kind: 'rail', routes: ['up-n'], first_seen_ts: NOW - 9 * DAY }),
+      makeAlert({ alert_id: 3, kind: 'rail', routes: ['pao'], first_seen_ts: NOW - 1 * DAY }),
+      makeAlert({ alert_id: 4, kind: 'rail', routes: ['pao'], first_seen_ts: NOW - 3 * DAY }),
+      makeAlert({ alert_id: 5, kind: 'rail', routes: ['nor'], first_seen_ts: NOW - 9 * DAY }),
     ];
     const r = computeSummaryStats(alerts, [], NOW);
     // CTA leaders unchanged by the Metra rows.
     expect(r.mostAffectedKind).toBe('metro');
-    expect(r.mostAffectedId).toBe('red');
+    expect(r.mostAffectedId).toBe('l1');
     // Metra gets its own pair.
-    expect(r.railMostAffectedId).toBe('bnsf');
+    expect(r.railMostAffectedId).toBe('pao');
     expect(r.railMostAffectedCount).toBe(2);
-    expect(r.railQuietestLineId).toBe('up-n');
+    expect(r.railQuietestLineId).toBe('nor');
     expect(r.railQuietestLineDays).toBe(9);
   });
 
   it('quietest line picks the train line with the oldest most-recent incident', () => {
     const alerts = [
-      makeAlert({ alert_id: 1, routes: ['red'], first_seen_ts: NOW - 1 * DAY }),
-      makeAlert({ alert_id: 2, routes: ['blue'], first_seen_ts: NOW - 5 * DAY }),
-      makeAlert({ alert_id: 3, routes: ['green'], first_seen_ts: NOW - 12 * DAY }),
+      makeAlert({ alert_id: 1, routes: ['l1'], first_seen_ts: NOW - 1 * DAY }),
+      makeAlert({ alert_id: 2, routes: ['b1'], first_seen_ts: NOW - 5 * DAY }),
+      makeAlert({ alert_id: 3, routes: ['t1'], first_seen_ts: NOW - 12 * DAY }),
     ];
     const r = computeSummaryStats(alerts, [], NOW);
-    expect(r.quietestLineId).toBe('green');
+    expect(r.quietestLineId).toBe('t1');
     expect(r.quietestLineDays).toBe(12);
   });
 
   it('quietest line ignores lines with no incidents in the dataset', () => {
     // Only Red has an incident; the seven other lines have no data → can't
     // claim a streak. Quietest reflects only lines we have evidence for.
-    const alerts = [makeAlert({ routes: ['red'], first_seen_ts: NOW - 3 * DAY })];
+    const alerts = [makeAlert({ routes: ['l1'], first_seen_ts: NOW - 3 * DAY })];
     const r = computeSummaryStats(alerts, [], NOW);
-    expect(r.quietestLineId).toBe('red');
+    expect(r.quietestLineId).toBe('l1');
     expect(r.quietestLineDays).toBe(3);
   });
 
   it('quietest line ignores buses', () => {
     const alerts = [
       makeAlert({ alert_id: 1, kind: 'bus', routes: ['66'], first_seen_ts: NOW - 60 * DAY }),
-      makeAlert({ alert_id: 2, routes: ['red'], first_seen_ts: NOW - 4 * DAY }),
+      makeAlert({ alert_id: 2, routes: ['l1'], first_seen_ts: NOW - 4 * DAY }),
     ];
     const r = computeSummaryStats(alerts, [], NOW);
-    expect(r.quietestLineId).toBe('red');
+    expect(r.quietestLineId).toBe('l1');
     expect(r.quietestLineDays).toBe(4);
   });
 
@@ -744,14 +745,14 @@ describe('computeSummaryStats', () => {
 
   it('picks the train line with the most incidents in the last 30 days', () => {
     const alerts = [
-      makeAlert({ alert_id: 1, routes: ['red'], first_seen_ts: NOW - 1 * DAY }),
-      makeAlert({ alert_id: 2, routes: ['red'], first_seen_ts: NOW - 5 * DAY }),
-      makeAlert({ alert_id: 3, routes: ['blue'], first_seen_ts: NOW - 10 * DAY }),
-      makeAlert({ alert_id: 4, routes: ['red'], first_seen_ts: NOW - 60 * DAY }), // outside 30d
+      makeAlert({ alert_id: 1, routes: ['l1'], first_seen_ts: NOW - 1 * DAY }),
+      makeAlert({ alert_id: 2, routes: ['l1'], first_seen_ts: NOW - 5 * DAY }),
+      makeAlert({ alert_id: 3, routes: ['b1'], first_seen_ts: NOW - 10 * DAY }),
+      makeAlert({ alert_id: 4, routes: ['l1'], first_seen_ts: NOW - 60 * DAY }), // outside 30d
     ];
     const r = computeSummaryStats(alerts, [], NOW);
     expect(r.mostAffectedKind).toBe('metro');
-    expect(r.mostAffectedId).toBe('red');
+    expect(r.mostAffectedId).toBe('l1');
     expect(r.mostAffectedCount).toBe(2);
   });
 
@@ -760,7 +761,7 @@ describe('computeSummaryStats', () => {
       makeAlert({ alert_id: 1, kind: 'bus', routes: ['66'], first_seen_ts: NOW - 1 * DAY }),
       makeAlert({ alert_id: 2, kind: 'bus', routes: ['66'], first_seen_ts: NOW - 2 * DAY }),
       makeAlert({ alert_id: 3, kind: 'bus', routes: ['66'], first_seen_ts: NOW - 3 * DAY }),
-      makeAlert({ alert_id: 4, kind: 'metro', routes: ['red'], first_seen_ts: NOW - 4 * DAY }),
+      makeAlert({ alert_id: 4, kind: 'metro', routes: ['l1'], first_seen_ts: NOW - 4 * DAY }),
     ];
     const r = computeSummaryStats(alerts, [], NOW);
     expect(r.mostAffectedKind).toBe('bus');
@@ -769,8 +770,8 @@ describe('computeSummaryStats', () => {
   });
 
   it('does not double-count a merged alert+observation in weeklyCount', () => {
-    const alert = makeAlert({ first_seen_ts: NOW - DAY, routes: ['red'], _incidentId: 'w1' });
-    const obs = makeObs({ ts: NOW - DAY + 30 * 60_000, line: 'red', _incidentId: 'w1' });
+    const alert = makeAlert({ first_seen_ts: NOW - DAY, routes: ['l1'], _incidentId: 'w1' });
+    const obs = makeObs({ ts: NOW - DAY + 30 * 60_000, line: 'l1', _incidentId: 'w1' });
     expect(computeSummaryStats([alert], [obs], NOW).weeklyCount).toBe(1);
   });
 });
@@ -798,11 +799,11 @@ describe('railPointEvent', () => {
     oInc({
       id: 'metra-992',
       kind: 'rail',
-      routes: ['bnsf'],
+      routes: ['pao'],
       obs: {
         id: 'metra-992',
         detection_source: 'delay',
-        line: 'bnsf',
+        line: 'pao',
         from_station: 'Aurora',
         to_station: 'Chicago Union Station',
         direction_label: null,
@@ -843,12 +844,12 @@ describe('railPointEvent', () => {
       railPointEvent(
         aInc({
           kind: 'rail',
-          routes: ['bnsf'],
+          routes: ['pao'],
           cta: { headline: 'x' },
           observations: [
             {
               detection_source: 'delay',
-              line: 'bnsf',
+              line: 'pao',
               bot_description: '~57 min late — the 12:05 PM Chicago Union Station train',
             },
           ],
@@ -875,16 +876,16 @@ describe('railPointEventTitle', () => {
         oInc({
           id: 'metra-991',
           kind: 'rail',
-          routes: ['me'],
+          routes: ['wtr'],
           obs: {
             detection_source: 'delay',
-            line: 'me',
+            line: 'wtr',
             train_number: '121',
             bot_description: '~70 min late — the 12:20 PM University Park train',
           },
         }),
       ),
-    ).toBe('Metra Electric train #121 delayed');
+    ).toBe('West Trenton Line train #121 delayed');
   });
 
   it('returns null when a bot-only Metra point event has no train number', () => {
@@ -892,8 +893,8 @@ describe('railPointEventTitle', () => {
       railPointEventTitle(
         oInc({
           kind: 'rail',
-          routes: ['me'],
-          obs: { detection_source: 'delay', line: 'me' },
+          routes: ['wtr'],
+          obs: { detection_source: 'delay', line: 'wtr' },
         }),
       ),
     ).toBeNull();
@@ -916,7 +917,7 @@ describe('railIncidentStatus', () => {
   it('falls back to official Metra alert text for older data', () => {
     const incident = aInc({
       kind: 'rail',
-      routes: ['ri'],
+      routes: ['lan'],
       cta: {
         headline: 'RID #426 Delayed',
         short_description:
@@ -924,13 +925,13 @@ describe('railIncidentStatus', () => {
       },
     });
     expect(railIncidentStatus(incident)).toEqual({ source: 'delay' });
-    expect(incidentHeadlineText(incident)).toBe('Rock Island train #426 delayed');
+    expect(incidentHeadlineText(incident)).toBe('Lansdale/Doylestown Line train #426 delayed');
   });
 
   it('treats construction delay advisories as planned work, not train-level delays', () => {
     const incident = aInc({
       kind: 'rail',
-      routes: ['md-w'],
+      routes: ['med'],
       cta: {
         headline: 'Track Construction Saturday, June 13 through Sunday, June 14',
         short_description:
@@ -951,7 +952,7 @@ describe('incidentCategory / isPlannedIncident', () => {
   it('classifies a Metra planned-delay as planned work', () => {
     const inc = aInc({
       kind: 'rail',
-      routes: ['up-n'],
+      routes: ['nor'],
       active: true,
       cta: { headline: 'Track Construction Saturday, June 13' },
       rail_status: { source: 'planned-delay' },
@@ -963,7 +964,7 @@ describe('incidentCategory / isPlannedIncident', () => {
   it('classifies a routine Metra delay as a delay', () => {
     const inc = aInc({
       kind: 'rail',
-      routes: ['ri'],
+      routes: ['lan'],
       active: true,
       cta: { headline: 'RID #703 Delayed' },
       rail_status: { source: 'delay', train_number: '703' },
@@ -990,7 +991,7 @@ describe('incidentCategory / isPlannedIncident', () => {
   it('treats an alert whose scheduled work starts in the future as planned', () => {
     const inc = aInc({
       kind: 'metro',
-      routes: ['red'],
+      routes: ['l1'],
       active: true,
       cta: {
         headline: 'Weekend service change',
@@ -1008,10 +1009,10 @@ describe('incidentCategory / isPlannedIncident', () => {
 });
 
 describe('modeLabel', () => {
-  it('keeps CTA bus and train distinct and labels Metra', () => {
-    expect(modeLabel('metro')).toBe('CTA Train');
-    expect(modeLabel('bus')).toBe('CTA Bus');
-    expect(modeLabel('rail')).toBe('Metra');
+  it('labels SEPTA Metro, bus, and Regional Rail distinctly', () => {
+    expect(modeLabel('metro')).toBe('SEPTA Metro');
+    expect(modeLabel('bus')).toBe('Bus');
+    expect(modeLabel('rail')).toBe('Regional Rail');
   });
 });
 
@@ -1044,34 +1045,36 @@ describe('filterIncidents search', () => {
 
   it('matches train line by user-visible label even when key differs', () => {
     const o = oInc({
-      routes: ['green'],
-      obs: { line: 'green', from_station: null, to_station: null },
+      routes: ['t1'],
+      obs: { line: 't1', from_station: null, to_station: null },
     });
-    expect(filterIncidents([o], { search: 'green' })).toHaveLength(1);
+    expect(filterIncidents([o], { search: 't1' })).toHaveLength(1);
   });
 
-  it('matches bus route by name (e.g. "Chicago" → route 66)', () => {
+  it('matches bus route by name (e.g. "Knights" → route 66)', () => {
     const o = oInc({
       kind: 'bus',
       routes: ['66'],
       obs: { kind: 'bus', line: '66', from_station: null, to_station: null },
     });
-    expect(filterIncidents([o], { search: 'chicago' })).toHaveLength(1);
+    expect(filterIncidents([o], { search: 'knights' })).toHaveLength(1);
   });
 
   it('matches incidents via their line label', () => {
-    const a = aInc({ routes: ['brown'], cta: { headline: 'Service issue' } });
-    expect(filterIncidents([a], { search: 'brown' })).toHaveLength(1);
+    const a = aInc({ routes: ['m1'], cta: { headline: 'Service issue' } });
+    expect(filterIncidents([a], { search: 'm1' })).toHaveLength(1);
   });
 
-  it('matches "red line" and "Brown Line" conversational forms', () => {
-    const red = oInc({ obs: { line: 'red', from_station: null, to_station: null } });
-    const brn = oInc({
-      routes: ['brown'],
-      obs: { line: 'brown', from_station: null, to_station: null },
+  it('matches line names and pre-2025 names ("Market-Frankford", "NHSL")', () => {
+    const l1 = oInc({ obs: { line: 'l1', from_station: null, to_station: null } });
+    const m1 = oInc({
+      routes: ['m1'],
+      obs: { line: 'm1', from_station: null, to_station: null },
     });
-    expect(filterIncidents([red], { search: 'red line' })).toHaveLength(1);
-    expect(filterIncidents([brn], { search: 'Brown Line' })).toHaveLength(1);
+    expect(filterIncidents([l1], { search: 'market-frankford line' })).toHaveLength(1);
+    expect(filterIncidents([l1], { search: 'MFL' })).toHaveLength(1);
+    expect(filterIncidents([m1], { search: 'NHSL' })).toHaveLength(1);
+    expect(filterIncidents([m1], { search: 'Norristown High Speed' })).toHaveLength(1);
   });
 
   it('matches signal labels (e.g. "headway gaps" → gap incidents)', () => {
@@ -1129,12 +1132,12 @@ describe('filterIncidents signal filter', () => {
     const merged = aInc({
       id: 'm1',
       kind: 'metro',
-      routes: ['red'],
+      routes: ['l1'],
       first_seen_ts: NOW - DAY,
       resolved_ts: NOW,
       active: false,
       cta: { alert_id: 'a', headline: 'Red Line Delays', first_seen_ts: NOW - DAY },
-      observations: [{ id: 1, kind: 'metro', line: 'red', detection_source: 'gap', ts: NOW - DAY }],
+      observations: [{ id: 1, kind: 'metro', line: 'l1', detection_source: 'gap', ts: NOW - DAY }],
     });
     const r = filterIncidents([merged], { signals: ['gap'] });
     expect(r).toHaveLength(1);
@@ -1155,9 +1158,9 @@ describe('buildHourOfWeek', () => {
   });
 
   it('counts incidents into their start-time bucket', () => {
-    // 2026-01-05 is a Monday in Chicago (UTC-6).
-    const monday3pmCT = Date.UTC(2026, 0, 5, 21, 0); // 3pm CT = 21:00 UTC
-    const obs = makeObs({ ts: monday3pmCT });
+    // 2026-01-05 is a Monday in Philadelphia (UTC-5).
+    const monday3pmET = Date.UTC(2026, 0, 5, 20, 0); // 3pm ET = 20:00 UTC
+    const obs = makeObs({ ts: monday3pmET });
     const { grid, total } = buildHourOfWeek([], [obs]);
     expect(total).toBe(1);
     expect(grid[1][15]).toBe(1); // Monday, 3pm
@@ -1275,14 +1278,14 @@ describe('listWeeks', () => {
 
 describe('buildWeekSummary', () => {
   const WK = Date.UTC(2026, 4, 17); // Sun May 17 2026
-  // 18:00 UTC ≈ 1pm CDT — safely the same Chicago calendar day as the date.
+  // 18:00 UTC ≈ 2pm EDT — safely the same Philadelphia calendar day as the date.
   const at = (y, m, d, h = 18) => Date.UTC(y, m, d, h);
 
   it('counts start-in-week incidents, busiest day, affected lines, and WoW', () => {
     const obs = [
-      makeObs({ line: 'red', ts: at(2026, 4, 18), resolved_ts: at(2026, 4, 18) + 30 * 60_000 }),
+      makeObs({ line: 'l1', ts: at(2026, 4, 18), resolved_ts: at(2026, 4, 18) + 30 * 60_000 }),
       makeObs({
-        line: 'red',
+        line: 'l1',
         ts: at(2026, 4, 18, 19),
         resolved_ts: at(2026, 4, 18, 19) + 30 * 60_000,
       }),
@@ -1293,17 +1296,17 @@ describe('buildWeekSummary', () => {
         resolved_ts: at(2026, 4, 20) + 2 * 60 * 60_000, // 2h — longest
       }),
       // Prior week (Tue May 12) — counts only toward priorTotal.
-      makeObs({ line: 'blue', ts: at(2026, 4, 12), resolved_ts: at(2026, 4, 12) + 30 * 60_000 }),
+      makeObs({ line: 'b1', ts: at(2026, 4, 12), resolved_ts: at(2026, 4, 12) + 30 * 60_000 }),
     ];
     const s = buildWeekSummary([], obs, WK, at(2026, 4, 23, 23));
     expect(s.total).toBe(3);
-    expect(s.trainCount).toBe(2);
+    expect(s.metroCount).toBe(2);
     expect(s.busCount).toBe(1);
     expect(s.lineCount).toBe(2);
     expect(s.priorTotal).toBe(1);
     expect(s.busiestDay).toMatchObject({ dayUtc: Date.UTC(2026, 4, 18), count: 2 });
     expect(s.perDay[1].count).toBe(2); // Monday
-    expect(s.mostAffected[0]).toMatchObject({ kind: 'metro', id: 'red', count: 2 });
+    expect(s.mostAffected[0]).toMatchObject({ kind: 'metro', id: 'l1', count: 2 });
     expect(s.longest).toMatchObject({ kind: 'bus', durationMs: 2 * 60 * 60_000 });
   });
 
@@ -1322,14 +1325,14 @@ describe('buildWeekSummary', () => {
 describe('buildSignalsByLine', () => {
   it('counts each signal kind per train line', () => {
     const obs = [
-      makeObs({ id: 1, line: 'red', detection_source: 'gap' }),
-      makeObs({ id: 2, line: 'red', detection_source: 'gap' }),
-      makeObs({ id: 3, line: 'red', detection_source: 'roundup', signals: ['bunching', 'ghost'] }),
-      makeObs({ id: 4, line: 'blue', detection_source: 'bunching' }),
+      makeObs({ id: 1, line: 'l1', detection_source: 'gap' }),
+      makeObs({ id: 2, line: 'l1', detection_source: 'gap' }),
+      makeObs({ id: 3, line: 'l1', detection_source: 'roundup', signals: ['bunching', 'ghost'] }),
+      makeObs({ id: 4, line: 'b1', detection_source: 'bunching' }),
     ];
     const { byLine, totals } = buildSignalsByLine(obs);
-    expect(byLine.red).toMatchObject({ gap: 2, bunching: 1, ghost: 1 });
-    expect(byLine.blue).toMatchObject({ bunching: 1 });
+    expect(byLine.l1).toMatchObject({ gap: 2, bunching: 1, ghost: 1 });
+    expect(byLine.b1).toMatchObject({ bunching: 1 });
     expect(totals.gap).toBe(2);
     expect(totals.bunching).toBe(2);
     expect(totals.ghost).toBe(1);
@@ -1338,7 +1341,7 @@ describe('buildSignalsByLine', () => {
   it('ignores bus observations', () => {
     const obs = [
       makeObs({ id: 1, kind: 'bus', line: '66', detection_source: 'gap' }),
-      makeObs({ id: 2, kind: 'metro', line: 'red', detection_source: 'gap' }),
+      makeObs({ id: 2, kind: 'metro', line: 'l1', detection_source: 'gap' }),
     ];
     expect(buildSignalsByLine(obs).totals.gap).toBe(1);
   });
@@ -1411,7 +1414,7 @@ describe('findRelatedIncidents', () => {
   });
 
   it('drops incidents on different lines', () => {
-    const otherLine = alertIncident({ id: 'blue', routes: ['blue'], first_seen_ts: NOW - 60_000 });
+    const otherLine = alertIncident({ id: 'b1', routes: ['b1'], first_seen_ts: NOW - 60_000 });
     expect(findRelatedIncidents(self, [self, otherLine])).toHaveLength(0);
   });
 
@@ -1426,7 +1429,7 @@ describe('findRelatedIncidents', () => {
     const bus = botIncident({
       id: 'bus',
       kind: 'bus',
-      routes: ['red'],
+      routes: ['l1'],
       first_seen_ts: NOW - 60_000,
     });
     expect(findRelatedIncidents(self, [self, bus])).toHaveLength(0);
@@ -1502,8 +1505,8 @@ describe('buildSearchMatchers', () => {
   });
 
   it('matches train line by full label', () => {
-    const a = aInc({ routes: ['red'], cta: { headline: 'X' } });
-    expect(buildSearchMatchers('Red Line').matchesIncident(a)).toBe(true);
+    const a = aInc({ routes: ['l1'], cta: { headline: 'X' } });
+    expect(buildSearchMatchers('Market-Frankford Line').matchesIncident(a)).toBe(true);
   });
 
   it('matches bus route by "Route N" form', () => {
@@ -1519,13 +1522,13 @@ describe('buildSearchMatchers', () => {
   it('matches synthesized Metra multi-train titles', () => {
     const inc = aInc({
       kind: 'rail',
-      routes: ['ri'],
+      routes: ['lan'],
       cta: { headline: 'RID #428 Delayed' },
       observations: [
         {
           id: 'metra-1003',
           kind: 'rail',
-          line: 'ri',
+          line: 'lan',
           detection_source: 'delay',
           train_number: '426',
           ts: NOW,
@@ -1533,7 +1536,7 @@ describe('buildSearchMatchers', () => {
         {
           id: 'metra-1004',
           kind: 'rail',
-          line: 'ri',
+          line: 'lan',
           detection_source: 'delay',
           train_number: '428',
           ts: NOW,
@@ -1652,14 +1655,14 @@ describe('typicalDurationKey', () => {
   });
 
   it('builds kind::line::signal for an observation', () => {
-    expect(typicalDurationKey({ kind: 'metro', line: 'red', detection_source: 'gap' })).toBe(
-      'train::red::gap',
+    expect(typicalDurationKey({ kind: 'metro', line: 'l1', detection_source: 'gap' })).toBe(
+      'metro::l1::gap',
     );
   });
 
   it('collapses roundup to a single bucket', () => {
-    expect(typicalDurationKey({ kind: 'metro', line: 'red', detection_source: 'roundup' })).toBe(
-      'train::red::roundup',
+    expect(typicalDurationKey({ kind: 'metro', line: 'l1', detection_source: 'roundup' })).toBe(
+      'metro::l1::roundup',
     );
   });
 
@@ -1667,11 +1670,11 @@ describe('typicalDurationKey', () => {
     expect(
       typicalDurationKey({
         kind: 'metro',
-        obs_line: 'blue',
+        obs_line: 'b1',
         obs_detection_source: 'gap',
-        line: 'red',
+        line: 'l1',
       }),
-    ).toBe('train::blue::gap');
+    ).toBe('metro::b1::gap');
   });
 });
 
@@ -1685,28 +1688,28 @@ describe('computeTypicalDurations', () => {
     const obs = [
       makeObs({
         id: 1,
-        line: 'red',
+        line: 'l1',
         detection_source: 'gap',
         ts: NOW - DAY,
         resolved_ts: NOW - DAY + 10 * 60_000,
       }),
       makeObs({
         id: 2,
-        line: 'red',
+        line: 'l1',
         detection_source: 'gap',
         ts: NOW - DAY,
         resolved_ts: NOW - DAY + 20 * 60_000,
       }),
       makeObs({
         id: 3,
-        line: 'red',
+        line: 'l1',
         detection_source: 'gap',
         ts: NOW - DAY,
         resolved_ts: NOW - DAY + 30 * 60_000,
       }),
     ];
     const r = computeTypicalDurations([], obs, { now: NOW });
-    const bucket = r.get('train::red::gap');
+    const bucket = r.get('metro::l1::gap');
     expect(bucket.count).toBe(3);
     expect(bucket.medianMs).toBe(20 * 60_000);
   });
@@ -1726,7 +1729,7 @@ describe('buildTodaySummary', () => {
 
   it('reports a quiet-day message in hours when the last incident was today recent', () => {
     const o = makeObs({ ts: TODAY_NOW - 3 * 60 * 60_000 - 5 * 60_000, resolved_ts: TODAY_NOW });
-    // phillyDayUTC of `o.ts` is the same Chicago day as TODAY_NOW only if it
+    // phillyDayUTC of `o.ts` is the same Philadelphia day as TODAY_NOW only if it
     // doesn't cross local midnight; this case is mid-afternoon, so safe.
     // But the incident *is* on today, so this case will fall into busy-day.
     const out = buildTodaySummary([], [o], TODAY_NOW);
@@ -1734,20 +1737,20 @@ describe('buildTodaySummary', () => {
   });
 
   it('formats busy-day with single line', () => {
-    const o = makeObs({ line: 'red', ts: TODAY_NOW - 60_000 });
+    const o = makeObs({ line: 'l1', ts: TODAY_NOW - 60_000 });
     const out = buildTodaySummary([], [o], TODAY_NOW);
-    expect(out.text).toMatch(/Red Line/);
+    expect(out.text).toMatch(/on the L1/);
   });
 
   it('reports active count when at least one incident is ongoing', () => {
     const o1 = makeObs({
       id: 1,
-      line: 'red',
+      line: 'l1',
       ts: TODAY_NOW - 10 * 60_000,
       active: true,
       resolved_ts: null,
     });
-    const o2 = makeObs({ id: 2, line: 'blue', ts: TODAY_NOW - 5 * 60_000 });
+    const o2 = makeObs({ id: 2, line: 'b1', ts: TODAY_NOW - 5 * 60_000 });
     const out = buildTodaySummary([], [o1, o2], TODAY_NOW);
     expect(out.text).toMatch(/2 incidents/);
     expect(out.text).toMatch(/1 still ongoing/);
