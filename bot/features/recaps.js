@@ -168,7 +168,14 @@ export async function postRecap({ db, poster, basemap, account, period, now, log
         log(`recaps: hotspot map failed: ${err.message}`);
       }
     }
-    parent = await poster.post({ account, kind: 'recap', subject, text, ...(image && { image }) });
+    parent = await poster.post({
+      account,
+      kind: 'recap',
+      subject,
+      text,
+      highlight: 'recap',
+      ...(image && { image }),
+    });
     result.hotspots = spots.length;
   }
 
@@ -187,6 +194,8 @@ export async function postRecap({ db, poster, basemap, account, period, now, log
       kind: 'recap-gaps',
       subject,
       text,
+      // Reposting the thread's first post covers it.
+      highlight: parent ? null : 'recap',
       ...(image && { image }),
       ...(parent && { reply: parent.uri }),
     });

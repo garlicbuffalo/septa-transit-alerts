@@ -60,7 +60,7 @@ const NOUNS = {
   'cross-bunching': 'cluster',
 };
 
-const RECORD_PHRASE = {
+export const RECORD_PHRASE = {
   gap: 'biggest gap vs schedule on this route in 30 days',
   bunching: 'most vehicles bunched on this route in 30 days',
   'thin-gap': 'longest silence on this route in 30 days',

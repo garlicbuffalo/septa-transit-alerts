@@ -1,6 +1,7 @@
-// The bot's SQLite database: what was posted (so restarts never double-post and
-// the site can link every post), raw vehicle observations (for timelapses,
-// speed maps, and the detectors' short lookbacks), and cooldowns.
+// The bot's SQLite database: what was posted and reposted (so restarts never
+// double-post and the site can link every post), raw vehicle observations
+// (for timelapses, speed maps, and the detectors' short lookbacks), and
+// cooldowns.
 //
 // Migrations are numbered steps applied in order and tracked with
 // PRAGMA user_version; add a step to MIGRATIONS, never edit an old one.
@@ -151,6 +152,12 @@ const MIGRATIONS = [
     coverage REAL
   );
   CREATE INDEX speedmap_runs_route ON speedmap_runs (account, route, ts);
+  `,
+  `
+  -- Why a post stands out ('recap', 'record', 'cluster', …), set by the
+  -- feature that made it; the insights account reposts highlighted posts.
+  ALTER TABLE posts ADD COLUMN highlight TEXT;
+  CREATE INDEX posts_highlight ON posts (highlight, ts) WHERE highlight IS NOT NULL;
   `,
 ];
 

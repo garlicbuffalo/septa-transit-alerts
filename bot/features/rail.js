@@ -298,6 +298,7 @@ export async function postRailRecap({ db, poster, now, period, log = () => {} })
     kind: 'rail-recap',
     subject,
     text,
+    highlight: 'recap',
     ...(image && { image }),
   });
   return { posted: period, url: res.url, trains: stats.trains };

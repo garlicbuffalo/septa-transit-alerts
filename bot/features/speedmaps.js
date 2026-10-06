@@ -114,6 +114,8 @@ function routePageUrl(mode, route) {
   return `${SITE_ORIGIN}/route/${encodeURIComponent(route)}`;
 }
 
+export const SLOWEST_CALLOUT = '📊 slowest reported in 14 days';
+
 /** Slowest or fastest of this route's maps in the past 14 days (with 3+ to compare). */
 export function speedCallout(db, { account, route, avgMph, now }) {
   const prior = db
@@ -121,7 +123,7 @@ export function speedCallout(db, { account, route, avgMph, now }) {
     .all(account, route, now - 14 * DAY_MS)
     .map((r) => r.avg_mph);
   if (prior.length < 3) return null;
-  if (prior.every((v) => avgMph < v)) return '📊 slowest reported in 14 days';
+  if (prior.every((v) => avgMph < v)) return SLOWEST_CALLOUT;
   if (prior.every((v) => avgMph > v)) return '📊 fastest reported in 14 days';
   return null;
 }
@@ -232,6 +234,7 @@ export async function postSpeedMap({ db, poster, shapes, basemap, account, now, 
       text,
       facets,
       image,
+      highlight: callout === SLOWEST_CALLOUT ? 'slowest' : null,
     });
     db.prepare(
       'INSERT INTO speedmap_runs (account, route, direction, ts, avg_mph, coverage) VALUES (?, ?, ?, ?, ?, ?)',

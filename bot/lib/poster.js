@@ -1,6 +1,7 @@
-// Posting with a memory: every post (or dry-run stand-in) is recorded in the
-// posts table under a subject and kind, so restarts never double-post, threads
-// can be continued, and the published data can link each incident to its post.
+// Posting with a memory: every post and repost (or dry-run stand-in) is
+// recorded in the posts table under a subject and kind, so restarts never
+// double-post, threads can be continued, and the published data can link each
+// incident to its post.
 import { getMeta, setMeta } from './db.js';
 
 /**
@@ -9,8 +10,8 @@ import { getMeta, setMeta } from './db.js';
  */
 export function createPoster({ db, client, log = () => {}, now = () => Date.now() }) {
   const insert = db.prepare(`
-    INSERT INTO posts (account, kind, subject, uri, cid, url, root_uri, root_cid, parent_uri, ts, text, dry_run)
-    VALUES (@account, @kind, @subject, @uri, @cid, @url, @root_uri, @root_cid, @parent_uri, @ts, @text, @dry_run)
+    INSERT INTO posts (account, kind, subject, uri, cid, url, root_uri, root_cid, parent_uri, ts, text, dry_run, highlight)
+    VALUES (@account, @kind, @subject, @uri, @cid, @url, @root_uri, @root_cid, @parent_uri, @ts, @text, @dry_run, @highlight)
   `);
   const latest = db.prepare(
     'SELECT * FROM posts WHERE subject = ? AND kind = ? AND dry_run = ? ORDER BY ts DESC, id DESC LIMIT 1',
@@ -43,9 +44,19 @@ export function createPoster({ db, client, log = () => {}, now = () => Date.now(
      * Post and record it. `reply` may be a reply ref or an at:// URI to
      * continue that post's thread. If that post is gone, the reply posts
      * unthreaded, or not at all with `requireParent` (returning null).
+     * `highlight` says why the post stands out (the insights account
+     * reposts highlighted posts; see features/insights.js).
      * @returns {Promise<{ uri: string, cid: string, url: string } | null>}
      */
-    async post({ account, kind, subject = null, reply = null, requireParent = false, ...opts }) {
+    async post({
+      account,
+      kind,
+      subject = null,
+      reply = null,
+      requireParent = false,
+      highlight = null,
+      ...opts
+    }) {
       let replyRef = reply;
       if (typeof reply === 'string') {
         replyRef = await client.replyRef(account, reply);
@@ -72,6 +83,31 @@ export function createPoster({ db, client, log = () => {}, now = () => Date.now(
         ts: now(),
         text: opts.text,
         dry_run: dry,
+        highlight,
+      });
+      return res;
+    },
+
+    /**
+     * Repost another post (`of`, a recorded posts row) as `account` and
+     * record it under `subject`. The row keeps the reposted post's URL.
+     */
+    async repost({ account, kind = 'repost', subject, of }) {
+      const res = await client.repost(account, { uri: of.uri, cid: of.cid });
+      insert.run({
+        account,
+        kind,
+        subject,
+        uri: res.uri,
+        cid: res.cid,
+        url: of.url,
+        root_uri: res.uri,
+        root_cid: res.cid,
+        parent_uri: null,
+        ts: now(),
+        text: null,
+        dry_run: dry,
+        highlight: null,
       });
       return res;
     },
@@ -104,6 +140,7 @@ export function createPoster({ db, client, log = () => {}, now = () => Date.now(
         ts: now(),
         text: null,
         dry_run: dry,
+        highlight: null,
       });
     },
 

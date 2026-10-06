@@ -317,6 +317,13 @@ export function createBlueskyClient({
       return { root, parent };
     },
 
+    /** Repost a post as `account`. */
+    async repost(account, { uri, cid }) {
+      const a = await agent(account);
+      const res = await withRetry(() => a.repost(uri, cid));
+      return { uri: res.uri, cid: res.cid };
+    },
+
     async deletePost(account, uri) {
       const a = await agent(account);
       await withRetry(() => a.deletePost(uri));
@@ -333,8 +340,9 @@ export function createBlueskyClient({
 let dryRunSeq = 0;
 
 /**
- * Dry-run client: same interface, posts nothing. Each "post" is written to
- * `<assetsDir>/<date>/<time>-<account>-<n>.json` with its media beside it.
+ * Dry-run client: same interface, posts nothing. Each "post" (or repost) is
+ * written to `<assetsDir>/<date>/<time>-<account>-<n>.json` with its media
+ * beside it.
  */
 export function createDryRunClient({ assetsDir, log = () => {}, now = () => Date.now() }) {
   const posts = new Map();
@@ -372,6 +380,28 @@ export function createDryRunClient({ assetsDir, log = () => {}, now = () => Date
       log(`[dry run] ${account}: ${opts.text.replace(/\n+/g, ' ⏎ ')}`);
       posts.set(uri, { uri, cid, value: { text: opts.text, reply: opts.reply ?? undefined } });
       return { uri, cid, url: postUrl(uri) };
+    },
+    async repost(account, subject) {
+      const ts = now();
+      const rkey = `dry${ts.toString(36)}${(dryRunSeq++).toString(36)}`;
+      const stamp = new Date(ts).toISOString().replace(/[:.]/g, '-');
+      const dir = join(assetsDir, stamp.slice(0, 10));
+      const base = `${stamp.slice(11, 19)}-${account}-${rkey}`;
+      try {
+        await mkdir(dir, { recursive: true });
+        await writeFile(
+          join(dir, `${base}.json`),
+          `${JSON.stringify({ account, repost: subject }, null, 2)}\n`,
+        );
+      } catch (err) {
+        log(`dry-run: could not write ${base}: ${err.message}`);
+      }
+      const text = posts.get(subject.uri)?.value.text ?? subject.uri;
+      log(`[dry run] ${account} reposts: ${text.replace(/\n+/g, ' ⏎ ')}`);
+      return {
+        uri: `at://did:plc:dry-run-${account}/app.bsky.feed.repost/${rkey}`,
+        cid: `dry-${rkey}`,
+      };
     },
     async getPost(_account, uri) {
       return posts.get(uri) ?? null;

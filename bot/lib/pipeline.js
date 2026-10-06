@@ -3,8 +3,9 @@
 //   observe      every minute: poll TransitView (buses, trolleys, M1) and
 //                TrainView (Regional Rail), record every position
 //   collect      every 2 minutes: run the collector on the latest positions,
-//                post to Bluesky from its beforePublish hook, link the posts
-//                into the data, and publish the data branch
+//                post to Bluesky from its beforePublish hook (the insights
+//                account's reposts, rough hours, and digests too), link the
+//                posts into the data, and publish the data branch
 //   sample       every 15 seconds while a timelapse is recording: poll the
 //                routes it follows (or the whole feed, for a snapshot)
 //   render       every 30 seconds: render a finished timelapse and post it
@@ -17,6 +18,7 @@
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { collect } from '../../collector/collect.js';
+import { loadArchive } from '../../collector/lib/archive.js';
 import { createSources } from '../../collector/lib/sources.js';
 import { normalizeTransitView } from '../../collector/lib/vehicles.js';
 import { linkAlertPosts, postAlerts } from '../features/alerts.js';
@@ -24,6 +26,12 @@ import { maybePostCancellationRoundups } from '../features/cancellations.js';
 import { postCrossBunching } from '../features/crossBunching.js';
 import { linkDetectionPosts, postDetections } from '../features/detections.js';
 import { maybePostGhostRollups } from '../features/ghosts.js';
+import {
+  maybePostDigests,
+  maybePostRoughHour,
+  postDigest,
+  repostHighlights,
+} from '../features/insights.js';
 import { maybePostRailRollup, postRailRecap, recordTrains } from '../features/rail.js';
 import { postRecap } from '../features/recaps.js';
 import { postSpeedMap } from '../features/speedmaps.js';
@@ -146,6 +154,12 @@ export function createPipeline({
       return postRailRecap({ db, poster, now: now(), period, log });
     },
 
+    /** Post the insights account's daily or weekly digest from the data directory. */
+    async digest(period) {
+      const { incidents, outages, dataStartTs } = await loadArchive(config.dataDir);
+      return postDigest({ period, incidents, outages, db, poster, now: now(), dataStartTs, log });
+    },
+
     async observe() {
       const t = now();
       const [tv, rr] = await Promise.allSettled([sources.transitView(), sources.trainView()]);
@@ -188,7 +202,13 @@ export function createPipeline({
           },
           trainView: async () => fresh(latest.trainView) ?? sources.trainView(),
         },
-        beforePublish: async ({ incidents, schedule, now: tickNow }) => {
+        beforePublish: async ({
+          incidents,
+          outages,
+          schedule,
+          now: tickNow,
+          summary: { dataStartTs },
+        }) => {
           const vehicleList = usedTransitView
             ? normalizeTransitView(usedTransitView, tickNow).vehicles
             : [];
@@ -243,8 +263,28 @@ export function createPipeline({
               log,
             }),
           );
+          const reposts = await step('reposts', () =>
+            repostHighlights({ db, poster, now: tickNow, log }),
+          );
+          const roughHour = await step('rough-hour', () =>
+            maybePostRoughHour({ incidents, db, poster, now: tickNow, dataStartTs, log }),
+          );
+          const digests = await step('digests', () =>
+            maybePostDigests({ incidents, outages, db, poster, now: tickNow, dataStartTs, log }),
+          );
           const linked = linkAlertPosts(incidents, poster) + linkDetectionPosts(incidents, poster);
-          return { alerts, detections, ghosts, rail, cancellations, crossRoute, linked };
+          return {
+            alerts,
+            detections,
+            ghosts,
+            rail,
+            cancellations,
+            crossRoute,
+            reposts,
+            roughHour,
+            digests,
+            linked,
+          };
         },
       });
       let published = null;
@@ -275,6 +315,12 @@ export function createPipeline({
             ? `, cancelled-trip roundup ${summary.hook.cancellations.routes} routes`
             : '') +
           (summary.hook?.crossRoute?.posted ? ', cross-route cluster posted' : '') +
+          (summary.hook?.reposts?.reposted ? `, reposted ${summary.hook.reposts.reposted}` : '') +
+          (summary.hook?.roughHour?.posted ? ', rough hour posted' : '') +
+          Object.entries(summary.hook?.digests ?? {})
+            .filter(([, r]) => r?.posted)
+            .map(([period]) => `, ${period} digest posted`)
+            .join('') +
           (published?.pushed ? ', pushed' : '') +
           (published?.deployed ? ', deploy triggered' : '') +
           (errors.length ? ` — ${errors.join('; ')}` : ''),

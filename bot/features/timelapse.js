@@ -44,6 +44,8 @@ const MAX_ATTEMPTS = 2;
 // in the day for the snapshots.
 export const VIDEO_LIMITS = { dailyPerAccount: 20, snapshotsPerDay: 5, perKindPerHour: 1 };
 const VIDEO_KINDS = ['timelapse', 'snapshot'];
+// The evening-rush snapshots (5 PM) are highlighted for the insights account.
+const RUSH_SNAPSHOT = /T17$/;
 
 const json = (s) => (s ? JSON.parse(s) : null);
 
@@ -502,6 +504,7 @@ export async function renderDueCapture({
             subject: capture.subject,
             text: built.text,
             video,
+            highlight: RUSH_SNAPSHOT.test(capture.subject) ? 'rush-hour' : null,
           })
         : await poster.post({
             account: capture.account,

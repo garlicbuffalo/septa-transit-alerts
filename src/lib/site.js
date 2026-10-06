@@ -25,10 +25,12 @@ export const SITE_DESCRIPTION =
 // same name. Until then the site shows no follow links.
 const BOT_ACCOUNTS = [
   {
+    // Titled "insights" on Bluesky; the key stays `alerts` for existing settings.
     key: 'alerts',
-    label: 'Alerts',
-    emoji: '⚠️',
-    description: 'SEPTA’s significant service alerts, with a ✅ reply when they clear.',
+    label: 'Insights',
+    emoji: '📊',
+    description:
+      'SEPTA’s significant alerts, daily and weekly system digests, rough-hour callouts, and the other bots’ standout posts.',
   },
   {
     key: 'metro',
