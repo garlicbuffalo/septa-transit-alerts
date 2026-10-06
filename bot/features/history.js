@@ -32,8 +32,11 @@ export function recordEvent(db, e) {
   });
 }
 
-export function markPosted(db, subject) {
-  db.prepare('UPDATE detection_events SET posted = 1 WHERE subject = ?').run(subject);
+export function markPosted(db, subject, ts = Date.now()) {
+  db.prepare('UPDATE detection_events SET posted = 1, posted_ts = ? WHERE subject = ?').run(
+    ts,
+    subject,
+  );
 }
 
 /** Posted events for a source and route since a time. */

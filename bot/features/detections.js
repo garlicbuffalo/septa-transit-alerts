@@ -10,6 +10,7 @@
 
 import { vehicleNoun } from '../../collector/lib/vehicles.js';
 import { SITE_ORIGIN } from '../../src/lib/site.js';
+import { cleanStopName } from '../../src/lib/stops.js';
 import { acquireCooldown, clearCooldown } from '../lib/db.js';
 import { routeEmoji, routeShortLabel } from '../lib/routes.js';
 import { firstThatFits, graphemeLength, linkFacets, POST_MAX_GRAPHEMES } from '../lib/text.js';
@@ -29,6 +30,9 @@ export const POSTED_SOURCES = new Set(['gap', 'bunching', 'pulse-held', 'thin-ga
 const FOLLOWED = new Set(['pulse-held', 'thin-gap']);
 const ACCOUNT_FOR_MODE = { metro: 'metro', bus: 'bus' };
 const DAILY_CAP = { gap: 3, bunching: 3, 'pulse-held': 4, 'thin-gap': 3 };
+// Posts per account per kind per hour, system-wide (cta-insights posted the
+// single worst bunch or gap each 15–20 minutes).
+const HOURLY_BUDGET = { gap: 3, bunching: 3, 'pulse-held': 4, 'thin-gap': 4 };
 const COOLDOWN_MS = 60 * 60 * 1000;
 // A capped or cooling-down event still posts when it's this much worse than
 // everything already posted for the route today.
@@ -129,10 +133,9 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
       vehicles.get(String(d.vehicles?.[0])),
       vehicles.get(String(d.vehicles?.[1])),
     ];
-    const between =
-      behind?.nextStopName && ahead?.nextStopName && behind.nextStopName !== ahead.nextStopName
-        ? ` Nothing between ${behind.nextStopName} and ${ahead.nextStopName}.`
-        : '';
+    const from = cleanStopName(behind?.nextStopName);
+    const to = cleanStopName(ahead?.nextStopName);
+    const between = from && to && from !== to ? ` Nothing between ${from} and ${to}.` : '';
     const lines = [
       `🕳️ ${label}${toward}`,
       `~${d.gap_min} min between ${noun} — scheduled every ~${d.headway_min} min.${between}`,
@@ -169,7 +172,7 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
       (a, b) => (b.nextStopSequence ?? 0) - (a.nextStopSequence ?? 0),
     );
     const span = ordered.length >= 2 ? maxPairDistance(ordered) : (d.distance_m ?? null);
-    const near = det.scope.from_station ?? ordered[0]?.nextStopName ?? null;
+    const near = det.scope.from_station ?? cleanStopName(ordered[0]?.nextStopName);
     const lines = [
       `${emoji} ${label}${toward}`,
       `${d.vehicle_count} ${noun} within ${span != null ? formatDistance(span) : 'a few hundred feet'}${near ? ` near ${near}` : ''}, scheduled ~${d.scheduled_spacing_min} min apart`,
@@ -195,7 +198,7 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
   if (det.source === 'pulse-held') {
     const n = d.vehicle_count ?? d.busCount ?? found.length;
     const minutes = Math.floor((d.stationaryMs ?? 0) / 60000);
-    const near = det.scope.from_station ?? found[0]?.nextStopName ?? null;
+    const near = det.scope.from_station ?? cleanStopName(found[0]?.nextStopName);
     const lines = [
       `${emoji}🚨 ${label}: ${noun} stuck`,
       `🛑 ${n} ${noun} stopped ${minutes}+ min${near ? ` near ${near}` : ''}.`,
@@ -256,8 +259,17 @@ export async function postDetections({
   maxAgeMs,
   log = () => {},
 }) {
-  const stats = { posted: 0, skipped: 0, updates: 0, cleared: 0, quoted: 0, failed: 0 };
+  const stats = {
+    posted: 0,
+    skipped: 0,
+    deferred: 0,
+    updates: 0,
+    cleared: 0,
+    quoted: 0,
+    failed: 0,
+  };
   const since = poster.since();
+  const candidates = [];
   for (const inc of incidents.values()) {
     for (const det of inc.detections ?? []) {
       if (!POSTED_SOURCES.has(det.source)) continue;
@@ -266,35 +278,66 @@ export async function postDetections({
       const subject = subjectOf(det);
       try {
         const posted = poster.find(subject, 'detection');
-        if (!posted) {
-          const r = await postNew({
-            inc,
-            det,
-            account,
-            subject,
-            poster,
-            db,
-            vehicles,
-            shapes,
-            basemap,
-            now,
-            since,
-            maxAgeMs,
-            log,
-          });
-          if (r === 'posted') stats.posted++;
-          else if (r === 'skipped') stats.skipped++;
-          if (r === 'posted' && (await quoteIntoAlertThread({ inc, subject, poster, log })))
-            stats.quoted++;
-        } else if (FOLLOWED.has(det.source)) {
+        if (posted) {
+          if (!FOLLOWED.has(det.source)) continue;
           const r = await followUp({ inc, det, account, subject, posted, poster, now });
           if (r === 'update') stats.updates++;
           if (r === 'cleared') stats.cleared++;
+          continue;
         }
+        if (poster.skipped(subject)) continue;
+        const first = det.lifecycle.first_seen_ts;
+        const reason = !det.lifecycle.active
+          ? 'resolved-before-post'
+          : first < since
+            ? 'before-posting-started'
+            : now - first > maxAgeMs
+              ? 'stale'
+              : null;
+        if (reason) {
+          poster.skip(subject, reason);
+          stats.skipped++;
+          continue;
+        }
+        candidates.push({
+          inc,
+          det,
+          account,
+          subject,
+          score: scoreOf(det.source, det.evidence?.details),
+        });
       } catch (err) {
         stats.failed++;
-        log(`detections: posting ${det.id} failed: ${err.message}`);
+        log(`detections: following up ${det.id} failed: ${err.message}`);
       }
+    }
+  }
+
+  // New posts, worst first, within each account's hourly budget per kind and
+  // at most one per kind per tick. The rest wait for a later tick (until
+  // they go stale).
+  candidates.sort((a, b) => b.score - a.score);
+  const usedThisTick = new Set();
+  for (const c of candidates) {
+    const budgetKey = `${c.account}|${c.det.source}`;
+    if (
+      usedThisTick.has(budgetKey) ||
+      postedInLastHour(db, c.inc.mode, c.det.source, now) >= (HOURLY_BUDGET[c.det.source] ?? 3)
+    ) {
+      stats.deferred++;
+      continue;
+    }
+    try {
+      const r = await postNew({ ...c, poster, db, vehicles, shapes, basemap, now, log });
+      if (r === 'skipped') stats.skipped++;
+      if (r !== 'posted') continue;
+      stats.posted++;
+      usedThisTick.add(budgetKey);
+      if (await quoteIntoAlertThread({ inc: c.inc, subject: c.subject, poster, log }))
+        stats.quoted++;
+    } catch (err) {
+      stats.failed++;
+      log(`detections: posting ${c.det.id} failed: ${err.message}`);
     }
   }
   return stats;
@@ -311,20 +354,12 @@ async function postNew({
   shapes,
   basemap,
   now,
-  since,
-  maxAgeMs,
   log,
 }) {
-  if (poster.skipped(subject)) return null;
-  const first = det.lifecycle.first_seen_ts;
   const skip = (reason) => {
     poster.skip(subject, reason);
     return 'skipped';
   };
-  if (!det.lifecycle.active) return skip('resolved-before-post');
-  if (first < since) return skip('before-posting-started');
-  if (now - first > maxAgeMs) return skip('stale');
-
   const route = det.scope.route;
   const d = det.evidence?.details ?? {};
   const score = scoreOf(det.source, d);
@@ -336,10 +371,10 @@ async function postNew({
     route,
     metric: metricOf(det.source, d),
     ratio: det.source === 'gap' ? score : null,
-    near: det.scope.from_station ?? anchor?.nextStopName ?? null,
+    near: det.scope.from_station ?? cleanStopName(anchor?.nextStopName),
     lat: anchor?.lat ?? null,
     lon: anchor?.lon ?? null,
-    ts: first,
+    ts: det.lifecycle.first_seen_ts,
   });
 
   // Caps and cooldowns, unless this is clearly the worst of the day.
@@ -396,8 +431,16 @@ async function postNew({
           },
         }),
   });
-  markPosted(db, subject);
+  markPosted(db, subject, now);
   return 'posted';
+}
+
+function postedInLastHour(db, mode, source, now) {
+  return db
+    .prepare(
+      'SELECT COUNT(*) AS n FROM detection_events WHERE mode = ? AND source = ? AND posted = 1 AND posted_ts >= ?',
+    )
+    .get(mode, source, now - 60 * 60 * 1000).n;
 }
 
 function scoreOfEvent(source, row) {

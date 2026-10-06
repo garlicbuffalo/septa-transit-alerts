@@ -8,6 +8,7 @@
 
 import { distanceM } from '../../collector/lib/vehicles.js';
 import { SITE_ORIGIN } from '../../src/lib/site.js';
+import { cleanStopName } from '../../src/lib/stops.js';
 import { acquireCooldown } from '../lib/db.js';
 import { observationsSince } from '../lib/observations.js';
 import { routeShortLabel } from '../lib/routes.js';
@@ -103,8 +104,10 @@ function placeOf(group) {
   const lat = group.reduce((s, v) => s + v.lat, 0) / group.length;
   const lon = group.reduce((s, v) => s + v.lon, 0) / group.length;
   const names = new Map();
-  for (const v of group)
-    if (v.nextStopName) names.set(v.nextStopName, (names.get(v.nextStopName) ?? 0) + 1);
+  for (const v of group) {
+    const n = cleanStopName(v.nextStopName);
+    if (n) names.set(n, (names.get(n) ?? 0) + 1);
+  }
   const name = [...names.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   return { lat, lon, key: `${lat.toFixed(3)},${lon.toFixed(3)}`, name };
 }
@@ -205,6 +208,6 @@ export async function postCrossBunching({
     facets,
     ...(image && { image }),
   });
-  markPosted(db, subject);
+  markPosted(db, subject, now);
   return { posted: 1, vehicles: group.length };
 }

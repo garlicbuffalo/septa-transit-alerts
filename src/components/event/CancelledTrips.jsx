@@ -1,10 +1,5 @@
 import { formatTime } from '../../lib/format.js';
-
-// GTFS stop names carry boarding-position suffixes riders don't need here:
-// "Wissahickon Transit Center Boarding Area 5", "… Drop Off", "11th St &
-// Market St - FS" (far side).
-const stopName = (name) =>
-  name?.replace(/\s+(?:-\s+(?:FS|NS|MBFS|MBNS)|Boarding Area \w+|Drop Off)$/i, '') ?? null;
+import { cleanStopName as stopName } from '../../lib/stops.js';
 
 // The trips behind a route's trip-cancellation roll-up, in schedule order.
 // Trips whose scheduled start has passed are dimmed so the runs riders still

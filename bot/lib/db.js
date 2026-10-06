@@ -77,7 +77,8 @@ const MIGRATIONS = [
     lat REAL,
     lon REAL,
     ts INTEGER NOT NULL,
-    posted INTEGER NOT NULL DEFAULT 0
+    posted INTEGER NOT NULL DEFAULT 0,
+    posted_ts INTEGER
   );
   CREATE UNIQUE INDEX detection_events_subject ON detection_events (subject);
   CREATE INDEX detection_events_route ON detection_events (source, route, ts);

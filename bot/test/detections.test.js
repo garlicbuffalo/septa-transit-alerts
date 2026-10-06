@@ -312,3 +312,38 @@ describe('history', () => {
     ]);
   });
 });
+
+describe('posting budget', () => {
+  it('posts the worst detections first, one per kind per tick, a few per hour', async () => {
+    const t = testPoster();
+    const gaps = [20, 40, 30, 25, 35].map((gapMin, i) =>
+      detectionIncident({
+        id: `g${i}`,
+        route: String(10 + i),
+        details: { ...gapDetails, gap_min: gapMin, vehicles: [] },
+      }),
+    );
+    const incidents = asMap(...gaps);
+    const first = await run(incidents, t);
+    expect(first).toMatchObject({ posted: 1, deferred: 4 });
+    expect(t.client.posts[0].opts.text).toMatch(/^🕳️ Route 11 /); // the 40-minute gap
+    for (let i = 1; i <= 4; i++) await run(incidents, t, { now: NOW + i * 2 * 60_000 });
+    // Three an hour: the next two worst, then the rest wait.
+    expect(t.client.posts.map((p) => p.opts.text.split(' ')[2])).toEqual(['11', '14', '12']);
+  });
+
+  it('cleans stop names', () => {
+    const vehicles = byLabel([
+      vehicle({ label: '3787', nextStopName: '8th St & Race St - FS' }),
+      vehicle({ label: '3314', nextStopName: 'Wissahickon Transit Center Boarding Area 5' }),
+    ]);
+    const inc = detectionIncident({ details: gapDetails });
+    const { text } = composeDetection({
+      incident: inc,
+      det: inc.detections[0],
+      vehicles,
+      shapes: null,
+    });
+    expect(text).toContain('Nothing between Wissahickon Transit Center and 8th St & Race St.');
+  });
+});
