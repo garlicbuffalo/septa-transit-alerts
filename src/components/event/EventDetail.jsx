@@ -28,9 +28,9 @@ import {
   incidentRecords,
   isPlannedIncident,
   legacyKind,
-  metraIncidentStatus,
-  metraPointEvent,
   officialAlert,
+  railIncidentStatus,
+  railPointEvent,
   SIGNAL_LABELS,
   splitObservations,
 } from '../../lib/incidents.js';
@@ -38,9 +38,9 @@ import { stationsServingLines } from '../../lib/stations.js';
 import EventMap from '../EventMap.jsx';
 import EventReplay from '../EventReplay.jsx';
 import LinePill from '../LinePill.jsx';
-import MetraPointBadge from '../MetraPointBadge.jsx';
 import MultiLineEventMap from '../MultiLineEventMap.jsx';
 import OfficialBadge from '../OfficialBadge.jsx';
+import RailPointBadge from '../RailPointBadge.jsx';
 import ShareLink from '../ShareLink.jsx';
 import StationName from '../StationName.jsx';
 import {
@@ -51,17 +51,18 @@ import {
   StationChips,
   StationsByLine,
 } from './AffectedStations.jsx';
+import CancelledTrips from './CancelledTrips.jsx';
 import CopySummary from './CopySummary.jsx';
 import {
   buildEventSummaryText,
+  computeAgencyEstimate,
+  computeAgencyPlanned,
   computeBotLead,
-  computeCtaEstimate,
-  computeCtaPlanned,
 } from './callouts.js';
 import { describe, describeText, incidentRoutes } from './incidentText.jsx';
 import { MiniTimeline } from './MiniTimeline.jsx';
 
-// 0–23 Chicago clock hour → "3 PM" / "12 AM". Used by the time-of-day context
+// 0–23 Philadelphia clock hour → "3 PM" / "12 AM". Used by the time-of-day context
 // line; kept local since it's the only consumer.
 function formatHourLabel(hour) {
   const period = hour < 12 ? 'AM' : 'PM';
@@ -104,7 +105,7 @@ function formatAffected(incident) {
 //   - The incident is still active (no final duration yet).
 //   - The cohort is below the helper's minCohort threshold (any median is
 //     too volatile to anchor a comparison).
-//   - The incident has no signal to bucket on (pure CTA alerts).
+//   - The incident has no signal to bucket on (official-only alerts).
 function DurationScale({ stats }) {
   if (!stats || stats.thisMs == null) return null;
   // Scale extends to the max of (this incident, cohort p90) so a much-
@@ -193,17 +194,22 @@ export function EventDetail({ incident, incidents, alerts, observations, station
     );
     return merged[0] ?? standaloneAlerts[0] ?? standaloneObs[0] ?? null;
   }, [incident]);
-  const cta = flatSubject?.alert_id ? flatSubject : null;
+  const official = flatSubject?.alert_id ? flatSubject : null;
   const kind = legacyKind(incident);
   const lifecycle = incidentLifecycle(incident);
-  // The official-source agency for this incident's alert block — "Metra" for
-  // Metra incidents (whose `cta` block holds Metra's own republished alert),
-  // "CTA" otherwise. Threaded through all the "Per CTA" / "via CTA" copy.
+  // The official source for this incident's alert block — always "SEPTA".
+  // Threaded through all the "Per SEPTA" / "via SEPTA" copy.
   const agency = agencyLabel(kind);
   const { primary, extras } = splitObservations(incident);
-  const isMerged = !!cta && !!primary;
-  const isAlert = !!cta && !primary;
-  const isObsOnly = !cta;
+  const isMerged = !!official && !!primary;
+  const isAlert = !!official && !primary;
+  const isObsOnly = !official;
+  // A route's day of cancelled trips (collector/lib/tripCancellations.js),
+  // read from SEPTA's real-time trip feed rather than vehicle positions.
+  const cancelledTrips =
+    isObsOnly && primary?.detection_source === 'trip-cancellations'
+      ? (primary.evidence?.trips ?? [])
+      : null;
 
   // For absence-style observations (pulse-cold/thin-gap) the export publishes an
   // onset_ts back-dated to the last observed train; use it as the start so
@@ -228,7 +234,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
   // dated by its scheduled window, not an elapsed clock — the disruption may
   // not have started yet. So we suppress the "Ongoing for" timer and the red
   // "ongoing" pill for these and relabel "First seen" as "Announced" (the
-  // moment CTA posted the notice). Mirrors the homepage's planned-work band,
+  // moment SEPTA posted the notice). Mirrors the homepage's planned-work band,
   // which also drops the timer.
   const isPlanned = isPlannedIncident(incident, now);
   const elapsedMs =
@@ -241,7 +247,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
   const lineLabel = formatRoutesLabel(kind, routes);
 
   // Line-wide severity: where this incident's duration ranks among ALL
-  // incidents on the line over 30d (any signal, incl. pure CTA alerts).
+  // incidents on the line over 30d (any signal, incl. official-only alerts).
   const lineRank = useMemo(
     () => computeLineDurationRank(incident, incidents, { windowDays: 30 }),
     [incident, incidents],
@@ -249,7 +255,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
 
   // Signal-cohort severity: derived from the same cohort the DurationScale
   // bar draws (same kind+line+signal, 90d). "Longest" when at/above the
-  // cohort max, "top 10%" when at/above p90. Pure CTA alerts have no cohort
+  // cohort max, "top 10%" when at/above p90. Pure SEPTA alerts have no cohort
   // (cohortStats null) and get no signal badge.
   const signalSeverity = useMemo(() => {
     if (!cohortStats || cohortStats.thisMs == null || cohortStats.count < 5) return null;
@@ -283,40 +289,42 @@ export function EventDetail({ incident, incidents, alerts, observations, station
 
   // Bot-lead-time callout. When our bot's earliest observation (back-dated to
   // the last train through the cold stretch / earliest signal) predates the
-  // CTA alert's post time, surface the lead so the UI doesn't read as if CTA
-  // detected first. Skipped under 2 min (CTA effectively kept pace).
+  // SEPTA alert's post time, surface the lead so the UI doesn't read as if SEPTA
+  // detected first. Skipped under 2 min (SEPTA effectively kept pace).
   const botLead = computeBotLead({
     isMerged,
-    ctaFirstSeenTs: cta?.first_seen_ts ?? null,
+    agencyFirstSeenTs: official?.first_seen_ts ?? null,
     observations: [primary, ...extras].filter(Boolean),
   });
   const botLeadPhrase = botLead?.phrase ?? null;
   const botLeadOnsetTs = botLead?.onsetTs ?? null;
 
-  // CTA-planned-start callout. When CTA tagged the alert with an EventStart
+  // SEPTA-planned-start callout. When SEPTA tagged the alert with a posted start
   // that meaningfully predates our first sighting, the disruption was a
   // planned event scheduled in advance rather than a live reactive post.
-  // Skipped when the gap is < 10 minutes (CTA fired effectively in real
-  // time) or > 14 days (a stale EventStart from a long-running planned
+  // Skipped when the gap is < 10 minutes (SEPTA fired effectively in real
+  // time) or > 14 days (a stale posted start from a long-running planned
   // alert isn't informative).
-  const ctaStart = cta?.cta_event_start_ts ?? null;
-  const ctaPlannedPhrase = computeCtaPlanned({ ctaStartTs: ctaStart, startTs });
+  const agencyStart = official?.agency_event_start_ts ?? null;
+  const agencyPlannedPhrase = computeAgencyPlanned({ agencyStartTs: agencyStart, startTs });
 
-  // CTA's claimed end-time vs actual resolution. Pure CTA alerts and merged
-  // records carry `cta_event_end_ts` when CTA originally tagged the alert
-  // with an EventEnd. When the alert resolved before the stated end, CTA
+  // SEPTA's claimed end-time vs actual resolution. Pure SEPTA alerts and merged
+  // records carry `agency_event_end_ts` when SEPTA originally tagged the alert
+  // with a posted end. When the alert resolved before the stated end, SEPTA
   // beat their own estimate; when it resolved after, they were optimistic.
   // Skip when only one side is known or the values are >1 week apart (a
-  // stale EventEnd from a multi-day planned alert isn't a useful comparison).
-  // For still-active incidents, surface CTA's posted end-time as a
+  // stale posted end from a multi-day planned alert isn't a useful comparison).
+  // For still-active incidents, surface SEPTA's posted end-time as a
   // forward-looking "expected to clear" line rather than the retrospective
   // comparison below. `formatEstimatedEnd` returns null when the estimate
   // is already past or imminent (≤2 min), so an alert running past its
   // estimate quietly hides the now-stale label instead of advertising it.
-  const ctaEndIsDateOnly = cta?.cta_event_end_is_date_only === true;
+  const agencyEndIsDateOnly = official?.agency_event_end_is_date_only === true;
   const activeEndPhrase =
-    lifecycle.active && cta?.cta_event_end_ts != null
-      ? formatEstimatedEnd(cta.cta_event_end_ts, undefined, { dateOnly: ctaEndIsDateOnly })
+    lifecycle.active && official?.agency_event_end_ts != null
+      ? formatEstimatedEnd(official.agency_event_end_ts, undefined, {
+          dateOnly: agencyEndIsDateOnly,
+        })
       : null;
   // Only show the parenthetical when it adds genuinely new info (a short
   // countdown like "in ~45m", or "later today"). For far-future estimates
@@ -327,19 +335,19 @@ export function EventDetail({ incident, incidents, alerts, observations, station
     (activeEndPhrase.startsWith('in ~') || activeEndPhrase === 'later today');
 
   // The retrospective "X min early/late" comparison is only meaningful when
-  // CTA posted a time. Date-only EventEnd ("through May 25") has no minute
+  // SEPTA posted a time. Whole-day posted end ("through Dec 19") has no minute
   // precision to compare against, so it's skipped (and the date shown as
-  // context elsewhere). See computeCtaEstimate.
-  const ctaEnd = cta?.cta_event_end_ts ?? null;
-  const ctaEstimateBlock = computeCtaEstimate({
-    ctaEndTs: ctaEnd,
+  // context elsewhere). See computeAgencyEstimate.
+  const agencyEnd = official?.agency_event_end_ts ?? null;
+  const agencyEstimateBlock = computeAgencyEstimate({
+    agencyEndTs: agencyEnd,
     resolvedTs: lifecycle.resolved_ts ?? null,
-    dateOnly: ctaEndIsDateOnly,
+    dateOnly: agencyEndIsDateOnly,
   });
 
-  // Stabilization delta: only meaningful when the CTA alert cleared before
+  // Stabilization delta: only meaningful when the SEPTA alert cleared before
   // the bot saw service return. The bot's resolved_ts represents sustained
-  // recovery (CLEAR_TICKS_TO_RESET consecutive clean passes upstream); CTA
+  // recovery (CLEAR_TICKS_TO_RESET consecutive clean passes upstream); SEPTA
   // often clears its alert the moment the underlying incident ends, even if
   // there's still a backlog working through. The gap between the two is the
   // honest "service back to normal" delay riders feel.
@@ -361,33 +369,38 @@ export function EventDetail({ incident, incidents, alerts, observations, station
   const affectedStations = collectAffectedStations(incident);
   // Affected stretches as { line, from, to } segments. A bot scopes its
   // detection to one line, but on shared trackage the same stations carry the
-  // incident's other lines too — fan the stretch onto them so a Pink+Green
+  // incident's other lines too — fan the stretch onto them so a T1+T2
   // event lists (and maps) both lines, not just whichever one the bot fired on.
   const { segments, expanded: sharedTrackage } = expandSharedTrackageSegments(
     affectedLineSegments(incident),
     incidentRoutes(incident),
   );
   // Multi-line incidents split the station list per line (mirrors the map);
-  // null for single-line / pure-CTA incidents, which keep the flat chips.
+  // null for single-line / pure-SEPTA incidents, which keep the flat chips.
   const stationsByLine = groupAffectedStationsByLine(segments);
-  const resolvedUrl = cta ? (cta.resolved_reply_url ?? null) : (primary?.resolved_post_url ?? null);
+  const resolvedUrl = official
+    ? (official.resolved_reply_url ?? null)
+    : (primary?.resolved_post_url ?? null);
   const obsResolvedUrl =
     isMerged && !lifecycle.active ? (primary?.resolved_post_url ?? null) : null;
   const eventId = incident.id;
-  // The main post link: CTA's announcement when present, else the bot post.
-  const primaryUrl = cta ? cta.post_url : (primary?.post_url ?? null);
+  // The main post link: SEPTA's announcement post when present, else the bot
+  // post. SEPTA alerts have no permalinks of their own, so an unposted alert
+  // links the route's SEPTA.org page instead (`sourceUrl`).
+  const primaryUrl = official ? official.post_url : (primary?.post_url ?? null);
+  const sourceUrl = official && !official.post_url ? (official.source_url ?? null) : null;
 
-  // Single-train Metra cancellation: replaces the ongoing/resolved pill and the
+  // Single-train Regional Rail cancellation: replaces the ongoing/resolved pill and the
   // duration framing with the train's schedule (this isn't an open disruption
   // with a duration — it's an annulled train tied to a timetable slot).
   const cancel = cancellationInfo(incident);
   const cancelPhrase = cancellationSchedulePhrase(cancel);
-  // Metra point event (late / cancelled / not-seen-running train): a status pill
+  // Regional Rail point event (late / cancelled / not-seen-running train): a status pill
   // in place of the resolved/ongoing pill (the title already leads with the
   // pre-rendered sentence via describe()). Null for the timetable-cancellation
   // path above, which has its own schedule summary.
-  const pointEvent = !cancel ? metraPointEvent(incident) : null;
-  const metraStatus = !cancel ? metraIncidentStatus(incident) : null;
+  const pointEvent = !cancel ? railPointEvent(incident) : null;
+  const railStatus = !cancel ? railIncidentStatus(incident) : null;
   // The timetable cancellation and every bot point event (late / cancelled /
   // not-seen-running) describe a single scheduled train at a point in time, not
   // a running disruption — so none of them get a map, a "last seen", a duration,
@@ -434,13 +447,13 @@ export function EventDetail({ incident, incidents, alerts, observations, station
           >
             {cancellationStatusLabel(cancel)}
           </span>
-        ) : metraStatus ? (
+        ) : railStatus ? (
           <>
-            {/* The Metra status badge already reads "planned work" for planned
+            {/* The Regional Rail status badge already reads "planned work" for planned
                 incidents, so don't also tack on a "planned" pill — just drop
                 the "ongoing" marker, which doesn't apply before the work
                 starts. */}
-            <MetraPointBadge source={metraStatus.source} />
+            <RailPointBadge source={railStatus.source} />
             {lifecycle.active && !isPlanned && (
               <span className="text-xs font-semibold text-red-500">ongoing</span>
             )}
@@ -511,16 +524,20 @@ export function EventDetail({ incident, incidents, alerts, observations, station
         {description}
       </h1>
 
-      {/* Bot-only incidents had no matching official CTA alert — say so
-          plainly. The bot caught something the CTA's own channels didn't
+      {/* Bot-only incidents had no matching official SEPTA alert — say so
+          plainly. The bot caught something SEPTA's own channels didn't
           announce, which is the point of the auto-detection layer. Neutral
           phrasing: plenty of minor disruptions legitimately don't warrant a
-          CTA post. */}
+          SEPTA post. */}
       {isObsOnly && (
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-2 italic">
-          No matching {agencyLabel(kind)} alert — surfaced from live vehicle tracking only.
+          {cancelledTrips
+            ? `No matching ${agency} rider alert — from ${agency}'s real-time trip feed, which marks each cancelled trip.`
+            : `No matching ${agency} alert — surfaced from live vehicle tracking only.`}
         </p>
       )}
+
+      {cancelledTrips && <CancelledTrips trips={cancelledTrips} now={now} />}
 
       {pointEvent?.lede && pointEvent.lede !== description && (
         <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">{pointEvent.lede}</p>
@@ -531,8 +548,8 @@ export function EventDetail({ incident, incidents, alerts, observations, station
           be lost. Show it here as a compact line. */}
       {pointEvent?.fromStation && pointEvent.toStation && (
         <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-          <StationName name={pointEvent.fromStation} kind="metra" stationIndex={stationIndex} /> →{' '}
-          <StationName name={pointEvent.toStation} kind="metra" stationIndex={stationIndex} />
+          <StationName name={pointEvent.fromStation} kind="rail" stationIndex={stationIndex} /> →{' '}
+          <StationName name={pointEvent.toStation} kind="rail" stationIndex={stationIndex} />
           {pointEvent.directionLabel && (
             <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
               ({pointEvent.directionLabel})
@@ -544,7 +561,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
       {/* Chips only when the headline isn't already the station pair. For
           pure observations the description IS "From → To" — rendering the
           same stations a second time as chunky chips is just redundant
-          visual noise. CTA alerts (headlines like "Temporary Reroute" or
+          visual noise. SEPTA alerts (headlines like "Temporary Reroute" or
           "Service Change") are the case where the chips actually add
           information that isn't already in the headline.
           Skipped for bus events: upstream's affected_from/to_station for
@@ -553,30 +570,31 @@ export function EventDetail({ incident, incidents, alerts, observations, station
           design — linking them produces /station/wacker pages with no
           incidents on record. The cross-street info is already in the bus
           alert headline, so the chips row adds nothing useful. */}
-      {cta &&
-        kind === 'train' &&
+      {official &&
+        kind === 'metro' &&
         (stationsByLine ? (
           <StationsByLine
             groups={stationsByLine}
-            direction={cta.affected_direction}
+            direction={official.affected_direction}
             sharedTrackage={sharedTrackage}
           />
         ) : (
-          <StationChips stations={affectedStations} direction={cta.affected_direction} />
+          <StationChips stations={affectedStations} direction={official.affected_direction} />
         ))}
 
-      {/* Metra: stations referenced in the alert text, resolved upstream to
-          canonical GTFS names (free-text Metra names don't match the roster, so
-          this can't be done in-line). Each links to its Metra station page. */}
-      {cta && kind === 'metra' && cta.mentioned_stations?.length > 0 && (
+      {/* Regional Rail: stations referenced in the alert text, resolved upstream
+          (by the collector) to canonical GTFS names — free-text station names
+          don't match the roster, so this can't be done in-line. Each links to
+          its Regional Rail station page. */}
+      {official && kind === 'rail' && official.mentioned_stations?.length > 0 && (
         <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
           <span className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1">
             Stations
           </span>
-          {cta.mentioned_stations.map((name, i) => (
+          {official.mentioned_stations.map((name, i) => (
             <span key={name} className="inline-flex items-center">
-              <StationName name={name} kind="metra" />
-              {i < cta.mentioned_stations.length - 1 ? ',' : ''}
+              <StationName name={name} kind="rail" />
+              {i < official.mentioned_stations.length - 1 ? ',' : ''}
             </span>
           ))}
         </p>
@@ -631,20 +649,20 @@ export function EventDetail({ incident, incidents, alerts, observations, station
         </p>
       )}
 
-      {/* CTA's own body text for the alert — the reroute/closure details the
-          CTA published alongside the headline. Rendered verbatim in a quoted
+      {/* SEPTA's own body text for the alert — the reroute/closure details the
+          SEPTA published alongside the headline. Rendered verbatim in a quoted
           block so it's visually distinct from the page's derived data and
-          attributable to the CTA. Newlines preserved via whitespace-pre-line
-          since the CTA feed sometimes uses line breaks to separate
+          attributable to SEPTA. Newlines preserved via whitespace-pre-line
+          since the SEPTA feed sometimes uses line breaks to separate
           instructions. */}
       {/* Plain-English narrative for pure bot observations — the "Per bot"
-          counterpart to "Per CTA" below. Both sentences are pre-rendered
-          server-side in cta-insights/bin/export-web.js so this stays a dumb
+          counterpart to "Per SEPTA" below. Both sentences are pre-rendered
+          server-side in official-insights/bin/export-web.js so this stays a dumb
           renderer. When the observation is resolved, the detection +
           resolution sentences become two entries on a LinkedIn-style rail
-          matching the "Per CTA · N updates" pattern. */}
+          matching the "Per SEPTA · N updates" pattern. */}
       {(() => {
-        // Metra point events lead the title with this exact sentence and carry
+        // Regional Rail point events lead the title with this exact sentence and carry
         // no onset/resolution/evidence rail, so the "Per bot" entry would just
         // restate the title — suppress it for them.
         const detection = isObsOnly && !pointEvent ? primary?.bot_description : null;
@@ -777,34 +795,34 @@ export function EventDetail({ incident, incidents, alerts, observations, station
         // hoisted so multi-version rendering can apply it per entry without
         // recomputing.
         const linkPool = [
-          ...(cta?.mentioned_stations || []),
+          ...(official?.mentioned_stations || []),
           ...stationsServingLines(incidentRoutes(incident)),
         ];
         // Normalize to a versions list. The export omits `versions` for a
         // single-version alert, so synthesize one entry from the alert's own
-        // fields when there's CTA body text to anchor the section.
-        const rawVersions = Array.isArray(cta?.versions) ? cta.versions : null;
+        // fields when there's SEPTA body text to anchor the section.
+        const rawVersions = Array.isArray(official?.versions) ? official.versions : null;
         const versions =
           rawVersions && rawVersions.length > 0
             ? rawVersions
-            : cta?.short_description
+            : official?.short_description
               ? // No headline on the synthesized entry — the page <h1> already
                 // shows it, so repeating it in the rail would just duplicate.
-                [{ ts: cta.first_seen_ts, short_description: cta.short_description }]
+                [{ ts: official.first_seen_ts, short_description: official.short_description }]
               : [];
 
-        // Build the timeline: CTA's text versions (newest first) plus a
+        // Build the timeline: SEPTA's text versions (newest first) plus a
         // synthesized "cleared" entry when the alert is no longer active.
         // Without it, a resolved alert ends on a stale "trains standing"
         // message tagged as the Latest update, which reads as if it's still
-        // happening. The clear entry only makes sense once there's CTA copy to
+        // happening. The clear entry only makes sense once there's SEPTA copy to
         // anchor the rail, so a content-less alert stays untouched.
         //
-        // For merged CTA+bot incidents, interleave bot detection entries
+        // For merged SEPTA+bot incidents, interleave bot detection entries
         // (back-dated to obs.onset_ts) so the chronology answers "who detected
         // this first." Each entry is tagged with its source label below.
         // A cancellation is terminal but not "cleared" — no resolution entry
-        // (and an annulment Metra dropped from the feed before this lifecycle
+        // (and an annulment Regional Rail dropped from the feed before this lifecycle
         // shipped may carry an old "resolved" reply we must not surface).
         const hasResolved = !cancel && !lifecycle.active && lifecycle.resolved_ts != null;
         const obsDetections = isMerged
@@ -830,7 +848,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
         const sourceLabel = (e) => (e.type === 'obs-detect' ? 'Per bot' : `Per ${agency}`);
         const joinBullets = (items) => items.map((b) => b.replace(/\.\s*$/, '')).join('; ') + '.';
 
-        // A single CTA message with no clear yet — and no bot entries to
+        // A single SEPTA message with no clear yet — and no bot entries to
         // interleave — stays a simple quote block. Merged incidents always
         // get the rail since they carry at least one obs detection.
         if (entries.length === 1 && !hasObsEntries) {
@@ -853,7 +871,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
           <section className="mt-4">
             <p className="flex items-center text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
               {sectionTitle}
-              {/* Badge only on the agency-scoped title ("Per CTA · N updates");
+              {/* Badge only on the agency-scoped title ("Per SEPTA · N updates");
                   the mixed "Timeline" variant tags official entries inline via
                   the per-entry source label below. */}
               {!hasObsEntries && <OfficialBadge agency={agency} className="ml-1" />}
@@ -922,7 +940,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
                         {/* The affected stretch — without it, multiple
                             pulse-cold detections on the same line read as
                             duplicates since the bot_description sentence is
-                            generic ("Brown Line service appears degraded…"). */}
+                            generic ("L1 service appears degraded…"). */}
                         {e.obs.from_station && e.obs.to_station && (
                           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                             <StationName
@@ -1015,7 +1033,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
         {botLeadPhrase && (
           <div
             className="sm:col-span-2"
-            title="Our bot's observation predates CTA's alert post time."
+            title="Our bot's observation predates SEPTA's alert post time."
           >
             <dt className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Bot lead time
@@ -1024,39 +1042,36 @@ export function EventDetail({ incident, incidents, alerts, observations, station
               Bot flagged this <strong>{botLeadPhrase}</strong> before {agency}{' '}
               <span className="text-slate-500 dark:text-slate-400 text-xs">
                 (first observed {formatTime(botLeadOnsetTs)} on {formatDate(botLeadOnsetTs)};{' '}
-                {agency} posted {formatTime(cta.first_seen_ts)})
+                {agency} posted {formatTime(official.first_seen_ts)})
               </span>
             </dd>
           </div>
         )}
-        {ctaPlannedPhrase && (
+        {agencyPlannedPhrase && (
           <div
             className="sm:col-span-2"
-            title="CTA's EventStart predates our first sighting — the alert was planned in advance rather than fired live."
+            title="SEPTA's posted start predates our first sighting — the alert was planned in advance rather than fired live."
           >
             <dt className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              CTA scheduled
+              SEPTA scheduled
             </dt>
             <dd className="text-slate-700 dark:text-slate-200">
-              <strong>{ctaPlannedPhrase}</strong> of the first sighting{' '}
+              <strong>{agencyPlannedPhrase}</strong> of the first sighting{' '}
               <span className="text-slate-500 dark:text-slate-400 text-xs">
-                (tagged {formatTime(ctaStart)} on {formatDate(ctaStart)})
+                (tagged {formatTime(agencyStart)} on {formatDate(agencyStart)})
               </span>
             </dd>
           </div>
         )}
         {activeEndPhrase && (
-          <div
-            className="sm:col-span-2"
-            title="CTA tagged this alert with an estimated end time (EventEnd) when it was posted."
-          >
+          <div className="sm:col-span-2" title="SEPTA posted an end time for this alert.">
             <dt className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              CTA estimated end
+              SEPTA's posted end
             </dt>
             <dd className="text-slate-700 dark:text-slate-200">
-              {ctaEndIsDateOnly ? (
+              {agencyEndIsDateOnly ? (
                 <>
-                  <strong>{formatDate(ctaEnd)}</strong>
+                  <strong>{formatDate(agencyEnd)}</strong>
                   {showRelativeParenthetical && (
                     <>
                       {' '}
@@ -1068,7 +1083,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
                 </>
               ) : (
                 <>
-                  <strong>{formatTime(ctaEnd)}</strong> on {formatDate(ctaEnd)}
+                  <strong>{formatTime(agencyEnd)}</strong> on {formatDate(agencyEnd)}
                   {showRelativeParenthetical && (
                     <>
                       {' '}
@@ -1082,35 +1097,35 @@ export function EventDetail({ incident, incidents, alerts, observations, station
             </dd>
           </div>
         )}
-        {/* Date-only EventEnd on a resolved alert: no minute-precision
-            comparison to make, so just show CTA's stated through-date as
+        {/* Date-only posted end on a resolved alert: no minute-precision
+            comparison to make, so just show SEPTA's stated through-date as
             context. Skipped when the active block already covered it. */}
         {!lifecycle.active &&
-          ctaEndIsDateOnly &&
-          ctaEnd != null &&
+          agencyEndIsDateOnly &&
+          agencyEnd != null &&
           lifecycle.resolved_ts != null && (
             <div
               className="sm:col-span-2"
-              title="CTA posted this alert's EventEnd as a date with no time, so there's no minute-level comparison to make."
+              title="SEPTA posted this alert's end as a whole day, so there's no minute-level comparison to make."
             >
               <dt className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                CTA estimated end
+                SEPTA's posted end
               </dt>
-              <dd className="text-slate-700 dark:text-slate-200">{formatDate(ctaEnd)}</dd>
+              <dd className="text-slate-700 dark:text-slate-200">{formatDate(agencyEnd)}</dd>
             </div>
           )}
-        {ctaEstimateBlock && (
+        {agencyEstimateBlock && (
           <div
             className="sm:col-span-2"
-            title="CTA tagged this alert with an estimated end time (EventEnd) when it was first posted. This compares that estimate to when the alert actually cleared."
+            title="SEPTA posted an end time for this alert when it was first published. This compares that estimate to when the alert actually cleared."
           >
             <dt className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              vs CTA's stated end
+              vs SEPTA's stated end
             </dt>
             <dd className="text-slate-700 dark:text-slate-200">
-              {ctaEstimateBlock.phrase}{' '}
+              {agencyEstimateBlock.phrase}{' '}
               <span className="text-slate-500 dark:text-slate-400 text-xs">
-                (estimated {formatTime(ctaEnd)} on {formatDate(ctaEnd)})
+                (estimated {formatTime(agencyEnd)} on {formatDate(agencyEnd)})
               </span>
             </dd>
           </div>
@@ -1118,7 +1133,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
         {stabilizationDelta && (
           <div
             className="sm:col-span-2"
-            title="Time between CTA marking the alert cleared and the bot seeing sustained normal service. The bot's clear requires several consecutive clean passes, so this is closer to the felt return-to-normal than the CTA timestamp alone."
+            title="Time between SEPTA marking the alert cleared and the bot seeing sustained normal service. The bot's clear requires several consecutive clean passes, so this is closer to the felt return-to-normal than SEPTA's timestamp alone."
           >
             <dt className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Service stabilized
@@ -1133,10 +1148,10 @@ export function EventDetail({ incident, incidents, alerts, observations, station
       {/* Geographic map for train incidents with at least one named
           station. Bus incidents (no geometry data) and alerts that don't
           tag a station fall through to just the mini timeline below.
-          Multi-line incidents (a Loop-wide alert that merged several
+          Multi-line incidents (a tunnel-wide alert that merged several
           per-line detections) use the combined map so every affected line
           shows its own stretch instead of one arbitrary line. */}
-      {kind === 'train' &&
+      {kind === 'metro' &&
         (incidentRoutes(incident).length > 1 ? (
           <MultiLineEventMap
             lineKeys={incidentRoutes(incident)}
@@ -1147,22 +1162,22 @@ export function EventDetail({ incident, incidents, alerts, observations, station
         ) : (
           <EventMap
             lineKey={Array.isArray(incident.routes) ? incident.routes[0] : null}
-            fromStation={primary?.from_station ?? cta?.affected_from_station ?? null}
-            toStation={primary?.to_station ?? cta?.affected_to_station ?? null}
+            fromStation={primary?.from_station ?? official?.affected_from_station ?? null}
+            toStation={primary?.to_station ?? official?.affected_to_station ?? null}
             active={!!lifecycle.active}
           />
         ))}
 
-      {/* Metra incidents are single-line (one route key), so they always use
-          the single-line EventMap — never the multi-line Loop variant. A
+      {/* Regional Rail incidents are single-line (one route key), so they always use
+          the single-line EventMap — never the multi-line variant. A
           cancellation (timetable, confirmed, or inferred) describes a train that
           never ran, so there's no stretch to map — suppress it. */}
-      {kind === 'metra' && !isPointInTime && (
+      {kind === 'rail' && !isPointInTime && (
         <EventMap
-          kind="metra"
+          kind="rail"
           lineKey={Array.isArray(incident.routes) ? incident.routes[0] : null}
-          fromStation={primary?.from_station ?? cta?.affected_from_station ?? null}
-          toStation={primary?.to_station ?? cta?.affected_to_station ?? null}
+          fromStation={primary?.from_station ?? official?.affected_from_station ?? null}
+          toStation={primary?.to_station ?? official?.affected_to_station ?? null}
           active={!!lifecycle.active}
         />
       )}
@@ -1171,16 +1186,16 @@ export function EventDetail({ incident, incidents, alerts, observations, station
           window across the schematic. Renders only when a track file exists
           for this event on the R2 origin (train incidents archived before the
           7-day raw-observation rolloff); otherwise EventReplay returns null. */}
-      {kind === 'train' && (
+      {kind === 'metro' && (
         <EventReplay
           eventId={incident.id}
           // Prefer the affected observation's own line so a multi-route incident
-          // (e.g. a shared Orange/Green stretch) projects onto the line the
+          // (e.g. a shared B1/B2 stretch) projects onto the line the
           // segment is actually on, not whichever route sorts first.
           lineKey={primary?.line ?? (Array.isArray(incident.routes) ? incident.routes[0] : null)}
-          fromStation={primary?.from_station ?? cta?.affected_from_station ?? null}
-          toStation={primary?.to_station ?? cta?.affected_to_station ?? null}
-          directionLabel={primary?.direction_label ?? cta?.affected_direction ?? null}
+          fromStation={primary?.from_station ?? official?.affected_from_station ?? null}
+          toStation={primary?.to_station ?? official?.affected_to_station ?? null}
+          directionLabel={primary?.direction_label ?? official?.affected_direction ?? null}
         />
       )}
 
@@ -1190,7 +1205,7 @@ export function EventDetail({ incident, incidents, alerts, observations, station
           clear their notability thresholds, so a one-off in a quiet hour
           shows nothing here. */}
       {/* Context insights are anchored to when the incident started — which for
-          planned work is just when CTA posted the advance notice, not when the
+          planned work is just when SEPTA posted the advance notice, not when the
           disruption happens. "A quiet hour for disruptions" applied to a 4 AM
           construction post is noise, so suppress the whole section for planned
           work. */}
@@ -1263,7 +1278,17 @@ export function EventDetail({ incident, incidents, alerts, observations, station
             rel="noopener noreferrer"
             className="text-xs text-blue-500 hover:text-blue-400 hover:underline"
           >
-            {isMerged ? `Via ${agency} →` : 'View on Bluesky →'}
+            {isMerged ? `Via ${agency} →` : 'View post →'}
+          </a>
+        )}
+        {sourceUrl && (
+          <a
+            href={sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-500 hover:text-blue-400 hover:underline"
+          >
+            SEPTA.org →
           </a>
         )}
         {isMerged && primary?.post_url && (

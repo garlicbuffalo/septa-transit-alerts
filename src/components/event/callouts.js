@@ -7,7 +7,7 @@ import { incidentLifecycle, legacyKind } from '../../lib/incidents.js';
 const MIN = 60_000;
 
 // "5 min", "1h 30m", or "2h" from a positive millisecond span. Used for the
-// bot-lead callout; ctaPlanned/ctaEstimate have their own suffixes.
+// bot-lead callout; agencyPlanned/agencyEstimate have their own suffixes.
 export function formatLeadTime(ms) {
   const min = Math.round(ms / MIN);
   if (min < 60) return `${min} min`;
@@ -16,28 +16,28 @@ export function formatLeadTime(ms) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-// How far the earliest bot observation predates CTA's alert post — surfaced so
-// the page doesn't read as if CTA detected first. Only for merged CTA+bot
-// incidents; skipped under 2 min (CTA effectively kept pace). Returns
+// How far the earliest bot observation predates SEPTA's alert post — surfaced so
+// the page doesn't read as if SEPTA detected first. Only for merged SEPTA+bot
+// incidents; skipped under 2 min (SEPTA effectively kept pace). Returns
 // `{ phrase, onsetTs }` or null.
-export function computeBotLead({ isMerged, ctaFirstSeenTs, observations }) {
-  if (!isMerged || ctaFirstSeenTs == null) return null;
+export function computeBotLead({ isMerged, agencyFirstSeenTs, observations }) {
+  if (!isMerged || agencyFirstSeenTs == null) return null;
   const earliestOnset = (observations || []).reduce(
     (min, o) => Math.min(min, o.onset_ts ?? o.ts),
     Number.POSITIVE_INFINITY,
   );
   if (!Number.isFinite(earliestOnset)) return null;
-  const leadMs = ctaFirstSeenTs - earliestOnset;
+  const leadMs = agencyFirstSeenTs - earliestOnset;
   if (leadMs < 2 * MIN) return null;
   return { phrase: formatLeadTime(leadMs), onsetTs: earliestOnset };
 }
 
-// CTA-planned-ahead callout: an EventStart that predates our first sighting by
+// SEPTA-planned-ahead callout: an EventStart that predates our first sighting by
 // 10 min–14 days marks a planned event rather than a live reactive post.
 // Returns the "…ahead" phrase or null (gap too small, too large, or unknown).
-export function computeCtaPlanned({ ctaStartTs, startTs }) {
-  if (ctaStartTs == null || startTs == null) return null;
-  const aheadMs = startTs - ctaStartTs;
+export function computeAgencyPlanned({ agencyStartTs, startTs }) {
+  if (agencyStartTs == null || startTs == null) return null;
+  const aheadMs = startTs - agencyStartTs;
   const TEN_MIN = 10 * MIN;
   const FOURTEEN_DAYS = 14 * 24 * 60 * MIN;
   if (aheadMs < TEN_MIN || aheadMs > FOURTEEN_DAYS) return null;
@@ -53,13 +53,13 @@ export function computeCtaPlanned({ ctaStartTs, startTs }) {
   return hours > 0 ? `${d}d ${hours}h ahead` : `${d}d ahead`;
 }
 
-// Retrospective comparison of actual resolution vs CTA's stated EventEnd.
+// Retrospective comparison of actual resolution vs SEPTA's stated EventEnd.
 // Returns `{ sameMinute, phrase }` or null. Skipped for date-only EventEnd (no
 // minute precision to compare) and when the two are more than a week apart (a
 // stale estimate from a multi-day planned alert isn't a useful comparison).
-export function computeCtaEstimate({ ctaEndTs, resolvedTs, dateOnly }) {
-  if (ctaEndTs == null || resolvedTs == null || dateOnly) return null;
-  const deltaMs = resolvedTs - ctaEndTs;
+export function computeAgencyEstimate({ agencyEndTs, resolvedTs, dateOnly }) {
+  if (agencyEndTs == null || resolvedTs == null || dateOnly) return null;
+  const deltaMs = resolvedTs - agencyEndTs;
   const WEEK_MS = 7 * 24 * 60 * MIN;
   if (Math.abs(deltaMs) > WEEK_MS) return null;
   const absMin = Math.round(Math.abs(deltaMs) / MIN);
@@ -79,7 +79,7 @@ export function computeCtaEstimate({ ctaEndTs, resolvedTs, dateOnly }) {
 // Sorts by first_seen_ts (ties broken by id so the order is stable), finds
 // the subject, and returns the incident immediately before/after it. With
 // `sameRouteOnly`, the walk is restricted to incidents of the same kind that
-// share at least one route — so "next on the Blue Line" skips unrelated
+// share at least one route — so "next on the L1" skips unrelated
 // lines. Returns `{ prev, next }`, either of which may be null at an end.
 export function findIncidentNeighbors(incident, incidents, { sameRouteOnly = false } = {}) {
   if (!incident || !Array.isArray(incidents)) return { prev: null, next: null };

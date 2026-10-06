@@ -1,0 +1,166 @@
+{
+  "routes": [
+    {
+      "17": [
+        {
+          "lat": "39.96",
+          "lng": "-75.17",
+          "label": "7412",
+          "VehicleID": "7412",
+          "route_id": "17",
+          "trip": "17-12",
+          "Direction": "Southbound",
+          "destination": "20th-Johnston",
+          "late": 0,
+          "original_late": 0,
+          "next_stop_sequence": 20,
+          "next_stop_name": null,
+          "timestamp": 1791244170
+        },
+        {
+          "lat": "39.954",
+          "lng": "-75.17",
+          "label": "7413",
+          "VehicleID": "7413",
+          "route_id": "17",
+          "trip": "17-13",
+          "Direction": "Southbound",
+          "destination": "20th-Johnston",
+          "late": 0,
+          "original_late": 0,
+          "next_stop_sequence": 20,
+          "next_stop_name": null,
+          "timestamp": 1791244170
+        },
+        {
+          "lat": "39.948",
+          "lng": "-75.17",
+          "label": "7414",
+          "VehicleID": "7414",
+          "route_id": "17",
+          "trip": "17-14",
+          "Direction": "Southbound",
+          "destination": "20th-Johnston",
+          "late": 0,
+          "original_late": 0,
+          "next_stop_sequence": 20,
+          "next_stop_name": null,
+          "timestamp": 1791244170
+        },
+        {
+          "lat": "39.942",
+          "lng": "-75.17",
+          "label": "7415",
+          "VehicleID": "7415",
+          "route_id": "17",
+          "trip": "17-15",
+          "Direction": "Southbound",
+          "destination": "20th-Johnston",
+          "late": 24,
+          "original_late": 24,
+          "next_stop_sequence": 20,
+          "next_stop_name": null,
+          "timestamp": 1791244170
+        },
+        {
+          "lat": "39.936",
+          "lng": "-75.17",
+          "label": "7416",
+          "VehicleID": "7416",
+          "route_id": "17",
+          "trip": "17-16",
+          "Direction": "Southbound",
+          "destination": "20th-Johnston",
+          "late": 0,
+          "original_late": 0,
+          "next_stop_sequence": 20,
+          "next_stop_name": null,
+          "timestamp": 1791244170
+        },
+        {
+          "lat": "39.93",
+          "lng": "-75.17",
+          "label": "7417",
+          "VehicleID": "7417",
+          "route_id": "17",
+          "trip": "17-17",
+          "Direction": "Southbound",
+          "destination": "20th-Johnston",
+          "late": 0,
+          "original_late": 0,
+          "next_stop_sequence": 20,
+          "next_stop_name": null,
+          "timestamp": 1791244170
+        }
+      ],
+      "23": [
+        {
+          "lat": "40.03",
+          "lng": "-75.17",
+          "label": "8301",
+          "VehicleID": "8301",
+          "route_id": "23",
+          "trip": "23-14",
+          "Direction": "Northbound",
+          "destination": "Germantown-Chelten",
+          "late": 2,
+          "original_late": 2,
+          "next_stop_sequence": 30,
+          "next_stop_name": null,
+          "timestamp": 1791244170
+        }
+      ],
+      "T1": [
+        {
+          "lat": "39.955",
+          "lng": "-75.19",
+          "label": "9101",
+          "VehicleID": "9101",
+          "route_id": "T1",
+          "trip": "t1-11",
+          "Direction": "EastBound",
+          "destination": "13th St",
+          "late": 1,
+          "original_late": 1,
+          "next_stop_sequence": 10,
+          "next_stop_name": null,
+          "timestamp": 1791244170
+        }
+      ],
+      "L1": [
+        {
+          "lat": "39.952187",
+          "lng": "-75.15995",
+          "label": "block_70001_schedBasedVehicle",
+          "VehicleID": "block_70001_schedBasedVehicle",
+          "route_id": "L1",
+          "trip": "980161",
+          "Direction": "Southbound",
+          "destination": "20th-Johnston",
+          "late": 0,
+          "original_late": 0,
+          "next_stop_sequence": 20,
+          "next_stop_name": null,
+          "timestamp": 1791244170
+        }
+      ],
+      "K": [
+        {
+          "lat": "40",
+          "lng": "-75.2",
+          "label": "3999",
+          "VehicleID": "3999",
+          "route_id": "K",
+          "trip": "k-1",
+          "Direction": "Southbound",
+          "destination": "20th-Johnston",
+          "late": 0,
+          "original_late": 0,
+          "next_stop_sequence": 5,
+          "next_stop_name": null,
+          "timestamp": 1791240570
+        }
+      ]
+    }
+  ]
+}

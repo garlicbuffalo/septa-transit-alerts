@@ -1,7 +1,7 @@
-# Security disclosure policy for chicagotransitalerts.app
-# Unofficial CTA service-alert archive. Report vulnerabilities via the
+# Security disclosure policy for SEPTA Transit Alerts
+# Unofficial SEPTA service-alert archive. Report vulnerabilities via the
 # project's GitHub security advisories.
-Contact: https://github.com/cailinpitt/chicago-transit-alerts/security/advisories/new
-Expires: 2027-05-31T00:00:00.000Z
+Contact: https://github.com/garlicbuffalo/septa-transit-alerts/security/advisories/new
+Expires: 2027-10-01T00:00:00.000Z
 Preferred-Languages: en
-Canonical: https://chicagotransitalerts.app/.well-known/security.txt
+Canonical: __SITE_ORIGIN__/.well-known/security.txt

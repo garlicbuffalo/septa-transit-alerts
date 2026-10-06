@@ -41,7 +41,7 @@ function cellBgZScore(z) {
   const a = Math.min(Math.abs(z), 3) / 3; // saturate at |z|=3
   if (Math.abs(z) < 0.25) return 'rgba(148, 163, 184, 0.18)';
   if (z > 0) {
-    // red-ish (CTA brand red, dimmed)
+    // red-ish (SEPTA brand red, dimmed)
     return `rgba(198, 12, 48, ${0.2 + a * 0.7})`;
   }
   // blue-ish

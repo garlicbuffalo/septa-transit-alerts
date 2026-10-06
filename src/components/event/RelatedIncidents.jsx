@@ -10,11 +10,12 @@ import {
   incidentLifecycle,
   isPlannedIncident,
   legacyKind,
-  metraIncidentStatus,
+  modeLabel,
   officialAlert,
+  railIncidentStatus,
 } from '../../lib/incidents.js';
 import LinePill from '../LinePill.jsx';
-import MetraPointBadge from '../MetraPointBadge.jsx';
+import RailPointBadge from '../RailPointBadge.jsx';
 import { describe, incidentRoutes } from './incidentText.jsx';
 
 // Contemporaneous activity on OTHER lines/routes within ±1h of this event.
@@ -35,16 +36,16 @@ function ContextRow({ other, stationIndex, showLinePill }) {
   const otherIsMerged = !!officialAlert(other) && otherHasObs;
   const otherIsAlert = !!officialAlert(other) && !otherHasObs;
   const detailsId = other.id;
-  // Metra delay/cancellation status badge, whether it came from an official
+  // Regional Rail delay/cancellation status badge, whether it came from an official
   // alert classification or an auto-detected point event.
-  // Schedule-anchored single-train Metra cancellation (from a Metra alert) →
+  // Schedule-anchored single-train Regional Rail cancellation (from a Regional Rail alert) →
   // the same 'cancelled' / 'upcoming cancellation' badge the incident list and
   // event page show.
   const cancel = cancellationInfo(other);
-  const metraStatus = !cancel ? metraIncidentStatus(other) : null;
+  const railStatus = !cancel ? railIncidentStatus(other) : null;
   // Planned/advance-notice work isn't "ongoing" — the disruption may not have
-  // started. Suppress the red "ongoing" marker for it (the Metra status badge
-  // already reads "planned work"; non-Metra planned rows show no marker).
+  // started. Suppress the red "ongoing" marker for it (the Regional Rail status badge
+  // already reads "planned work"; non-Regional Rail planned rows show no marker).
   const planned = isPlannedIncident(other);
   return (
     <div className="relative flex items-start gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-gh-subtle/40 transition-colors">
@@ -76,7 +77,7 @@ function ContextRow({ other, stationIndex, showLinePill }) {
                 via auto-detection
               </span>
             )}
-            {metraStatus && <MetraPointBadge source={metraStatus.source} />}
+            {railStatus && <RailPointBadge source={railStatus.source} />}
             {cancel && (
               <span
                 className={`text-xs font-semibold ${
@@ -108,7 +109,7 @@ function rowKey(other) {
   return other.id;
 }
 
-// Surrounding/cross-line lists can run long on a busy line (a Metra trunk can
+// Surrounding/cross-line lists can run long on a busy line (a Regional Rail trunk can
 // surface ~20 same-line incidents in a 24h window). Cap the visible rows so the
 // event page doesn't end in a wall, with a "Show all N" toggle to expand. The
 // cap is generous enough that quiet incidents show every row without a toggle.
@@ -175,14 +176,16 @@ export function RelatedIncidents({ incident, incidents, stationIndex }) {
   const kind = legacyKind(incident);
   const routes = incidentRoutes(incident);
   // A single-line parent names its line in the header, so per-row pills would be
-  // noise. A multi-line parent (e.g. a system-wide Metra construction notice on
-  // 7 lines) can't name one line — "Surrounding 24 hours on 7 Metra lines" is
+  // noise. A multi-line parent (e.g. a system-wide Regional Rail construction notice on
+  // 7 lines) can't name one line — "Surrounding 24 hours on 7 Regional Rail lines" is
   // both clumsy and drops which line each row is actually on. So for those we
-  // generalize the header to the agency and turn the per-row pills on.
+  // generalize the header to the mode and turn the per-row pills on.
   const multiLine = routes.length > 1;
-  const heading = multiLine
-    ? `Surrounding 24 hours on affected ${agencyLabel(kind)} lines`
-    : `Surrounding 24 hours on ${formatRoutesLabel(kind, routes)}`;
+  const heading = !multiLine
+    ? `Surrounding 24 hours on ${formatRoutesLabel(kind, routes)}`
+    : kind === 'bus'
+      ? 'Surrounding 24 hours on affected bus routes'
+      : `Surrounding 24 hours on affected ${modeLabel(kind)} lines`;
   return (
     <section className="mt-4">
       <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">

@@ -1,65 +1,47 @@
-// Geographic line-map helpers for the LinePage train heatmap. Loads station
-// and track data (CTA-derived, lat/lon) and projects it into SVG coordinates
-// so the rendered map has real Chicago shape rather than a stylized strip.
+// Geographic line-map helpers for the SEPTA Metro line-page heatmap. Loads
+// station and track data (from SEPTA GTFS, lat/lon) and projects it into SVG
+// coordinates so the rendered map has real Philadelphia shape rather than a
+// stylized strip.
 //
-// Bus is excluded by design — the data files cover the L only, and a bus
+// Bus is excluded by design — the data files cover SEPTA Metro only, and a bus
 // route's stop count makes a per-stop heatmap noisy at this scale.
 
-import { normalizeTrainLine, TRAIN_LINE_ORDER, TRAIN_LINES } from './ctaLines.js';
+import lines from './metroLineShapes.json' with { type: 'json' };
+import { METRO_LINE_ORDER, METRO_LINES, normalizeMetroLine } from './metroLines.js';
+import stations from './metroStations.json' with { type: 'json' };
 import { slugifyStation } from './stations.js';
-import lines from './trainLines.json';
-import stations from './trainStations.json';
 
-// trainStations.json + trainLines.json use CTA short codes (brn, g, org, p,
-// y). Map the rest of the app's full-name keys back to short codes for
-// data lookup. Identity for the lines whose codes already match their name.
-const FULL_TO_SHORT = {
-  red: 'red',
-  blue: 'blue',
-  brown: 'brn',
-  green: 'g',
-  orange: 'org',
-  pink: 'pink',
-  purple: 'p',
-  yellow: 'y',
-};
-
-// Bounding box around downtown Chicago — covers the elevated Loop, the
-// Red Line subway through the Loop, and Blue's Dearborn subway. Lines with
-// ≥4 stations inside this box get a zoom inset on their map page so the
-// dense cluster doesn't render as overlapping dots.
+// Bounding box around Center City — covers the L1 between 30th St and 2nd St,
+// the trolley tunnel from 33rd St to 13th St, and the B1/B3 stations around
+// City Hall. Lines with ≥4 stations inside this box get a zoom inset on their
+// map page so the dense cluster doesn't render as overlapping dots.
 const DOWNTOWN_BBOX = {
-  latLo: 41.872,
-  latHi: 41.89,
-  lonLo: -87.645,
-  lonHi: -87.62,
+  latLo: 39.945,
+  latHi: 39.958,
+  lonLo: -75.19,
+  lonHi: -75.14,
 };
 const DOWNTOWN_INSET_THRESHOLD = 4;
 
-// Terminal stations per line. Used as anchors for the only labels we render
-// on the main map — labeling every station overcrowds the SVG, but flagging
-// the endpoints gives a rider enough context to orient ("Howard at the top,
-// 95th at the bottom"). Names match trainStations.json exactly.
-const LINE_TERMINALS = {
-  red: ['Howard', '95th/Dan Ryan'],
-  blue: ["O'Hare", 'Forest Park'],
-  brown: ['Kimball'],
-  green: ['Harlem/Lake', 'Ashland/63rd', 'Cottage Grove'],
-  orange: ['Midway'],
-  pink: ['54th/Cermak'],
-  purple: ['Linden', 'Howard'],
-  yellow: ['Dempster-Skokie', 'Howard'],
-};
-
-export function shortCodeFor(lineKey) {
-  return FULL_TO_SHORT[lineKey] ?? lineKey;
-}
+// Terminal stations per line — the first and last stop in each line's GTFS
+// stop order (metroStations.json carries it as `seq`). Used as anchors for the
+// only labels we render on the main map: labeling every station overcrowds the
+// SVG, but flagging the endpoints gives a rider enough context to orient
+// ("69th St at one end, Frankford at the other").
+const LINE_TERMINALS = (() => {
+  const out = {};
+  for (const key of METRO_LINE_ORDER) {
+    const onLine = stations.filter((s) => s.seq?.[key] != null);
+    if (onLine.length === 0) continue;
+    onLine.sort((a, b) => a.seq[key] - b.seq[key]);
+    out[key] = [...new Set([onLine[0].name, onLine[onLine.length - 1].name])];
+  }
+  return out;
+})();
 
 // The projected terminus stations of a line (from LINE_TERMINALS). EventReplay
-// uses these to tell a train that cleanly ran off at the end of its line from
-// one the feed simply lost mid-route. Round-trip lines (Brown/Orange/Pink/
-// Purple) only list their outer terminal — the Loop end is a turnaround, handled
-// separately by the caller (a disappearance near downtown isn't "lost").
+// uses these to tell a vehicle that cleanly ran off at the end of its line from
+// one the feed simply lost mid-route.
 export function terminalPointsFor(map, lineKey) {
   if (!map?.stations) return [];
   const names = new Set((LINE_TERMINALS[lineKey] ?? []).map((n) => slugifyStation(n)));
@@ -80,7 +62,7 @@ function inBox(lat, lon, bbox) {
 // latitude-cosine correction so distances scale equivalently in x and y).
 //
 // `rotate: true` rotates the projection 90° counter-clockwise: north → left,
-// south → right. Used for very vertical lines (Red, Purple) so the SVG
+// south → right. Used for very vertical lines (B1, Lansdale/Doylestown) so the SVG
 // stays landscape-ish rather than becoming a tall narrow strip that demands
 // page scroll to get past.
 function makeProjection(points, { maxWidth, maxHeight, margin, minHeight = 200, rotate = false }) {
@@ -100,7 +82,7 @@ function makeProjection(points, { maxWidth, maxHeight, margin, minHeight = 200, 
   const lonRange = Math.max(maxLon - minLon, 1e-6);
 
   // Cosine-of-latitude correction: 1° of longitude is shorter than 1° of
-  // latitude in distance terms. At Chicago (~41.85°N) the ratio is ~0.74.
+  // latitude in distance terms. At Philadelphia (~39.95°N) the ratio is ~0.77.
   // Multiplying lonRange by this factor lets us treat them as equivalent
   // distances downstream, so the rendered map preserves visual scale.
   const meanLat = (minLat + maxLat) / 2;
@@ -154,8 +136,8 @@ function makeProjection(points, { maxWidth, maxHeight, margin, minHeight = 200, 
 
 // Slice the highlighted stretch of track between two stations. Picks the
 // polyline in `tracks` that best covers both endpoints (the wrong branch —
-// Forest Park when the incident is on the O'Hare side — has one station far
-// off and loses), slices it between the closest indices, then trims any
+// the T3's Yeadon leg when the incident is on its Darby leg — has one station
+// far off and loses), slices it between the closest indices, then trims any
 // boundary point that sits past its station so the highlight doesn't overshoot.
 // Returns an SVG path string, or null when no polyline covers both. Shared by
 // the single-line EventMap and the multi-line map so both highlight identically.
@@ -199,9 +181,8 @@ export function sliceTrackBetween(tracks, a, b) {
       // Keep only the track vertices that fall *between* the two stations,
       // measured by their projection onto the start→end chord (parameter t in
       // [0, 1]). Track vertices are sparse on some stretches, so the nearest
-      // vertex to a station can sit past it — e.g. Brown Line Belmont→Fullerton,
-      // where the lone nearest vertex is south of Fullerton, so appending the
-      // station after it drew a stub overshooting the dot. Curved runs keep
+      // vertex to a station can sit past it, and appending the station after it
+      // would draw a stub overshooting the dot. Curved runs keep
       // their bend vertices (those still project inside the chord), while
       // overshoot/undershoot vertices drop out regardless of how many the slice
       // has — the previous per-segment trim only fired when the slice had ≥2.
@@ -223,8 +204,8 @@ export function sliceTrackBetween(tracks, a, b) {
 
 // Project a set of stations + track segments into a target SVG box. Thin
 // wrapper over makeProjection that also maps the station + track geometry
-// through the resulting projection. Exported so the parallel Metra builder
-// (metraLineMap.js) shares the exact same projection math.
+// through the resulting projection. Exported so the parallel Regional Rail
+// builder (railLineMap.js) shares the exact same projection math.
 export function projectInto(rawStations, segments, opts) {
   if (rawStations.length === 0) return null;
   const points = [];
@@ -253,14 +234,14 @@ export function projectInto(rawStations, segments, opts) {
   };
 }
 
-// Build the projected geometry for a single train line. Returns null when
+// Build the projected geometry for a single Metro line. Returns null when
 // the line key isn't recognized or the data is missing — the caller should
 // render nothing in that case rather than a half-broken SVG.
 //
 //   stationIndex — Map<slug, { count, ... }> from buildStationIndex.
 //                  Optional; missing entries → count 0.
 /**
- * @param {string} lineKey full-name line key ('red', 'brown', etc.)
+ * @param {string} lineKey Metro line key ('l1', 'b1', 't3', …)
  * @param {Map<string, any> | null} [stationIndex]
  * @param {object} [options]
  * @param {number} [options.maxWidth]
@@ -286,10 +267,9 @@ export function buildLineMap(
   stationIndex = null,
   { maxWidth = 720, maxHeight = 540, margin = 24, preferPortrait = false } = {},
 ) {
-  if (!TRAIN_LINE_ORDER.includes(lineKey)) return null;
-  const short = shortCodeFor(lineKey);
-  const segments = lines[short];
-  const lineStations = stations.filter((s) => Array.isArray(s.lines) && s.lines.includes(short));
+  if (!METRO_LINE_ORDER.includes(lineKey)) return null;
+  const segments = lines[lineKey];
+  const lineStations = stations.filter((s) => Array.isArray(s.lines) && s.lines.includes(lineKey));
   if (!segments || lineStations.length === 0) return null;
 
   // Annotate stations with their incident counts up front so both projections
@@ -424,9 +404,10 @@ export function buildLineMap(
   };
 }
 
-// Build a combined map covering several train lines in one shared coordinate
+// Build a combined map covering several Metro lines in one shared coordinate
 // space — used by the multi-line event map so an incident touching the whole
-// Loop renders every affected line at once instead of one arbitrary line.
+// trolley tunnel renders every affected line at once instead of one arbitrary
+// line.
 //
 // All requested lines' stations and tracks are projected through a single
 // projection (no rotation — the multi-line bbox spans the system and is
@@ -472,7 +453,7 @@ function cropProjectionPoints(stationNames, lineStations) {
 }
 
 // Loose station-name key for crop lookup: lowercase, strip trailing line
-// qualifiers ("Belmont (Red/Brown/Purple)" → "belmont"), trim whitespace.
+// qualifiers ("Walnut St (D1)" → "walnut st"), trim whitespace.
 // Mirrors EventMap's `normalize` so callers can pass either the raw or
 // qualified form.
 function normalizeStationKey(name) {
@@ -484,7 +465,7 @@ function normalizeStationKey(name) {
 }
 
 /**
- * @param {string[]} lineKeys full-name line keys ('purple', 'pink', …)
+ * @param {string[]} lineKeys Metro line keys ('t1', 't2', …)
  * @param {object} [options]
  * @param {number} [options.maxWidth]
  * @param {number} [options.maxHeight]
@@ -505,21 +486,20 @@ export function buildMultiLineMap(
   lineKeys,
   { maxWidth = 720, maxHeight = 420, margin = 24, cropToStationNames = null } = {},
 ) {
-  const keys = [...new Set((lineKeys || []).filter((k) => TRAIN_LINE_ORDER.includes(k)))];
+  const keys = [...new Set((lineKeys || []).filter((k) => METRO_LINE_ORDER.includes(k)))];
   if (keys.length === 0) return null;
 
   // Keep line key + its data together; drop any line with no track geometry.
   const drawable = [];
   for (const key of keys) {
-    const short = shortCodeFor(key);
-    const segs = lines[short];
-    if (Array.isArray(segs) && segs.length > 0) drawable.push({ key, short, segs });
+    const segs = lines[key];
+    if (Array.isArray(segs) && segs.length > 0) drawable.push({ key, segs });
   }
   if (drawable.length === 0) return null;
 
-  const shorts = new Set(drawable.map((d) => d.short));
+  const drawn = new Set(drawable.map((d) => d.key));
   const lineStations = stations.filter(
-    (s) => Array.isArray(s.lines) && s.lines.some((l) => shorts.has(l)),
+    (s) => Array.isArray(s.lines) && s.lines.some((l) => drawn.has(l)),
   );
 
   // Either project over the affected area (with buffer for context) or the full
@@ -545,14 +525,14 @@ export function buildMultiLineMap(
   const projectedStations = lineStations.map((s) => ({
     name: s.name,
     slug: slugifyStation(s.name),
-    lines: (s.lines || []).map(normalizeTrainLine),
+    lines: (s.lines || []).map(normalizeMetroLine),
     ...proj.project(s.lat, s.lon),
   }));
 
   const tracksByLine = drawable.map((d) => ({
     key: d.key,
-    label: TRAIN_LINES[d.key]?.label ?? d.key,
-    color: TRAIN_LINES[d.key]?.color ?? '#475569',
+    label: METRO_LINES[d.key]?.label ?? d.key,
+    color: METRO_LINES[d.key]?.color ?? '#475569',
     tracks: d.segs.map((seg) => seg.map(([lat, lon]) => proj.project(lat, lon))),
   }));
 

@@ -1,13 +1,14 @@
-// Helpers for the /calendar page. Reads the slim daily-counts.json
-// produced by cta-insights/bin/export-daily.js and shapes it into a
-// 12-month grid keyed by Chicago calendar day.
+// Helpers for the /calendar page. Reads the slim daily-counts.json produced
+// by the collector (collector/lib/archive.js) and shapes it into a 12-month
+// grid keyed by Philadelphia calendar day.
 
-import { normalizeTrainLine } from './ctaLines.js';
+import { normalizeMetroLine } from './metroLines.js';
+import { normalizeRailLine } from './railLines.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Parse "YYYY-MM-DD" → UTC-midnight epoch encoding that Chicago Y/M/D
-// (same convention as chicagoDayUTC). Returns null on malformed input.
+// Parse "YYYY-MM-DD" → UTC-midnight epoch encoding that Philadelphia Y/M/D
+// (same convention as phillyDayUTC). Returns null on malformed input.
 export function dateStringToUtc(s) {
   if (typeof s !== 'string') return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
@@ -34,40 +35,39 @@ function indexDays(days) {
 }
 
 // Apply the homepage filter set to a daily-counts record. Returns
-// `{ trainCount, busCount }` reflecting only the selected lines/routes.
-// Recognizes the same filter keys parseUrlState produces — line keys are
-// normalized to full names (`green`, not `g`), but daily-counts.json still
-// uses CTA short codes inside `by_line`, so the comparison walks both.
+// `{ metroCount, busCount, railCount }` reflecting only the selected
+// lines/routes. Recognizes the same filter keys parseUrlState produces.
 //
-//   selectedLines     null = all train lines; [] = no train lines.
-//   showBus           false = drop all bus counts.
-//   selectedBusRoutes non-empty = restrict bus counts to these routes.
+//   selectedLines      null = all Metro lines; [] = no Metro lines.
+//   showBus            false = drop all bus counts.
+//   selectedBusRoutes  non-empty = restrict bus counts to these routes.
+//   selectedRailLines  non-empty = restrict Regional Rail counts to these lines.
+//   network            'transit' / 'rail' scope the day to one network.
 //
 // Signal filtering is intentionally not supported here — daily-counts.json
 // doesn't carry per-signal breakdowns. The calendar page surfaces a small
 // note when signals are active so the user understands why the calendar
 // isn't responsive to that one filter chip.
-function filterCounts(day, { selectedLines, showBus, selectedBusRoutes }) {
-  let trainCount = 0;
-  if (selectedLines === null) {
-    // All train lines pass — use the merged total (CTA alert + matching bot
-    // observation collapsed into one incident) so the tile matches Timeline.
-    // Falls back to raw train_count for any pre-merge daily-counts.json.
-    trainCount = day.train_merged_count ?? day.train_count ?? 0;
-  } else if (selectedLines.length > 0 && day.by_line && typeof day.by_line === 'object') {
-    // Narrowed to specific lines — by_line is raw per-route, no merged
-    // variant exists. Slight overcount when a Red+Bot pair both fall in
-    // the filter; acceptable for now.
-    const wanted = new Set(selectedLines.map(normalizeTrainLine));
-    for (const [k, v] of Object.entries(day.by_line)) {
-      if (wanted.has(normalizeTrainLine(k))) trainCount += v;
+function filterCounts(
+  day,
+  { selectedLines, showBus, selectedBusRoutes, selectedRailLines, network },
+) {
+  let metroCount = 0;
+  if (network !== 'rail') {
+    if (selectedLines == null) {
+      metroCount = day.metro_count ?? 0;
+    } else if (selectedLines.length > 0 && day.by_line && typeof day.by_line === 'object') {
+      const wanted = new Set(selectedLines.map(normalizeMetroLine));
+      for (const [k, v] of Object.entries(day.by_line)) {
+        if (wanted.has(normalizeMetroLine(k))) metroCount += v;
+      }
     }
   }
 
   let busCount = 0;
-  if (showBus) {
+  if (showBus && network !== 'rail') {
     if (!selectedBusRoutes || selectedBusRoutes.length === 0) {
-      busCount = day.bus_merged_count ?? day.bus_count ?? 0;
+      busCount = day.bus_count ?? 0;
     } else if (day.by_route && typeof day.by_route === 'object') {
       for (const [k, v] of Object.entries(day.by_route)) {
         if (selectedBusRoutes.includes(k)) busCount += v;
@@ -75,7 +75,34 @@ function filterCounts(day, { selectedLines, showBus, selectedBusRoutes }) {
     }
   }
 
-  return { trainCount, busCount };
+  let railCount = 0;
+  if (network !== 'transit') {
+    if (!selectedRailLines || selectedRailLines.length === 0) {
+      railCount = day.rail_count ?? 0;
+    } else if (day.by_rail_line && typeof day.by_rail_line === 'object') {
+      const wanted = new Set(selectedRailLines.map(normalizeRailLine));
+      for (const [k, v] of Object.entries(day.by_rail_line)) {
+        if (wanted.has(normalizeRailLine(k))) railCount += v;
+      }
+    }
+  }
+
+  return { metroCount, busCount, railCount };
+}
+
+const ZERO_COUNTS = { metroCount: 0, busCount: 0, railCount: 0 };
+
+// Per-day counts for one cell: the unfiltered totals, or the filtered subset.
+// A multi-line incident is counted once in the unfiltered totals but once per
+// matching line in a by-line narrowing — an acceptable overcount for a heatmap.
+function cellCounts(rec, filters) {
+  if (!rec) return ZERO_COUNTS;
+  if (filters) return filterCounts(rec, filters);
+  return {
+    metroCount: rec.metro_count ?? 0,
+    busCount: rec.bus_count ?? 0,
+    railCount: rec.rail_count ?? 0,
+  };
 }
 
 // Build a calendar grid covering the most recent `monthsBack` months ending
@@ -85,20 +112,20 @@ function filterCounts(day, { selectedLines, showBus, selectedBusRoutes }) {
 // flag so the renderer can skip them. Cells that ended on or before
 // `dataStartTs` get `noData: true` so the renderer can hatch them.
 //
-// `now` defaults to Date.now() — pinned to Chicago calendar terms via the
+// `now` defaults to Date.now() — pinned to Philadelphia calendar terms via the
 // payload's date strings, so timezone of `now` doesn't matter for cell
 // alignment, only for "what's the current month."
 //
 // `filters` mirrors the homepage filter set; passing it narrows each cell's
 // count to only the selected lines/routes (uses each day's by_line/by_route
-// breakdowns). Default keeps the original "all train + all bus" behavior.
+// breakdowns). Default counts every network.
 /**
- * @param {{ date: string, train_count: number, bus_count: number, by_line?: object, by_route?: object }[]} days
+ * @param {{ date: string, metro_count: number, bus_count: number, rail_count: number, by_line?: object, by_route?: object, by_rail_line?: object }[]} days
  * @param {object} [options]
  * @param {number} [options.now]
  * @param {number} [options.monthsBack]
  * @param {number | null} [options.dataStartTs]
- * @param {{ selectedLines: string[] | null, showBus: boolean, selectedBusRoutes: string[] } | null} [options.filters]
+ * @param {{ selectedLines: string[] | null, showBus: boolean, selectedBusRoutes: string[], selectedRailLines?: string[], network?: string } | null} [options.filters]
  * @returns {Array<{
  *   year: number,
  *   month: number,
@@ -107,8 +134,9 @@ function filterCounts(day, { selectedLines, showBus, selectedBusRoutes }) {
  *     dayOfMonth: number,
  *     date: string | null,
  *     count: number,
- *     trainCount: number,
+ *     metroCount: number,
  *     busCount: number,
+ *     railCount: number,
  *     placeholder: boolean,
  *     noData: boolean,
  *     future: boolean,
@@ -121,9 +149,9 @@ export function buildCalendarMonths(
 ) {
   const idx = indexDays(days);
   const today = new Date(now);
-  // Anchor month uses Chicago-local Y/M to avoid edge-of-month drift.
+  // Anchor month uses Philadelphia-local Y/M to avoid edge-of-month drift.
   const anchorParts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Chicago',
+    timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -157,8 +185,7 @@ export function buildCalendarMonths(
           dayOfMonth: d,
           date: null,
           count: 0,
-          trainCount: 0,
-          busCount: 0,
+          ...ZERO_COUNTS,
           placeholder: true,
           noData: false,
           future: false,
@@ -170,21 +197,12 @@ export function buildCalendarMonths(
       const future = dayUtc > todayUtc;
       const dayEnd = dayUtc + DAY_MS;
       const noData = !future && dataStartTs != null && dayEnd <= dataStartTs;
-      const rec = idx.get(date);
-      const { trainCount, busCount } = rec
-        ? filters
-          ? filterCounts(rec, filters)
-          : {
-              trainCount: rec.train_merged_count ?? rec.train_count ?? 0,
-              busCount: rec.bus_merged_count ?? rec.bus_count ?? 0,
-            }
-        : { trainCount: 0, busCount: 0 };
+      const counts = cellCounts(idx.get(date), filters);
       cells.push({
         dayOfMonth: d,
         date,
-        count: trainCount + busCount,
-        trainCount,
-        busCount,
+        count: counts.metroCount + counts.busCount + counts.railCount,
+        ...counts,
         placeholder: false,
         noData,
         future,
@@ -217,12 +235,12 @@ export function buildCalendarMonths(
 // weeks; we pad the leading edge to land on a Sunday boundary). Filters
 // behave identically to buildCalendarMonths.
 /**
- * @param {Array<{ date: string, train_count: number, bus_count: number, by_line?: object, by_route?: object }>} days
+ * @param {Array<{ date: string, metro_count: number, bus_count: number, rail_count: number, by_line?: object, by_route?: object, by_rail_line?: object }>} days
  * @param {object} [options]
  * @param {number} [options.now]
  * @param {number} [options.windowDays]
  * @param {number | null} [options.dataStartTs]
- * @param {{ selectedLines: string[] | null, showBus: boolean, selectedBusRoutes: string[] } | null} [options.filters]
+ * @param {{ selectedLines: string[] | null, showBus: boolean, selectedBusRoutes: string[], selectedRailLines?: string[], network?: string } | null} [options.filters]
  * @returns {{
  *   weeks: Array<Array<{
  *     date: string | null,
@@ -230,8 +248,9 @@ export function buildCalendarMonths(
  *     dayOfMonth: number | null,
  *     weekday: number,
  *     count: number,
- *     trainCount: number,
+ *     metroCount: number,
  *     busCount: number,
+ *     railCount: number,
  *     inRange: boolean,
  *     noData: boolean,
  *     future: boolean,
@@ -248,9 +267,9 @@ export function buildCalendarWeeks(
 ) {
   const idx = indexDays(days);
 
-  // Anchor today in Chicago Y/M/D so we don't drift around midnight.
+  // Anchor today in Philadelphia Y/M/D so we don't drift around midnight.
   const todayParts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Chicago',
+    timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -290,16 +309,8 @@ export function buildCalendarWeeks(
       const inRange = dayUtc >= firstWeekSunday && !future;
       const dayEnd = dayUtc + DAY_MS;
       const noData = !future && dataStartTs != null && dayEnd <= dataStartTs;
-      const rec = idx.get(date);
-      const { trainCount, busCount } = rec
-        ? filters
-          ? filterCounts(rec, filters)
-          : {
-              trainCount: rec.train_merged_count ?? rec.train_count ?? 0,
-              busCount: rec.bus_merged_count ?? rec.bus_count ?? 0,
-            }
-        : { trainCount: 0, busCount: 0 };
-      const count = trainCount + busCount;
+      const counts = cellCounts(idx.get(date), filters);
+      const count = counts.metroCount + counts.busCount + counts.railCount;
       if (inRange && !noData && count > maxCount) maxCount = count;
       cells.push({
         date,
@@ -307,8 +318,7 @@ export function buildCalendarWeeks(
         dayOfMonth: dom,
         weekday: dow,
         count,
-        trainCount,
-        busCount,
+        ...counts,
         inRange,
         noData,
         future,

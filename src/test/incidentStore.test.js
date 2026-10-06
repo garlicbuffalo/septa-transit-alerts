@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   __resetStoreCaches,
-  chicagoMonthKey,
   getIncidentById,
   getIncidentWithContext,
   loadIndex,
@@ -9,11 +8,12 @@ import {
   loadMonth,
   loadRange,
   loadRecent,
+  phillyMonthKey,
 } from '../lib/incidentStore.js';
 
 // Build a minimal v2 incident. The store only touches id/mode/routes for
 // gating + id resolution; lifecycle is enough for the rest.
-function incident(id, { mode = 'train', routes = ['red'] } = {}) {
+function incident(id, { mode = 'metro', routes = ['l1'] } = {}) {
   return {
     id,
     mode,
@@ -28,7 +28,10 @@ function incident(id, { mode = 'train', routes = ['red'] } = {}) {
 function mockFiles(files) {
   const calls = [];
   globalThis.fetch = vi.fn((url, opts) => {
-    const path = String(url).replace(/^https?:\/\/[^/]+\//, '');
+    // Data URLs are same-origin `/data/<file>` by default (dataSource.js).
+    const path = String(url)
+      .replace(/^https?:\/\/[^/]+/, '')
+      .replace(/^\/data\//, '');
     calls.push({ path, cache: opts?.cache });
     if (!(path in files)) {
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve(null) });
@@ -45,25 +48,25 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('chicagoMonthKey', () => {
-  it('honors the Chicago timezone boundary', () => {
-    // 2026-06-01T03:00Z is still 2026-05-31 22:00 in Chicago (CDT, -5).
-    expect(chicagoMonthKey(Date.parse('2026-06-01T03:00:00Z'))).toBe('2026-05');
-    expect(chicagoMonthKey(Date.parse('2026-06-01T06:00:00Z'))).toBe('2026-06');
+describe('phillyMonthKey', () => {
+  it('honors the Philadelphia timezone boundary', () => {
+    // 2026-06-01T03:00Z is still 2026-05-31 23:00 in Philadelphia (EDT, -4).
+    expect(phillyMonthKey(Date.parse('2026-06-01T03:00:00Z'))).toBe('2026-05');
+    expect(phillyMonthKey(Date.parse('2026-06-01T05:00:00Z'))).toBe('2026-06');
   });
 });
 
 describe('loadRecent', () => {
-  it('fetches the recent file with revalidation and applies the gate', async () => {
+  it('fetches the recent file with revalidation', async () => {
     const calls = mockFiles({
       'alerts-recent.json': {
         generated_at: 5,
-        incidents: [incident('a'), incident('m', { mode: 'commuter_rail' })],
+        incidents: [incident('a'), incident('m', { mode: 'regional_rail' })],
       },
     });
     const out = await loadRecent();
     expect(out.generated_at).toBe(5);
-    // Browser gate is a pass-through (Metra launched) → both kept.
+    // Every mode is kept — there is no per-mode gate.
     expect(out.incidents.map((i) => i.id)).toEqual(['a', 'm']);
     expect(calls[0]).toEqual({ path: 'alerts-recent.json', cache: 'no-cache' });
   });
@@ -85,7 +88,7 @@ describe('loadMonth', () => {
   });
 
   it('revalidates the current month and does not memoize it', async () => {
-    const key = chicagoMonthKey(Date.now());
+    const key = phillyMonthKey(Date.now());
     const calls = mockFiles({
       [`alerts/${key}.json`]: { month: key, incidents: [incident('cur')] },
     });
@@ -136,8 +139,8 @@ describe('getIncidentById', () => {
   it('resolves an archived non-canonical post rkey via rkey_month', async () => {
     const canon = {
       id: 'canon',
-      mode: 'train',
-      routes: ['red'],
+      mode: 'metro',
+      routes: ['l1'],
       lifecycle: { first_seen_ts: 0, resolved_ts: 0, active: false },
       detections: [{ post_url: 'https://bsky.app/profile/did/post/botrkey' }],
     };
@@ -170,8 +173,8 @@ describe('getIncidentWithContext', () => {
     const may = Date.parse('2026-05-10T12:00:00Z');
     const e2 = {
       id: 'e2',
-      mode: 'train',
-      routes: ['red'],
+      mode: 'metro',
+      routes: ['l1'],
       lifecycle: { first_seen_ts: may, resolved_ts: may, active: false },
       detections: [],
     };
@@ -193,7 +196,7 @@ describe('getIncidentWithContext', () => {
       'alerts/2026-04.json': { month: '2026-04', incidents: [incident('apr')] },
       'alerts/2026-06.json': { month: '2026-06', incidents: [incident('jun')] },
       // Same-line neighbor that sits outside the ±1 month window.
-      'incidents/by-line/red.json': { line: 'red', incidents: [e2, incident('lineOld')] },
+      'incidents/by-line/l1.json': { line: 'l1', incidents: [e2, incident('lineOld')] },
     });
     const res = await getIncidentWithContext('e2');
     expect(res.incident.id).toBe('e2');
@@ -204,8 +207,8 @@ describe('getIncidentWithContext', () => {
     const jun = Date.parse('2026-06-10T12:00:00Z');
     const e3 = {
       id: 'e3',
-      mode: 'train',
-      routes: ['red'],
+      mode: 'metro',
+      routes: ['l1'],
       lifecycle: { first_seen_ts: jun, resolved_ts: jun, active: false },
       detections: [],
     };
@@ -223,7 +226,7 @@ describe('getIncidentWithContext', () => {
       },
       'alerts/2026-06.json': { month: '2026-06', incidents: [e3] },
       'alerts/2026-05.json': { month: '2026-05', incidents: [incident('may')] },
-      'incidents/by-line/red.json': { line: 'red', incidents: [e3] },
+      'incidents/by-line/l1.json': { line: 'l1', incidents: [e3] },
     });
     const res = await getIncidentWithContext('e3');
     expect(res.incidents.map((i) => i.id).sort()).toEqual(['e3', 'may']);

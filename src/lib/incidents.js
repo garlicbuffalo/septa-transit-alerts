@@ -1,24 +1,42 @@
-// Merging and filtering logic for the alerts + observations feed.
-// "Merging" pairs an official CTA alert with a matching bot observation on the
-// same line within a 2-hour window so the two sources don't double-count.
+// Reading, labeling, and filtering the published incident feed. Each incident
+// already pairs an official SEPTA alert with any bot detections describing the
+// same event (the collector does that once, upstream); this module turns the
+// nested wire shape into the flat records and labels the views render.
 
-import { BUS_ROUTE_NAMES } from './busRoutes.js';
-import { TRAIN_LINES } from './ctaLines.js';
-import { chicagoDayUTC } from './format.js';
-import { metraLineInfo } from './metraLines.js';
-
-export function incidentAgency(incident) {
-  return incident?.agency ?? null;
-}
+import { BUS_ROUTE_NAMES, busRouteDisplayId, formatBusRoute } from './busRoutes.js';
+import { phillyDayUTC } from './format.js';
+import { METRO_LINES, metroLineFullName } from './metroLines.js';
+import { RAIL_LINES, railLineInfo } from './railLines.js';
 
 export function incidentMode(incident) {
   return incident?.mode ?? null;
 }
 
+// Display "kind" used throughout the views: 'metro' (SEPTA Metro rail
+// transit), 'bus', or 'rail' (Regional Rail). Identical to the wire `mode`
+// except Regional Rail, which publishes as 'regional_rail'.
 export function legacyKind(incidentOrMode) {
   const mode = typeof incidentOrMode === 'string' ? incidentOrMode : incidentMode(incidentOrMode);
-  if (mode === 'commuter_rail') return 'metra';
+  if (mode === 'regional_rail') return 'rail';
   return mode;
+}
+
+// SEPTA runs two networks the site lets riders scope to separately — the same
+// split as SEPTA's two GTFS feeds:
+//   'transit' — SEPTA Metro (subway, El, trolleys, NHSL) plus buses
+//   'rail'    — Regional Rail
+// The All / Metro & Bus / Regional Rail control filters on this.
+export const NETWORKS = ['transit', 'rail'];
+export const NETWORK_LABELS = { transit: 'Metro & Bus', rail: 'Regional Rail' };
+
+/**
+ * @param {Incident | string} incidentOrKind An incident, or a kind ('metro' | 'bus' | 'rail').
+ * @returns {'transit' | 'rail'}
+ */
+export function incidentNetwork(incidentOrKind) {
+  const kind =
+    typeof incidentOrKind === 'string' ? legacyKind(incidentOrKind) : legacyKind(incidentOrKind);
+  return kind === 'rail' ? 'rail' : 'transit';
 }
 
 export function incidentLifecycle(incident) {
@@ -124,9 +142,9 @@ export function incidentRecords(incidents) {
   return { officialRecords, detectionRecords };
 }
 
-// Reconstruct the flat Alert shape from an incident's nested `cta` block. The
-// incident carries `kind`/`routes` at the top level and CTA's own lifecycle
-// (first_seen_ts/resolved_ts/active) inside `cta`.
+// Reconstruct the flat Alert shape from an incident's nested `official_alert`
+// block. The incident carries `kind`/`routes` at the top level and SEPTA's own
+// lifecycle (first_seen_ts/resolved_ts/active) inside `official_alert`.
 export function officialRecordFromIncident(inc) {
   const c = officialAlert(inc);
   const scope = officialScope(c);
@@ -143,6 +161,8 @@ export function officialRecordFromIncident(inc) {
     duration_ms: lifecycle.duration_ms ?? null,
     active: lifecycle.active,
     post_url: c.post_url,
+    // SEPTA's page for the affected route — alerts have no permalinks of their own.
+    source_url: c.source_url ?? null,
     resolved_reply_url: c.resolved_reply_url ?? null,
     affected_from_station: scope.from_station ?? null,
     affected_to_station: scope.to_station ?? null,
@@ -152,12 +172,14 @@ export function officialRecordFromIncident(inc) {
     // enumerated upstream. Lets buildStationIndex tie the inner stations to
     // the incident, not just the two named endpoints.
     affected_stations: scope.stations ?? [],
-    cta_event_start_ts: agencyWindow.start_ts ?? null,
-    cta_event_end_ts: agencyWindow.end_ts ?? null,
-    cta_event_start_is_date_only: agencyWindow.start_is_date_only ?? false,
-    cta_event_end_is_date_only: agencyWindow.end_is_date_only ?? false,
-    // Schedule-anchored single-train Metra cancellation (null otherwise).
-    // Top-level on the incident, not under the `cta` block.
+    agency_event_start_ts: agencyWindow.start_ts ?? null,
+    agency_event_end_ts: agencyWindow.end_ts ?? null,
+    agency_event_start_is_date_only: agencyWindow.start_is_date_only ?? false,
+    agency_event_end_is_date_only: agencyWindow.end_is_date_only ?? false,
+    // Scheduled work (see isPlannedWork) — left out of disruption-time stats.
+    planned: isPlannedWork(inc),
+    // Schedule-anchored single-train Regional Rail cancellation (null
+    // otherwise). Top-level on the incident, not under `official_alert`.
     cancellation:
       inc.status?.type === 'cancellation'
         ? {
@@ -203,7 +225,8 @@ export function officialRecordFromIncident(inc) {
 }
 
 /**
- * Top-level v2 payload served by the public data origin as `alerts.json`.
+ * Top-level payload of the published incident files (`alerts-recent.json`, the
+ * monthly shards, and the per-line files), produced by collector/.
  *
  * @typedef {object} AlertsPayload
  * @property {2} schema_version
@@ -213,32 +236,36 @@ export function officialRecordFromIncident(inc) {
  */
 
 /**
- * One real-world disruption as published on the v2 wire.
+ * One real-world disruption as published on the wire.
  *
  * @typedef {object} Incident
- * @property {string} id Stable permalink id.
- * @property {'cta' | 'metra'} agency
- * @property {'train' | 'bus' | 'commuter_rail'} mode
- * @property {string[]} routes Full CTA train names, bus route ids, or lowercase Metra keys.
+ * @property {string} id Stable permalink id ('alert-136615', 'delay-2026-10-05-3556').
+ * @property {'septa'} agency
+ * @property {'metro' | 'bus' | 'regional_rail'} mode
+ * @property {string[]} routes Lowercase Metro keys ('l1'), bus route ids ('17'), or
+ *   lowercase Regional Rail keys ('pao').
  * @property {Lifecycle} lifecycle Incident-level lifecycle across all sources.
- * @property {Array<'cta' | 'metra' | 'bot'>} sources Which observers contributed.
- * @property {OfficialAlert | null} official_alert Agency alert, or null.
+ * @property {Array<'septa' | 'bot'>} sources Which observers contributed.
+ * @property {OfficialAlert | null} official_alert SEPTA alert, or null.
  * @property {Detection[]} detections Bot detections, or [].
- * @property {MetraStatus | null} status Metra cancellation/delay/planned-work status, or null.
+ * @property {RailStatus | null} status Regional Rail cancellation/delay status, or null.
  */
 
 /** @typedef {{first_seen_ts:number|null,onset_ts?:number|null,resolved_ts:number|null,active:boolean,duration_ms:number|null}} Lifecycle */
 
 /**
  * @typedef {object} OfficialAlert
- * @property {string} id
+ * @property {string} id SEPTA's alert id ('136615', 'D17471').
  * @property {string} headline
  * @property {string | null} description
- * @property {string} [post_url]
+ * @property {string | null} [post_url] Social post republishing the alert, when one exists.
+ * @property {string | null} [source_url] SEPTA's page for the affected route.
  * @property {string | null} [resolved_reply_url]
  * @property {Lifecycle} lifecycle
  * @property {Scope} scope
  * @property {{start_ts:number|null,end_ts:number|null,start_is_date_only:boolean,end_is_date_only:boolean}} agency_event_window
+ * @property {{type:string|null,cause:string|null,effect:string|null,severity:string|null}} [septa]
+ *   SEPTA's own classification (type ADVISORY/ALERT/DETOUR; GTFS-rt cause/effect/severity).
  * @property {object[]} [versions]
  */
 
@@ -266,7 +293,7 @@ export function officialRecordFromIncident(inc) {
  */
 
 /**
- * @typedef {object} MetraStatus
+ * @typedef {object} RailStatus
  * @property {string} type
  * @property {string} [state]
  * @property {string | null} [train_number]
@@ -277,22 +304,32 @@ export function officialRecordFromIncident(inc) {
  * @property {number | null} [deadline_ts]
  */
 
-// User-visible signal categories — the chips and stacked-bar segments.
-// Order is the display order. Aligns with the cta-bot pipeline's pulse
-// subtypes: an observation's detection_source is one of these (or 'roundup',
-// in which case the precise signal kinds live in `signals`).
-export const SIGNAL_TYPES = ['gap', 'bunching', 'ghost', 'pulse-cold', 'pulse-held', 'thin-gap'];
+// User-visible signal categories for SEPTA Metro and bus detections — the
+// chips and stacked-bar segments. Order is the display order. An observation's
+// detection_source is one of these (or 'roundup', in which case the precise
+// signal kinds live in `signals`). The collector emits gap, bunching, ghost,
+// pulse-held (from vehicle positions) and trip-cancellations (from SEPTA's
+// trip feed); pulse-cold and thin-gap are kept for compatibility.
+export const SIGNAL_TYPES = [
+  'gap',
+  'bunching',
+  'ghost',
+  'pulse-cold',
+  'pulse-held',
+  'thin-gap',
+  'trip-cancellations',
+];
 
 // Source categories for the filter chip. Each incident falls into exactly
 // one bucket after `groupIncidentRecords` runs:
-//   'cta'    — official agency alert with no matching bot detection
-//   'bot'    — bot detection with no matching official agency alert
-//   'merged' — official agency alert and bot detection that paired up
-// Order is the display order in the popover; keep it CTA → bot → merged so
-// the "they agreed" row sits at the end as the strongest signal.
-export const SOURCE_TYPES = ['cta', 'bot', 'merged'];
+//   'official' — official SEPTA alert with no matching bot detection
+//   'bot'      — bot detection with no matching official alert
+//   'merged'   — official alert and bot detection that paired up
+// Order is the display order in the popover; keep it official → bot → merged
+// so the "they agreed" row sits at the end as the strongest signal.
+export const SOURCE_TYPES = ['official', 'bot', 'merged'];
 export const SOURCE_LABELS = {
-  cta: 'Agency reported',
+  official: 'SEPTA reported',
   bot: 'Bot observation',
   merged: 'Both',
 };
@@ -309,9 +346,11 @@ export const SIGNAL_LABELS = {
   // covers the 47 routes outside the curated gap/ghost lists, which have no
   // other detector coverage.
   'thin-gap': 'low-frequency route silent',
-  // Metra (commuter rail) detection_source values. Cancellation is the Metra
-  // analog of a ghost; delay is the analog of a gap. 'cancellation-inferred' is a
-  // scheduled train the bot never saw run, that Metra didn't flag (hedged).
+  // Bus and Metro trips SEPTA cancelled (one detection per route per day).
+  'trip-cancellations': 'cancelled trips',
+  // Regional Rail detection_source values. Cancellation is the commuter-rail
+  // analog of a ghost; delay is the analog of a gap. 'cancellation-inferred' is
+  // a scheduled train the bot never saw run, that SEPTA didn't flag (hedged).
   cancellation: 'cancelled trains',
   'cancellation-inferred': 'trains not seen running',
   delay: 'late trains',
@@ -328,6 +367,7 @@ const SIGNAL_IMPACT = {
   'pulse-cold': (v) => `stretch without ${v}`,
   'pulse-held': (v) => `${v} held in place`,
   'thin-gap': () => 'route not running',
+  'trip-cancellations': (v) => `cancelled ${v === 'buses' ? 'bus trips' : 'trips'}`,
   cancellation: () => 'cancelled trains',
   'cancellation-inferred': (v) => `${v} not seen running`,
   delay: () => 'late trains',
@@ -339,16 +379,17 @@ const SIGNAL_IMPACT = {
 // gaps, …") — and rather than truncating to "+N more", which hid what was
 // happening. A roundup carries at most ~3 distinct signals in practice, so the
 // full list stays short. Returns null when there are no signals. `kind` is
-// 'bus' | 'train' (defaults to train).
+// 'bus' | 'metro' (defaults to trains); `line` picks "trolleys" for trolley lines.
 /**
  * @param {string[]} signals
  * @param {string} [kind]
+ * @param {string | null} [line]
  * @returns {string | null}
  */
-export function summarizeSignals(signals, kind) {
+export function summarizeSignals(signals, kind, line = null) {
   const uniq = [...new Set(signals || [])];
   if (uniq.length === 0) return null;
-  const v = kind === 'bus' ? 'buses' : 'trains';
+  const v = vehicleWord(kind, line);
   const phrases = uniq.map((s) =>
     SIGNAL_IMPACT[s] ? SIGNAL_IMPACT[s](v) : (SIGNAL_LABELS[s] ?? s),
   );
@@ -359,9 +400,21 @@ export function summarizeSignals(signals, kind) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+// Rider-facing plural vehicle noun: buses, trolleys (T, G, and D lines), or trains.
+/**
+ * @param {string} kind
+ * @param {string | null} [line]
+ * @returns {string}
+ */
+export function vehicleWord(kind, line = null) {
+  if (kind === 'bus') return 'buses';
+  if (kind === 'metro' && /^(t\d|g1|d\d)$/.test(line ?? '')) return 'trolleys';
+  return 'trains';
+}
+
 // Compact human-readable summary of the bot's evidence for this observation
 // — surfaced as a small chip on incident rows so a reader can see *why* the
-// bot fired without reading the full Bluesky post. Returns null when there's
+// bot fired without opening the full post. Returns null when there's
 // nothing material to render (alerts, missing evidence payload, roundups —
 // the signal mix is already shown via the description text).
 /**
@@ -384,6 +437,26 @@ export function formatEvidenceChip(incident) {
   }
   const ev = incident.evidence;
   if (!ev || typeof ev !== 'object') return null;
+  const nounLine = incident.line ?? incident.obs_line ?? incident.routes?.[0] ?? null;
+  // Shapes emitted by the SEPTA collector (collector/lib/vehicleDetectors.js,
+  // collector/lib/tripCancellations.js).
+  if (ev.kind === 'gap' && ev.gap_min != null) {
+    return ev.headway_min
+      ? `~${ev.gap_min} min gap · scheduled every ~${ev.headway_min} min`
+      : `~${ev.gap_min} min gap`;
+  }
+  if (ev.kind === 'bunching' && ev.vehicle_count != null) {
+    const noun = vehicleWord(incident.kind, nounLine);
+    return `${ev.vehicle_count} ${noun} within ${ev.distance_m ?? '?'} m`;
+  }
+  if (ev.kind === 'ghost' && ev.scheduled != null) {
+    return `${ev.tracked} of ${ev.scheduled} scheduled on the tracker`;
+  }
+  if (ev.kind === 'trip-cancellations' && ev.cancelled != null) {
+    return ev.scheduled
+      ? `${ev.cancelled} of ${ev.scheduled} trips cancelled`
+      : `${ev.cancelled} trip${ev.cancelled === 1 ? '' : 's'} cancelled`;
+  }
   // Train pulse evidence has the canonical fields. The held subtree exists
   // when the candidate was a held-cluster (or inferred-held from cold).
   if (ev.held && typeof ev.held === 'object' && ev.held.trainCount != null) {
@@ -393,10 +466,14 @@ export function formatEvidenceChip(incident) {
     const countLabel = `${ev.held.trainCount} ${ev.held.trainCount === 1 ? single : noun} held`;
     return min != null ? `${countLabel} · ${min} min stationary` : countLabel;
   }
-  // Bus held shape (no nested .held — fields live at the top level).
-  if (ev.kind === 'held' && ev.busCount != null) {
+  // Held shape (no nested .held — fields live at the top level). Buses carry
+  // busCount; the SEPTA collector also sets vehicle_count for every mode.
+  if (ev.kind === 'held' && (ev.busCount ?? ev.vehicle_count) != null) {
+    const count = ev.busCount ?? ev.vehicle_count;
     const min = ev.stationaryMs ? Math.round(ev.stationaryMs / 60000) : null;
-    const countLabel = `${ev.busCount} ${ev.busCount === 1 ? 'bus' : 'buses'} held`;
+    const plural = vehicleWord(incident.kind, nounLine);
+    const single = plural === 'buses' ? 'bus' : plural.slice(0, -1);
+    const countLabel = `${count} ${count === 1 ? single : plural} held`;
     return min != null ? `${countLabel} · ${min} min stationary` : countLabel;
   }
   // Train cold evidence.
@@ -455,43 +532,46 @@ export function observationSignals(obs) {
  */
 export function botSummaryText(incident) {
   const { primary } = splitObservations(incident);
-  const summary = summarizeSignals(observationSignals(primary), legacyKind(incident));
+  const summary = summarizeSignals(
+    observationSignals(primary),
+    legacyKind(incident),
+    primary?.line ?? null,
+  );
   if (summary) return summary;
   if (primary?.detection_source === 'roundup') return 'Multiple simultaneous disruptions detected';
   return 'Service disruption detected';
 }
 
-// Metra bot-detected point events — one scheduled train that ran late, was
-// cancelled, or was never seen running. These are recorded website-data-first
-// (no per-trip Bluesky post; an hourly rollup digest summarizes them), so they
-// arrive as bot-only incidents with the rider-facing sentence pre-rendered in
-// `bot_description` (e.g. "~57 min late — the 12:05 PM … train", "Scheduled
-// train not seen running — the 9:55 AM Joliet train"). Without intervention the
-// row shows only the station pair, which reads like a route; so we lead with the
-// sentence and stamp a short status badge per kind.
-const METRA_POINT_SOURCES = new Set(['delay', 'cancellation', 'cancellation-inferred']);
+// Regional Rail bot-detected point events — one scheduled train that ran late,
+// was cancelled, or was never seen running. These are recorded
+// website-data-first (no per-train social post), so they arrive as bot-only
+// incidents with the rider-facing sentence pre-rendered in `bot_description`
+// (e.g. "~22 min late — the 6:31 PM Wawa to Doylestown train (#3556)").
+// Without intervention the row shows only the station pair, which reads like a
+// route; so we lead with the sentence and stamp a short status badge per kind.
+const RAIL_POINT_SOURCES = new Set(['delay', 'cancellation', 'cancellation-inferred']);
 
 /**
- * True when `source` is one of the Metra point-event detection kinds.
+ * True when `source` is one of the Regional Rail point-event detection kinds.
  * @param {string | null | undefined} source
  */
-export function isMetraPointSource(source) {
-  return source != null && METRA_POINT_SOURCES.has(source);
+export function isRailPointSource(source) {
+  return source != null && RAIL_POINT_SOURCES.has(source);
 }
 
 /**
- * Normalize a Metra point-event incident for display, or null when the incident
- * isn't one. Skips merged incidents that carry a Metra alert (`cta`) — those
+ * Normalize a Regional Rail point-event incident for display, or null when the
+ * incident isn't one. Skips incidents that carry an official alert — those
  * render from the alert headline. `lede` is the pre-rendered sentence to lead
  * the row/title with; null when the bot shipped none (callers fall back to the
  * station pair, with the badge still marking the kind).
  * @param {Incident} incident
  * @returns {{ source: string, lede: string | null, fromStation: string | null, toStation: string | null, directionLabel: string | null } | null}
  */
-export function metraPointEvent(incident) {
+export function railPointEvent(incident) {
   if (!incident || officialAlert(incident)) return null;
   const { primary } = splitObservations(incident);
-  if (!primary || !isMetraPointSource(primary.detection_source)) return null;
+  if (!primary || !isRailPointSource(primary.detection_source)) return null;
   return {
     source: primary.detection_source,
     lede: primary.bot_description ?? null,
@@ -501,10 +581,10 @@ export function metraPointEvent(incident) {
   };
 }
 
-export function metraPointEventTitle(incident) {
-  if (!incident || officialAlert(incident) || legacyKind(incident) !== 'metra') return null;
+export function railPointEventTitle(incident) {
+  if (!incident || officialAlert(incident) || legacyKind(incident) !== 'rail') return null;
   const { primary } = splitObservations(incident);
-  if (!primary || !isMetraPointSource(primary.detection_source)) return null;
+  if (!primary || !isRailPointSource(primary.detection_source)) return null;
   const trainNumber = primary.train_number == null ? null : String(primary.train_number).trim();
   if (!trainNumber) return null;
   const routes =
@@ -513,24 +593,35 @@ export function metraPointEventTitle(incident) {
       : primary.line
         ? [primary.line]
         : [];
-  const line = formatRoutesLabel('metra', routes);
+  const line = formatRoutesLabel('rail', routes);
   const status =
     primary.detection_source === 'cancellation-inferred'
       ? 'possibly cancelled'
-      : metraPointEventLabel(primary.detection_source);
+      : railPointEventLabel(primary.detection_source);
   if (!line || !status) return null;
   return `${line} train #${trainNumber} ${status}`;
 }
 
-function officialMetraStatusSource(incident) {
+// SEPTA classifies each alert's cause; scheduled maintenance and construction
+// advisories are planned work even when their text doesn't say so ("Potential
+// Delays due to Amtrak Infrastructure Project", "Outbound Platform Boarding").
+const PLANNED_SEPTA_CAUSES = new Set(['MAINTENANCE', 'CONSTRUCTION']);
+function isSeptaPlannedAdvisory(alert) {
+  return alert?.septa?.type === 'ADVISORY' && PLANNED_SEPTA_CAUSES.has(alert.septa.cause);
+}
+
+function officialRailStatusSource(incident) {
   const alert = officialAlert(incident);
-  if (legacyKind(incident) !== 'metra' || !alert) return null;
+  if (legacyKind(incident) !== 'rail' || !alert) return null;
   // Backward-compatible display fallback for already-published data that predates
   // Keep the text fallback conservative; the backend remains the source of truth
   // for schedule anchors and train numbers.
   const text = [alert.headline, alert.description].filter(Boolean).join(' \n ');
   const isPlannedDelay =
-    /\b(track\s+construction|construction|planned\s+work|work\s+zone|maintenance)\b/i.test(text) &&
+    (isSeptaPlannedAdvisory(alert) ||
+      /\b(track\s+construction|construction|planned\s+work|work\s+zone|maintenance)\b/i.test(
+        text,
+      )) &&
     /\bdelay(?:ed|s)?\b|\b\d{1,3}\s*(?:\+|\s*or\s+more)?\s*minutes?\s+(?:late|behind|delay)/i.test(
       text,
     );
@@ -539,7 +630,7 @@ function officialMetraStatusSource(incident) {
   if (exported === 'planned-delay' || (exported === 'delay' && isPlannedDelay)) {
     return 'planned-delay';
   }
-  if (isMetraPointSource(exported)) return exported;
+  if (isRailPointSource(exported)) return exported;
   if (incident.status?.type === 'cancellation') return 'cancellation';
 
   if (/\bwill\s+not\s+operate\b|\bcancell?ed\b|\bannull?ed\b|\bnot\s+running\b/i.test(text)) {
@@ -557,16 +648,16 @@ function officialMetraStatusSource(incident) {
 }
 
 /**
- * Badge-level Metra incident status. Bot point events use their observation
- * source; official Metra alerts use the exported v2 status classification when
- * present, with a conservative text fallback for older data.
+ * Badge-level Regional Rail incident status. Bot point events use their
+ * observation source; official Regional Rail alerts use the exported status
+ * classification when present, with a conservative text fallback.
  * @param {Incident} incident
  * @returns {{source:string}|null}
  */
-export function metraIncidentStatus(incident) {
-  const official = officialMetraStatusSource(incident);
+export function railIncidentStatus(incident) {
+  const official = officialRailStatusSource(incident);
   if (official) return { source: official };
-  const point = metraPointEvent(incident);
+  const point = railPointEvent(incident);
   return point ? { source: point.source } : null;
 }
 
@@ -584,9 +675,10 @@ const PLANNED_TEXT_RE =
  * @returns {boolean}
  */
 export function isPlannedIncident(incident, now = Date.now()) {
-  if (metraIncidentStatus(incident)?.source === 'planned-delay') return true;
+  if (railIncidentStatus(incident)?.source === 'planned-delay') return true;
   const alert = officialAlert(incident);
   if (!alert) return false;
+  if (isSeptaPlannedAdvisory(alert)) return true;
   const w = alert.agency_event_window ?? {};
   // Advance notice: the scheduled work hasn't started yet.
   if (w.start_ts != null && w.start_ts > now) return true;
@@ -597,10 +689,41 @@ export function isPlannedIncident(incident, now = Date.now()) {
   return PLANNED_TEXT_RE.test(text);
 }
 
+// Whether an incident is scheduled work rather than an unplanned disruption,
+// judged as of when it was first seen — so advance-notice work stays "planned"
+// once it starts. Disruption-time stats leave planned work out: a weeks-long
+// station closure or a construction advisory is published service, not a
+// breakdown, and counting it would swamp the measure.
+/**
+ * @param {Incident} incident
+ * @returns {boolean}
+ */
+export function isPlannedWork(incident) {
+  return isPlannedIncident(incident, incidentLifecycle(incident).first_seen_ts ?? 0);
+}
+
+// Whether an incident is a bot-only record of a route's cancelled trips for the
+// day (collector/lib/tripCancellations.js).
+/**
+ * @param {Incident} incident
+ * @returns {boolean}
+ */
+export function isTripCancellations(incident) {
+  const dets = incidentDetections(incident);
+  return (
+    !officialAlert(incident) &&
+    dets.length > 0 &&
+    dets.every(
+      (d) => d.source === 'trip-cancellations' || d.detection_source === 'trip-cancellations',
+    )
+  );
+}
+
 /**
  * Three-way bucket for the homepage's active list:
  *   'planned'    — scheduled / advance-notice work (see {@link isPlannedIncident})
- *   'delay'      — a routine in-progress delay (a single Metra train running late)
+ *   'delay'      — a routine in-progress delay (a single Regional Rail train running
+ *                  late) or a route's cancelled trips for the day
  *   'disruption' — everything else live (gaps, ghosts, cancellations, and
  *                  reroutes without a fixed window)
  * @param {Incident} incident
@@ -609,19 +732,20 @@ export function isPlannedIncident(incident, now = Date.now()) {
  */
 export function incidentCategory(incident, now = Date.now()) {
   if (isPlannedIncident(incident, now)) return 'planned';
-  if (metraIncidentStatus(incident)?.source === 'delay') return 'delay';
+  if (railIncidentStatus(incident)?.source === 'delay') return 'delay';
+  if (isTripCancellations(incident)) return 'delay';
   return 'disruption';
 }
 
-// Short status-badge label for each Metra point-event kind. 'cancellation-
-// inferred' reads "possible cancellation" — the train was scheduled but never
-// seen and Metra didn't flag it, so the outcome is stated while signalling it's
+// Short status-badge label for each Regional Rail point-event kind.
+// 'cancellation-inferred' reads "possible cancellation" — the train was
+// scheduled but never seen and SEPTA didn't flag it, so the outcome is stated while signalling it's
 // unconfirmed. Returns null for unknown kinds.
 /**
  * @param {string} source
  * @returns {string | null}
  */
-export function metraPointEventLabel(source) {
+export function railPointEventLabel(source) {
   switch (source) {
     case 'delay':
       return 'delayed';
@@ -642,9 +766,9 @@ function naturalList(items) {
   return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
 }
 
-function collectMetraTrainNumbers(incident) {
+function collectRailTrainNumbers(incident) {
   const alert = officialAlert(incident);
-  if (legacyKind(incident) !== 'metra' || !alert) return [];
+  if (legacyKind(incident) !== 'rail' || !alert) return [];
   const out = [];
   const push = (n) => {
     const s = n == null ? null : String(n).trim();
@@ -665,14 +789,14 @@ function collectMetraTrainNumbers(incident) {
   return out.sort((a, b) => Number(a) - Number(b));
 }
 
-function metraMultiTrainHeadline(incident) {
-  const nums = collectMetraTrainNumbers(incident);
+function railMultiTrainHeadline(incident) {
+  const nums = collectRailTrainNumbers(incident);
   if (nums.length === 0) return null;
   const { primary, extras } = splitObservations(incident);
   const sources = new Set([primary, ...extras].filter(Boolean).map((o) => o.detection_source));
-  if (isMetraPointSource(incident.status?.type)) sources.add(incident.status.type);
-  const official = officialMetraStatusSource(incident);
-  if (isMetraPointSource(official)) sources.add(official);
+  if (isRailPointSource(incident.status?.type)) sources.add(incident.status.type);
+  const official = officialRailStatusSource(incident);
+  if (isRailPointSource(official)) sources.add(official);
   let status = 'affected';
   if (incident.status?.type === 'cancellation' && incident.status.state === 'cancelled') {
     status = 'cancelled';
@@ -682,7 +806,10 @@ function metraMultiTrainHeadline(incident) {
   else if (sources.size > 0 && [...sources].every((s) => s === 'cancellation-inferred')) {
     status = 'possibly cancelled';
   }
-  const line = formatRoutesLabel('metra', incident.routes || []);
+  // Without a delay/cancellation to report, SEPTA's own headline ("Outbound
+  // Platform Boarding, Train #207, …") says more than "train #207 affected".
+  if (status === 'affected') return null;
+  const line = formatRoutesLabel('rail', incident.routes || []);
   const trainWord = nums.length === 1 ? 'train' : 'trains';
   return `${line} ${trainWord} ${naturalList(nums.map((n) => `#${n}`))} ${status}`;
 }
@@ -697,19 +824,18 @@ function stableOfficialHeadline(incident) {
 export function incidentHeadlineText(incident) {
   if (!incident) return '';
   if (officialAlert(incident)) {
-    return metraMultiTrainHeadline(incident) ?? stableOfficialHeadline(incident);
+    return railMultiTrainHeadline(incident) ?? stableOfficialHeadline(incident);
   }
   return null;
 }
 
 // The per-line affected stretches for an incident, as `{ line, from, to }`
-// segments. A multi-line incident (a Loop-wide alert that merged several
-// pulse-cold detections) carries one segment per merged observation, each on
-// its OWN line — the multi-line event map uses these to highlight each line's
-// real stretch instead of drawing one arbitrary line. `line` is null for an
-// alert-level segment ("between Belmont and Howard" with no single owning
-// line); the renderer then highlights it on every drawn line serving both
-// endpoints.
+// segments. A multi-line incident (a Center City alert that merged several
+// detections) carries one segment per merged observation, each on its OWN line
+// — the multi-line event map uses these to highlight each line's real stretch
+// instead of drawing one arbitrary line. `line` is null for an alert-level
+// segment ("between 30th St and 15th St" with no single owning line); the
+// renderer then highlights it on every drawn line serving both endpoints.
 /**
  * @param {Incident} incident
  * @returns {Array<{ line: string | null, from: string | null, to: string | null }>}
@@ -731,7 +857,7 @@ export function affectedLineSegments(incident) {
     for (const e of extras) push(e.line ?? null, e.from_station, e.to_station);
     push(null, scope.from_station, scope.to_station);
   } else if (alert) {
-    // Pure CTA alert: only the alert-level segment, applied across its routes.
+    // Official alert only: the alert-level segment, applied across its routes.
     push(null, scope.from_station, scope.to_station);
   } else if (primary) {
     // Bot-only: the observation's own stretch.
@@ -753,75 +879,68 @@ export function postUrlRkey(postUrl) {
   return m ? m[1] : null;
 }
 
-// Format a multi-route/multi-line label for display. Single-route bus alerts
-// keep their verbose `#3 King Drive` name; multi-route alerts collapse to
-// the bare numbers (e.g. `#136, #147, #151`) so the label stays short
-// enough for headings and OG cards. 4+ routes wrap as `first two + N more`
-// or `N train lines`.
+// The official source for an incident's alert block. Every official alert on
+// this site is SEPTA's own; `kind` is accepted so callers needn't special-case.
 /**
- * @param {'train'|'bus'|'metra'} kind
- * @param {string[]} routes
+ * @param {'metro'|'bus'|'rail'} [_kind]
  * @returns {string}
  */
-// The official-source agency for an incident's `cta`/alert block. For Metra the
-// "cta" block actually holds Metra's own GTFS-rt alert (republished), so it reads
-// as "Metra", not "CTA". Used wherever the UI labels the official source.
-/**
- * @param {'train'|'bus'|'metra'} kind
- * @returns {string}
- */
-export function agencyLabel(kind) {
-  return kind === 'metra' ? 'Metra' : 'CTA';
+export function agencyLabel(_kind) {
+  return 'SEPTA';
 }
 
-// Specific agency + mode label for grouping the active list — "CTA Train",
-// "CTA Bus", or "Metra". Unlike agencyLabel (which collapses CTA's two modes
-// to a bare "CTA"), this keeps bus and train distinct so the homepage can say
-// "CTA Bus" rather than an ambiguous "Bus".
+// Network + mode label for grouping the active list — "SEPTA Metro", "Bus",
+// or "Regional Rail".
 /**
- * @param {'train'|'bus'|'metra'} kind
+ * @param {'metro'|'bus'|'rail'} kind
  * @returns {string}
  */
 export function modeLabel(kind) {
-  if (kind === 'metra') return 'Metra';
-  if (kind === 'bus') return 'CTA Bus';
-  if (kind === 'train') return 'CTA Train';
-  return 'CTA';
+  if (kind === 'rail') return 'Regional Rail';
+  if (kind === 'bus') return 'Bus';
+  if (kind === 'metro') return 'SEPTA Metro';
+  return 'SEPTA';
 }
 
+// Format a multi-route/multi-line label for display. A single line reads in
+// full ("L1 Market-Frankford Line", "Paoli/Thorndale Line", "Route 17");
+// multi-route labels collapse to codes ("B1, B2, and B3", "Routes 17 and 33")
+// so they stay short enough for headings and OG cards. 4+ routes wrap as
+// `first two + N more` or `N Metro lines`.
+/**
+ * @param {'metro'|'bus'|'rail'} kind
+ * @param {string[]} routes
+ * @returns {string}
+ */
 export function formatRoutesLabel(kind, routes) {
   if (!routes || routes.length === 0) return kind === 'bus' ? 'this route' : 'this line';
-  if (kind === 'train') {
-    const labels = routes.map((r) => TRAIN_LINES[r]?.label ?? r);
+  if (kind === 'metro') {
+    if (routes.length === 1) return metroLineFullName(routes[0]);
+    const labels = routes.map((r) => METRO_LINES[r]?.label ?? r);
+    if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+    if (labels.length === 3) return `${labels[0]}, ${labels[1]}, and ${labels[2]}`;
+    return `${labels.length} Metro lines`;
+  }
+  if (kind === 'rail') {
+    const labels = routes.map((r) => railLineInfo(r)?.label ?? r);
     if (labels.length === 1) return `${labels[0]} Line`;
     if (labels.length === 2) return `${labels[0]} and ${labels[1]} Lines`;
     if (labels.length === 3) return `${labels[0]}, ${labels[1]}, and ${labels[2]} Lines`;
-    return `${labels.length} train lines`;
-  }
-  if (kind === 'metra') {
-    // Metra lines carry their own name ("BNSF", "Metra Electric") — no " Line".
-    const labels = routes.map((r) => metraLineInfo(r)?.label ?? r);
-    if (labels.length === 1) return labels[0];
-    if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
-    if (labels.length === 3) return `${labels[0]}, ${labels[1]}, and ${labels[2]}`;
-    return `${labels.length} Metra lines`;
+    return `${labels.length} Regional Rail lines`;
   }
   // bus
-  if (routes.length === 1) {
-    const name = BUS_ROUTE_NAMES[routes[0]] ?? BUS_ROUTE_NAMES[String(routes[0])];
-    return name ? `#${routes[0]} ${name}` : `#${routes[0]}`;
-  }
-  const nums = routes.map((r) => `#${r}`);
-  if (nums.length === 2) return `${nums[0]} and ${nums[1]}`;
-  if (nums.length === 3) return nums.join(', ');
-  return `${nums.slice(0, 2).join(', ')} + ${nums.length - 2} more`;
+  if (routes.length === 1) return formatBusRoute(routes[0]);
+  const ids = routes.map((r) => busRouteDisplayId(r));
+  if (ids.length === 2) return `Routes ${ids[0]} and ${ids[1]}`;
+  if (ids.length === 3) return `Routes ${ids[0]}, ${ids[1]}, and ${ids[2]}`;
+  return `Routes ${ids.slice(0, 2).join(', ')} + ${ids.length - 2} more`;
 }
 
 // Find an incident by its shareable event id. The id is the top-level
-// `incident.id` (the alert post rkey when CTA is present, else the bot post
-// rkey), but a link copied from any of an incident's bot posts should still
-// resolve, so we also match the CTA post rkey and every observation's post
-// rkey. Returns the nested incident the view renders directly.
+// `incident.id` (collector-assigned, e.g. 'alert-136615'), but should an
+// incident ever be republished to a social account, a link copied from any of
+// its posts still resolves: we also match the official post rkey and every
+// observation's post rkey. Returns the nested incident the view renders.
 /**
  * @param {Incident[]} incidents
  * @param {string} id
@@ -918,7 +1037,7 @@ export function findContemporaneousOnOtherLines(incident, incidents, windowMs = 
 // Group incident-derived official/detection records into the merged /
 // standalone buckets the analytics layer (aggregate.js) and a couple of
 // components still consume. The fuzzy alert↔observation pairing is NOT done
-// here — it happens server-side in cta-insights and is baked into each record's
+// here — it happens upstream in the collector and is baked into each record's
 // `_incidentId` by `incidentRecords`. This just groups by that id, so an
 // official alert and the bot detections that share its incident reassemble into
 // one merged record. (The view layer reads the nested `incidents[]` directly and
@@ -972,7 +1091,7 @@ export function groupIncidentRecords(alerts, observations) {
 // an official alert and its grouped detections.
 function buildMergedRecord(alert, obsList) {
   // Primary obs = closest in time to the alert (most likely the detection that
-  // caught the same onset CTA published). The single-obs fields (obs_post_url,
+  // caught the same onset SEPTA published). The single-obs fields (obs_post_url,
   // from_station, …) reflect this primary; the rest ride along on extra_obs.
   const matches = [...obsList].sort(
     (a, b) => Math.abs(a.ts - alert.first_seen_ts) - Math.abs(b.ts - alert.first_seen_ts),
@@ -987,6 +1106,7 @@ function buildMergedRecord(alert, obsList) {
   return {
     _type: 'merged',
     _sortTs: alert.first_seen_ts,
+    _incidentId: alert._incidentId,
     alert_id: alert.alert_id,
     kind: alert.kind,
     routes: alert.routes,
@@ -996,19 +1116,21 @@ function buildMergedRecord(alert, obsList) {
     resolved_ts: active ? null : (alert.resolved_ts ?? primary.resolved_ts ?? null),
     active,
     post_url: alert.post_url,
+    source_url: alert.source_url ?? null,
+    planned: alert.planned === true,
     resolved_reply_url: alert.resolved_reply_url,
     affected_from_station: alert.affected_from_station,
     affected_to_station: alert.affected_to_station,
     affected_direction: alert.affected_direction,
     mentioned_stations: alert.mentioned_stations ?? [],
-    // Only present when CTA edited the alert text (>1 version on the wire).
+    // Only present when SEPTA edited the alert text (>1 version on the wire).
     versions: alert.versions,
-    // CTA's claimed event window, so EventPage can compare their stated end to
+    // SEPTA's claimed event window, so EventPage can compare their stated end to
     // the actual resolve timestamp.
-    cta_event_start_ts: alert.cta_event_start_ts ?? null,
-    cta_event_end_ts: alert.cta_event_end_ts ?? null,
-    cta_event_start_is_date_only: alert.cta_event_start_is_date_only === true,
-    cta_event_end_is_date_only: alert.cta_event_end_is_date_only === true,
+    agency_event_start_ts: alert.agency_event_start_ts ?? null,
+    agency_event_end_ts: alert.agency_event_end_ts ?? null,
+    agency_event_start_is_date_only: alert.agency_event_start_is_date_only === true,
+    agency_event_end_is_date_only: alert.agency_event_end_is_date_only === true,
     from_station: primary.from_station,
     to_station: primary.to_station,
     obs_post_url: primary.post_url,
@@ -1057,7 +1179,7 @@ function collapseStandaloneObs(obsList) {
 }
 
 // Split a nested incident's observations into a primary and the rest. The
-// primary is the detection closest in time to the CTA alert (so the rendered
+// primary is the detection closest in time to the official alert (so the rendered
 // "from → to" / detection link matches what older merged records showed), or
 // the sole/first observation for a bot-only incident.
 /**
@@ -1076,17 +1198,16 @@ export function splitObservations(incident) {
   return { primary: obs[0], extras: obs.slice(1) };
 }
 
-// Which source bucket an incident falls in: 'merged' (official agency + bot),
-// 'cta' (official agency alert with no bot detection), or 'bot' (bot-only).
-// Drives the source filter. The internal bucket id remains 'cta' for URL
-// compatibility; the public wire `incident.sources` uses the agency name.
+// Which source bucket an incident falls in: 'merged' (official alert + bot),
+// 'official' (SEPTA alert with no bot detection), or 'bot' (bot-only). Drives
+// the source filter.
 /**
  * @param {Incident} incident
- * @returns {'cta' | 'bot' | 'merged'}
+ * @returns {'official' | 'bot' | 'merged'}
  */
 export function incidentSource(incident) {
   if (!officialAlert(incident)) return 'bot';
-  return incidentDetections(incident).length > 0 ? 'merged' : 'cta';
+  return incidentDetections(incident).length > 0 ? 'merged' : 'official';
 }
 
 // Build the per-incident text matcher used by both `filterIncidents` and
@@ -1095,12 +1216,13 @@ export function incidentSource(incident) {
 // uniform signature.
 //
 // Match scope mirrors what users expect from the search box:
-//   - CTA headline, affected stations/direction
+//   - SEPTA headline, affected stations/direction
 //   - observation segment endpoints, direction
-//   - route/line keys *and* their human labels ("Red Line", "Route 66",
-//     bus-route long names, signal-type labels). Without label matching,
-//     "Green" wouldn't match key `g`, and "headway gaps" wouldn't match
-//     observations carrying `signals: ['gap']`.
+//   - route/line keys *and* their human labels ("L1", "Market-Frankford",
+//     pre-rebrand names like "MFL" or "Route 101", "Paoli/Thorndale",
+//     "Route 17", bus-route long names, signal-type labels). Without label
+//     matching, "Broad Street" wouldn't match key `b1`, and "headway gaps"
+//     wouldn't match observations carrying `signals: ['gap']`.
 /**
  * @param {string} query
  * @returns {{ hasSearch: boolean, matchesIncident: (incident: Incident) => boolean }}
@@ -1114,12 +1236,18 @@ export function buildSearchMatchers(query) {
   const matchesLine = (key, kind) => {
     if (key == null) return false;
     const haystack = [String(key).toLowerCase()];
-    if (kind === 'train') {
-      const label = TRAIN_LINES[key]?.label?.toLowerCase();
-      if (label) haystack.push(label, `${label} line`);
+    if (kind === 'metro') {
+      const info = METRO_LINES[key];
+      if (info) {
+        haystack.push(info.label.toLowerCase(), info.name.toLowerCase());
+        for (const old of info.formerly || []) haystack.push(old.toLowerCase());
+      }
+    } else if (kind === 'rail') {
+      const info = RAIL_LINES[key];
+      if (info) haystack.push(info.label.toLowerCase(), `${info.label.toLowerCase()} line`);
     } else if (kind === 'bus') {
-      const lowerKey = String(key).toLowerCase();
-      haystack.push(`route ${lowerKey}`, `#${lowerKey}`);
+      const lowerId = busRouteDisplayId(key).toLowerCase();
+      haystack.push(`route ${lowerId}`, `#${lowerId}`);
       const name = BUS_ROUTE_NAMES[key];
       if (name) haystack.push(name.toLowerCase());
     }
@@ -1172,26 +1300,28 @@ export function searchFilterIncidents(incidents, query) {
   return incidents.filter(matchesIncident);
 }
 
-// Filter incidents by selected train lines, bus toggle, signal kinds, source
-// bucket, free-text search, and a start timestamp / pinned day. Active incidents
-// bypass the timestamp filter so they always appear. Bus incidents are
-// controlled independently of the train line filter — selecting Red Line
-// doesn't hide bus incidents when showBus=true.
+// Filter incidents by selected Metro lines, bus toggle, Regional Rail lines,
+// signal kinds, source bucket, network, free-text search, and a start
+// timestamp / pinned day. Active incidents bypass the timestamp filter so they
+// always appear. Bus incidents are controlled independently of the Metro line
+// filter — selecting L1 doesn't hide bus incidents when showBus=true.
 /**
  * @param {Incident[]} incidents
  * @param {object} [options]
- * @param {string[] | null} [options.lines]    null = all train lines. Empty array = no train lines.
+ * @param {string[] | null} [options.lines]    null = all Metro lines. Empty array = no Metro lines.
  * @param {number | null} [options.startTs]    Drop incidents older than this (active ones bypass).
  * @param {boolean} [options.showBus]
  * @param {string[] | null} [options.busRoutes] When non-empty, restrict bus incidents to these routes.
- * @param {string[] | null} [options.metraLines] When non-empty, restrict Metra incidents to these lines.
- * @param {number | null} [options.selectedDay] Chicago-day UTC midnight; when set, only incidents
+ * @param {string[] | null} [options.railLines] When non-empty, restrict Regional Rail incidents to these lines.
+ * @param {number | null} [options.selectedDay] Philadelphia-day UTC midnight; when set, only incidents
  *   whose [start, end] span overlaps this day pass. Overrides startTs.
  * @param {string[] | null} [options.signals]  When non-empty, keep only incidents with an
- *   observation carrying one of these signal kinds. CTA-only incidents (no observations) drop.
+ *   observation carrying one of these signal kinds. Official-only incidents (no observations) drop.
  * @param {string[] | null} [options.sources]  When shorter than SOURCE_TYPES, keep only incidents
- *   whose source bucket (cta/bot/merged) is selected.
- * @param {string} [options.search] Free-text search across CTA + observation fields.
+ *   whose source bucket (official/bot/merged) is selected.
+ * @param {string[] | null} [options.networks] When it names one network ('transit' | 'rail'),
+ *   keep only that network's incidents.
+ * @param {string} [options.search] Free-text search across alert + observation fields.
  * @param {number} [options.now]               For selectedDay span calc; defaults to Date.now().
  * @returns {Incident[]}
  */
@@ -1202,26 +1332,25 @@ export function filterIncidents(
     startTs,
     showBus = true,
     busRoutes = null,
-    metraLines = null,
+    railLines = null,
     selectedDay = null,
     signals = null,
     sources = null,
     search = '',
-    agencies = null,
+    networks = null,
     now = Date.now(),
   } = {},
 ) {
   const hasLineFilter = lines !== null && lines !== undefined;
   const hasBusRouteFilter = busRoutes && busRoutes.length > 0;
-  const hasMetraLineFilter = metraLines && metraLines.length > 0;
+  const hasRailLineFilter = railLines && railLines.length > 0;
   const hasSignalFilter = signals && signals.length > 0;
   const signalSet = hasSignalFilter ? new Set(signals) : null;
   const hasSourceFilter = sources && sources.length < SOURCE_TYPES.length;
   const sourceSet = hasSourceFilter ? new Set(sources) : null;
-  // Agency = 'metra' for kind==='metra', else 'cta' (train + bus). The agency
-  // filter (shown only in the ?metra=1 preview) scopes the feed to one agency.
-  const hasAgencyFilter = agencies && agencies.length > 0 && agencies.length < 2;
-  const agencySet = hasAgencyFilter ? new Set(agencies) : null;
+  // Network = 'rail' for Regional Rail, else 'transit' (Metro + bus).
+  const hasNetworkFilter = networks && networks.length > 0 && networks.length < NETWORKS.length;
+  const networkSet = hasNetworkFilter ? new Set(networks) : null;
   const { hasSearch, matchesIncident } = buildSearchMatchers(search);
 
   // When selectedDay is pinned, an incident matches iff its [start, end] span
@@ -1230,20 +1359,20 @@ export function filterIncidents(
   // through today.
   const overlapsSelectedDay = (start, end) => {
     if (selectedDay == null) return true;
-    const s = chicagoDayUTC(start);
-    const e = chicagoDayUTC(end || now);
+    const s = phillyDayUTC(start);
+    const e = phillyDayUTC(end || now);
     return selectedDay >= s && selectedDay <= e;
   };
 
   return (incidents || []).filter((inc) => {
     const kind = legacyKind(inc);
     const lifecycle = incidentLifecycle(inc);
-    const agency = incidentAgency(inc) ?? (kind === 'metra' ? 'metra' : 'cta');
-    if (agencySet && !agencySet.has(agency)) return false;
-    // The CTA line/bus filters apply only to CTA incidents — a Red Line selection
-    // shouldn't hide Metra. Metra has its own line filter; the agency control
-    // governs cross-agency visibility.
-    if (agency === 'cta') {
+    const network = incidentNetwork(kind);
+    if (networkSet && !networkSet.has(network)) return false;
+    // The Metro line/bus filters apply only to transit incidents — an L1
+    // selection shouldn't hide Regional Rail. Regional Rail has its own line
+    // filter; the network control governs cross-network visibility.
+    if (network === 'transit') {
       if (kind === 'bus') {
         if (!showBus) return false;
         if (hasBusRouteFilter && !(inc.routes || []).some((r) => busRoutes.includes(r))) {
@@ -1252,14 +1381,14 @@ export function filterIncidents(
       } else if (hasLineFilter && !(inc.routes || []).some((r) => lines.includes(r))) {
         return false;
       }
-    } else if (hasMetraLineFilter && !(inc.routes || []).some((r) => metraLines.includes(r))) {
-      // agency === 'metra'
+    } else if (hasRailLineFilter && !(inc.routes || []).some((r) => railLines.includes(r))) {
+      // network === 'rail'
       return false;
     }
     // Signal filter keeps an incident when any of its observations carries a
-    // matching kind. CTA-only incidents have no observations, so they drop —
-    // the same "bot-detected only" intent as before, applied atomically (a
-    // CTA+bot incident with a matching detection stays whole rather than being
+    // matching kind. Official-only incidents have no observations, so they drop —
+    // the same "bot-detected only" intent as before, applied atomically (an
+    // official+bot incident with a matching detection stays whole rather than being
     // demoted to its bot half).
     if (hasSignalFilter) {
       const { primary, extras } = splitObservations(inc);

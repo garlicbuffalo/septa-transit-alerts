@@ -4,7 +4,6 @@ import { useNow } from '../hooks/useNow.js';
 import { fetchAccessibilityData, outageDuration, outagesForStation } from '../lib/accessibility.js';
 import { computeTypicalDurations } from '../lib/aggregate.js';
 import { topLevelTrail } from '../lib/breadcrumbs.js';
-import { TRAIN_LINES } from '../lib/ctaLines.js';
 import { formatDate, formatDuration } from '../lib/format.js';
 import { loadIndex, loadLine } from '../lib/incidentStore.js';
 import {
@@ -14,8 +13,10 @@ import {
   legacyKind,
   searchFilterIncidents,
 } from '../lib/incidents.js';
-import { METRA_LINES } from '../lib/metraLines.js';
-import { metraStationBySlug } from '../lib/metraStations.js';
+import { METRO_LINES } from '../lib/metroLines.js';
+import { RAIL_LINES } from '../lib/railLines.js';
+import { railStationBySlug } from '../lib/railStations.js';
+import { SITE_NAME } from '../lib/site.js';
 import {
   buildStationIndex,
   displayStationName,
@@ -38,8 +39,8 @@ import NotFoundPage from './NotFoundPage.jsx';
 // The page is intentionally narrower than LinePage: no Timeline (a single
 // station doesn't make sense as a per-day grid) and no per-line summary
 // card.
-export default function StationPage({ slug, kind = 'train' }) {
-  const isMetra = kind === 'metra';
+export default function StationPage({ slug, kind = 'metro' }) {
+  const isRail = kind === 'rail';
   const [dark, toggleDark] = useDarkMode();
   const now = useNow();
   const [data, setData] = useState(null);
@@ -52,9 +53,9 @@ export default function StationPage({ slug, kind = 'train' }) {
   // the station is served by that route. Resolve the serving lines from the
   // static roster (no data needed), then load just those bounded per-line files.
   const stationLineKeys = useMemo(() => {
-    const roster = isMetra ? metraStationBySlug(slug) : rosterStationBySlug(slug);
+    const roster = isRail ? railStationBySlug(slug) : rosterStationBySlug(slug);
     return roster?.lines ?? [];
-  }, [isMetra, slug]);
+  }, [isRail, slug]);
 
   useEffect(() => {
     // Load the index first (for generated_at / data_start_ts, which the per-line
@@ -90,57 +91,57 @@ export default function StationPage({ slug, kind = 'train' }) {
   // incidents reconstructed from the station's records below.
   const flat = useMemo(() => (data ? incidentRecords(data.incidents) : null), [data]);
 
-  // CTA path uses the activity index (which keys off the train roster). Metra
-  // resolves against the Metra roster instead — skip the CTA index entirely.
+  // SEPTA path uses the activity index (which keys off the train roster). Regional Rail
+  // resolves against the Regional Rail roster instead — skip SEPTA index entirely.
   const stationIndex = useMemo(() => {
-    if (isMetra || !flat) return null;
+    if (isRail || !flat) return null;
     return buildStationIndex(flat.officialRecords, flat.detectionRecords, { now, windowDays: 90 });
-  }, [isMetra, flat, now]);
+  }, [isRail, flat, now]);
 
-  // Metra incidents touching this station: any Metra incident whose origin or
-  // destination slugifies to this slug. (Metra cancellation/delay incidents carry
+  // Regional Rail incidents touching this station: any Regional Rail incident whose origin or
+  // destination slugifies to this slug. (Regional Rail cancellation/delay incidents carry
   // from_station/to_station = origin/headsign.)
-  const metraStationIncidents = useMemo(() => {
-    if (!isMetra || !data) return [];
+  const railStationIncidents = useMemo(() => {
+    if (!isRail || !data) return [];
     return data.incidents.filter((inc) => {
-      if (legacyKind(inc) !== 'metra') return false;
+      if (legacyKind(inc) !== 'rail') return false;
       return incidentDetections(inc).some(
         (o) =>
           slugifyStation(o.scope?.from_station) === slug ||
           slugifyStation(o.scope?.to_station) === slug,
       );
     });
-  }, [isMetra, data, slug]);
+  }, [isRail, data, slug]);
 
-  // Unified `station` object: the CTA path reads the activity index (with a
-  // roster fallback for quiet stations); the Metra path builds it from the Metra
+  // Unified `station` object: SEPTA path reads the activity index (with a
+  // roster fallback for quiet stations); the Regional Rail path builds it from the Regional Rail
   // roster + the matched incidents' flattened records (so the heatmap/durations
   // work the same downstream).
   const station = useMemo(() => {
-    if (isMetra) {
-      const roster = metraStationBySlug(slug);
+    if (isRail) {
+      const roster = railStationBySlug(slug);
       if (!roster) return null;
-      const f = incidentRecords(metraStationIncidents);
+      const f = incidentRecords(railStationIncidents);
       return {
         ...roster,
-        count: metraStationIncidents.length,
+        count: railStationIncidents.length,
         alerts: f.officialRecords,
         observations: f.detectionRecords,
       };
     }
     return stationIndex?.get(slug) ?? rosterStationBySlug(slug);
-  }, [isMetra, slug, stationIndex, metraStationIncidents]);
+  }, [isRail, slug, stationIndex, railStationIncidents]);
 
-  // Nested incidents touching this station — for Metra it's the matched set
-  // above; for CTA, reconstructed via the station's flat records' `_incidentId`.
+  // Nested incidents touching this station — for Regional Rail it's the matched set
+  // above; for SEPTA, reconstructed via the station's flat records' `_incidentId`.
   const stationIncidents = useMemo(() => {
     if (!station || !data) return [];
-    if (isMetra) return metraStationIncidents;
+    if (isRail) return railStationIncidents;
     const ids = new Set();
     for (const a of station.alerts) if (a._incidentId) ids.add(a._incidentId);
     for (const o of station.observations) if (o._incidentId) ids.add(o._incidentId);
     return data.incidents.filter((inc) => ids.has(inc.id));
-  }, [station, data, isMetra, metraStationIncidents]);
+  }, [station, data, isRail, railStationIncidents]);
 
   const activeIncidents = useMemo(
     () =>
@@ -166,17 +167,17 @@ export default function StationPage({ slug, kind = 'train' }) {
   const stationOutages = useMemo(
     () =>
       outagesForStation(accessibilityData?.outages || [], {
-        agency: isMetra ? 'metra' : 'cta',
+        kind: isRail ? 'rail' : 'metro',
         slug,
         now,
         limit: 8,
       }),
-    [accessibilityData, isMetra, slug, now],
+    [accessibilityData, isRail, slug, now],
   );
   const activeStationOutages = stationOutages.filter((o) => o.lifecycle?.active);
 
   useEffect(() => {
-    const base = 'Chicago Transit Alerts';
+    const base = SITE_NAME;
     if (!station) {
       document.title = base;
       return;
@@ -225,12 +226,12 @@ export default function StationPage({ slug, kind = 'train' }) {
               </h1>
               <div className="flex flex-wrap gap-1.5">
                 {station.lines.map((line) => {
-                  const info = isMetra ? METRA_LINES[line] : TRAIN_LINES[line];
+                  const info = isRail ? RAIL_LINES[line] : METRO_LINES[line];
                   if (!info) return null;
                   return (
                     <a
                       key={line}
-                      href={isMetra ? `/metra/line/${line}` : `/line/${line}`}
+                      href={isRail ? `/rail/line/${line}` : `/line/${line}`}
                       className="inline-flex items-center min-h-[24px] px-2 py-0.5 rounded-full text-xs font-bold hover:opacity-80 transition-opacity"
                       style={{ backgroundColor: info.color, color: info.textColor }}
                     >

@@ -11,7 +11,6 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildCsv } from '../src/lib/csv.js';
-import { gateIncidents } from '../src/lib/metraGate.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -25,10 +24,7 @@ function main() {
     return;
   }
   const raw = JSON.parse(readFileSync(DATA, 'utf8'));
-  // The CSV mirror is Metra-aware (one flat row per record; the `kind` column
-  // already distinguishes Metra rows), so opt in explicitly. The Node-default
-  // gate stays CTA-only for the not-yet-Metra build outputs (OG-prerendered pages).
-  raw.incidents = gateIncidents(raw.incidents || [], true);
+  raw.incidents = raw.incidents || [];
   const csv = buildCsv(raw.incidents);
   writeFileSync(OUT, csv);
   const rowCount = raw.incidents.reduce(

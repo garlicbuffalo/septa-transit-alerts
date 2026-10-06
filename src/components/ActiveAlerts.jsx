@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { typicalDurationKey } from '../lib/aggregate.js';
+import { formatBusRoute } from '../lib/busRoutes.js';
 import {
   cancellationInfo,
   cancellationSchedulePhrase,
   cancellationStatusLabel,
 } from '../lib/cancellation.js';
-import { TRAIN_LINES } from '../lib/ctaLines.js';
 import { formatDuration, formatEstimatedEnd } from '../lib/format.js';
 import {
   botSummaryText,
@@ -13,32 +13,34 @@ import {
   incidentCategory,
   incidentHeadlineText,
   incidentLifecycle,
+  isTripCancellations,
   legacyKind,
-  metraIncidentStatus,
-  metraPointEventTitle,
   modeLabel,
   officialAlert,
+  railIncidentStatus,
+  railPointEventTitle,
   splitObservations,
 } from '../lib/incidents.js';
-import { METRA_LINES } from '../lib/metraLines.js';
+import { METRO_LINES } from '../lib/metroLines.js';
+import { RAIL_LINES } from '../lib/railLines.js';
 import { displayStationName } from '../lib/stations.js';
 import LinePill from './LinePill.jsx';
-import MetraPointBadge from './MetraPointBadge.jsx';
+import RailPointBadge from './RailPointBadge.jsx';
 import ShareLink from './ShareLink.jsx';
 import StationName from './StationName.jsx';
 
 const BUS_COLOR = '#64748b';
 
-// Per-incident colors for the gantt bar. Train and Metra incidents that touch
-// multiple lines (e.g. Red+Purple shared trackage) get one color per route so
+// Per-incident colors for the gantt bar. Metro and Regional Rail incidents that
+// touch multiple lines (e.g. B1+B2+B3 shared trackage) get one color per route so
 // the bar renders as alternating bands rather than collapsing to the first
 // line's color. Buses always slot into the shared slate tint — bus alerts can
 // also span multiple routes, but the routes don't have per-route brand colors.
 function incidentColors(incident) {
-  // Brand-color palette by agency. Buses (and any unknown kind) have no
+  // Brand-color palette by network. Buses (and any unknown kind) have no
   // per-route colors, so they fall back to the shared slate tint.
   const kind = legacyKind(incident);
-  const palette = kind === 'train' ? TRAIN_LINES : kind === 'metra' ? METRA_LINES : null;
+  const palette = kind === 'metro' ? METRO_LINES : kind === 'rail' ? RAIL_LINES : null;
   if (palette && Array.isArray(incident.routes) && incident.routes.length > 0) {
     return incident.routes.map((r) => palette[r]?.color ?? BUS_COLOR);
   }
@@ -133,8 +135,8 @@ function describeIncident(incident, stationIndex) {
     return { description: headline, descriptionText: headline };
   }
   const { primary } = splitObservations(incident);
-  const metraTitle = metraPointEventTitle(incident);
-  if (metraTitle) return { description: metraTitle, descriptionText: metraTitle };
+  const railTitle = railPointEventTitle(incident);
+  if (railTitle) return { description: railTitle, descriptionText: railTitle };
   const hasStations = !!(primary?.from_station && primary?.to_station);
 
   if (hasStations) {
@@ -166,7 +168,7 @@ function elapsed(now, startTs) {
 // Full red-bordered card. Used for the freshest 1–2 active incidents. The
 // whole card navigates to /event/:id via an absolutely-positioned link
 // overlay — that pattern (rather than wrapping the card in an <a>) lets
-// the inner Bluesky and Share links remain real <a>/<button> elements
+// the inner source and Share links remain real <a>/<button> elements
 // without nesting interactive content, which would be invalid HTML.
 // The per-card pulsing dot has been dropped: the section header already has
 // one, and stacking six of them reads as anxiety, not information.
@@ -180,9 +182,9 @@ function ActiveCard({ incident, now, isNew, typicalDurations, stationIndex, show
   // Single-train cancellation: show the schedule, not an "ongoing" elapsed timer.
   const cancel = cancellationInfo(incident);
   const cancelPhrase = cancellationSchedulePhrase(cancel);
-  const metraStatus = !cancel ? metraIncidentStatus(incident) : null;
+  const railStatus = !cancel ? railIncidentStatus(incident) : null;
   // The cohort key buckets on kind + line + signal; for a nested incident that
-  // comes off the primary observation (CTA-only incidents have no signal key).
+  // comes off the primary observation (official-only incidents have no signal key).
   const typicalKey = typicalDurationKey({
     kind,
     line: primary?.line,
@@ -197,6 +199,8 @@ function ActiveCard({ incident, now, isNew, typicalDurations, stationIndex, show
   const { description } = describeIncident(incident, stationIndex);
   const eventId = incident.id;
   const postUrl = alert ? alert.post_url : (primary?.post_url ?? null);
+  // SEPTA alerts have no permalinks; link the route's SEPTA.org page instead.
+  const sourceUrl = postUrl ? null : (alert?.source_url ?? null);
 
   const allRoutes = Array.isArray(incident.routes) ? incident.routes : [];
   // Responsive split: the first chunk shows at every width; the next chunk
@@ -226,7 +230,7 @@ function ActiveCard({ incident, now, isNew, typicalDurations, stationIndex, show
           navigates to /event/:id. The [&_a]:pointer-events-auto and
           [&_button]:pointer-events-auto selectors re-enable clicks on
           actual interactive children (LinePill, StationName links in the
-          description, the Bluesky link, ShareLink button) so they keep
+          description, the source link, ShareLink button) so they keep
           their own destinations. Previously we set `pointer-events-auto`
           on whole wrapping rows, which made big chunks of the card
           unclickable for navigation. */}
@@ -262,9 +266,9 @@ function ActiveCard({ incident, now, isNew, typicalDurations, stationIndex, show
               </span>
               {cancelPhrase && ` · ${cancelPhrase}`}
             </span>
-          ) : metraStatus ? (
+          ) : railStatus ? (
             <>
-              <MetraPointBadge source={metraStatus.source} />
+              <RailPointBadge source={railStatus.source} />
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 · {elapsedText} ongoing
               </span>
@@ -285,8 +289,8 @@ function ActiveCard({ incident, now, isNew, typicalDurations, stationIndex, show
               {estimatedEndText && (
                 <>
                   {' · '}
-                  <span title="CTA tagged this alert with an estimated end time when it was posted.">
-                    CTA estimated end {estimatedEndText}
+                  <span title="SEPTA posted an end time for this alert.">
+                    SEPTA expects it to end {estimatedEndText}
                   </span>
                 </>
               )}
@@ -306,14 +310,14 @@ function ActiveCard({ incident, now, isNew, typicalDurations, stationIndex, show
           );
         })()}
         <div className="flex flex-wrap gap-3 mt-1.5">
-          {postUrl && (
+          {(postUrl || sourceUrl) && (
             <a
-              href={postUrl}
+              href={postUrl || sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-blue-500 hover:text-blue-400 hover:underline"
             >
-              View on Bluesky →
+              {postUrl ? 'View post →' : 'SEPTA.org →'}
             </a>
           )}
           <ShareLink eventId={eventId} />
@@ -336,7 +340,7 @@ const COMPACT_PILL_LIMIT = 1;
 // regardless of how many routes the alert touches.
 // Border tint per row tone. Disruptions keep the urgent red treatment;
 // delays — routine, lower-stakes "running late" events — get a calmer amber
-// so a screen full of Metra delays doesn't read as an emergency.
+// so a screen full of Regional Rail delays doesn't read as an emergency.
 const ROW_TONE = {
   disruption: 'border-red-200 dark:border-red-900 hover:border-red-300 dark:hover:border-red-800',
   delay:
@@ -347,7 +351,7 @@ function ActiveRow({ incident, now, isNew, tone = 'disruption', showAgency = fal
   const kind = legacyKind(incident);
   const startTs = incidentLifecycle(incident).first_seen_ts;
   const cancel = cancellationInfo(incident);
-  const metraStatus = !cancel ? metraIncidentStatus(incident) : null;
+  const railStatus = !cancel ? railIncidentStatus(incident) : null;
   const elapsedText = cancel ? cancellationStatusLabel(cancel) : elapsed(now, startTs);
   const { descriptionText } = describeIncident(incident, null);
   const eventId = incident.id;
@@ -362,7 +366,7 @@ function ActiveRow({ incident, now, isNew, tone = 'disruption', showAgency = fal
   const inner = (
     <>
       {/* The pill group shrinks (min-w-0) so a long route name truncates rather
-          than shoving the elapsed-time chip off a phone screen. The agency
+          than shoving the elapsed-time chip off a phone screen. The network
           label and "+N" chip stay fixed (flex-shrink-0) — only the pill gives. */}
       <span className="flex items-center gap-1 min-w-0">
         {showAgency && (
@@ -383,7 +387,7 @@ function ActiveRow({ incident, now, isNew, tone = 'disruption', showAgency = fal
         {descriptionText}
       </span>
       <span className="ml-auto text-xs text-slate-500 dark:text-slate-400 flex-shrink-0 tabular-nums inline-flex items-center gap-1.5">
-        {metraStatus && <MetraPointBadge source={metraStatus.source} />}
+        {railStatus && <RailPointBadge source={railStatus.source} />}
         <span>{elapsedText}</span>
       </span>
     </>
@@ -466,11 +470,11 @@ function ActiveMiniGantt({ incidents, now }) {
           const eventId = incident.id;
           const routesForLabel = Array.isArray(incident.routes) ? incident.routes : [];
           const routesLabel =
-            kind === 'train'
-              ? routesForLabel.map((r) => TRAIN_LINES[r]?.label ?? r).join(' + ')
-              : kind === 'metra'
-                ? routesForLabel.map((r) => METRA_LINES[r]?.label ?? r).join(' + ')
-                : routesForLabel.map((r) => `#${r}`).join(' + ');
+            kind === 'metro'
+              ? routesForLabel.map((r) => METRO_LINES[r]?.label ?? r).join(' + ')
+              : kind === 'rail'
+                ? routesForLabel.map((r) => RAIL_LINES[r]?.label ?? r).join(' + ')
+                : routesForLabel.map((r) => formatBusRoute(r)).join(' + ');
           const elapsedText = elapsed(now, start);
           const label = `${routesLabel}: ${elapsedText} ago`;
           // Only the colored bar is interactive — wrapping the whole track
@@ -540,14 +544,14 @@ function ActiveMiniGantt({ incidents, now }) {
 const BURST_RATIO_THRESHOLD = 2;
 const BURST_MIN_RECENT = 3;
 
-// Stable agency order for the per-section sub-groups: CTA rail, CTA bus, then
-// Metra. Keeps the "Showing: All" view from reshuffling as incidents come and
-// go.
-const MODE_ORDER = ['train', 'bus', 'metra'];
+// Stable network order for the per-section sub-groups: SEPTA Metro, bus, then
+// Regional Rail. Keeps the "Showing: All" view from reshuffling as incidents
+// come and go.
+const MODE_ORDER = ['metro', 'bus', 'rail'];
 
-// Split a list into agency sub-groups in MODE_ORDER, dropping empties. Lets a
-// section render a "CTA Bus" / "Metra" label above each cluster so a reader
-// scans by agency without the page-level toggle.
+// Split a list into network sub-groups in MODE_ORDER, dropping empties. Lets a
+// section render a "Bus" / "Regional Rail" label above each cluster so a reader
+// scans by network without the page-level toggle.
 function groupByMode(incidents) {
   const byMode = new Map();
   for (const inc of incidents) {
@@ -617,8 +621,8 @@ function CollapsibleBand({ label, count, dotClass, textClass, defaultOpen = true
   );
 }
 
-// Tiny agency sub-label inside a multi-agency section ("CTA Bus", "Metra").
-function AgencyHeader({ kind }) {
+// Tiny network sub-label inside a mixed section ("Bus", "Regional Rail").
+function NetworkHeader({ kind }) {
   return (
     <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-1 mb-1 px-0.5">
       {modeLabel(kind)}
@@ -626,7 +630,7 @@ function AgencyHeader({ kind }) {
   );
 }
 
-// Routine in-progress delays — calmer amber rows, grouped by agency. These are
+// Routine in-progress delays — calmer amber rows, grouped by network. These are
 // high-volume and low-stakes (a single train running late), so they sit below
 // the red disruptions band and never get the full-card treatment.
 function DelaySection({ incidents, now, highlightedIds }) {
@@ -634,7 +638,7 @@ function DelaySection({ incidents, now, highlightedIds }) {
   const labelGroups = groups.length > 1;
   return (
     <CollapsibleBand
-      label="Delays"
+      label={incidents.some(isTripCancellations) ? 'Delays & cancellations' : 'Delays'}
       count={incidents.length}
       dotClass="bg-amber-500"
       textClass="text-amber-700 dark:text-amber-500"
@@ -642,7 +646,7 @@ function DelaySection({ incidents, now, highlightedIds }) {
       <div className="space-y-2">
         {groups.map(({ kind, items }) => (
           <div key={kind}>
-            {labelGroups && <AgencyHeader kind={kind} />}
+            {labelGroups && <NetworkHeader kind={kind} />}
             <div className="space-y-1.5">
               {[...items].sort(byRecency).map((incident) => (
                 <ActiveRow
@@ -703,7 +707,7 @@ function PlannedRow({ incident, now }) {
 }
 
 // Planned & scheduled work — advance notices and multi-day reroutes, grouped
-// by agency. Lifted out of the live bands so a future "track construction this
+// by network. Lifted out of the live bands so a future "track construction this
 // weekend" notice isn't mistimed as something ongoing right now.
 function PlannedSection({ incidents, now }) {
   const groups = groupByMode(incidents);
@@ -717,7 +721,7 @@ function PlannedSection({ incidents, now }) {
       <div className="space-y-2">
         {groups.map(({ kind, items }) => (
           <div key={kind} className="space-y-1.5">
-            {groups.length > 1 && <AgencyHeader kind={kind} />}
+            {groups.length > 1 && <NetworkHeader kind={kind} />}
             {[...items].sort(byRecency).map((incident) => (
               <PlannedRow key={incident.id} incident={incident} now={now} />
             ))}
@@ -736,10 +740,10 @@ export default function ActiveAlerts({
   typicalDurations,
   stationIndex,
   burst,
-  // Lane mode (the homepage's All view renders one ActiveAlerts per agency
-  // side-by-side, so CTA and Metra never interleave). The caller supplies its
+  // Lane mode (the homepage's All view renders one ActiveAlerts per network
+  // side-by-side, so transit and Regional Rail never interleave). The caller supplies its
   // own lane header, so we drop the page-level "Active Now" heading and the
-  // cross-agency mini-gantt, and render `emptyState` when the lane is quiet.
+  // cross-network mini-gantt, and render `emptyState` when the lane is quiet.
   showHeader = true,
   showGantt = true,
   emptyState = null,
@@ -784,7 +788,7 @@ export default function ActiveAlerts({
   const mixedAgencies = new Set(live.map((i) => legacyKind(i))).size > 1;
 
   // Lane mode with nothing live: render the caller's all-clear node in place of
-  // an empty section, so each agency lane always shows a definite answer.
+  // an empty section, so each network lane always shows a definite answer.
   if (!showHeader && totalActive === 0) return emptyState;
 
   return (

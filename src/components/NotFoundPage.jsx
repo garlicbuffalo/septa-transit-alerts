@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useDarkMode } from '../hooks/useDarkMode.js';
+import { SITE_NAME } from '../lib/site.js';
 import Footer from './Footer.jsx';
 import Header from './Header.jsx';
 
@@ -114,7 +115,7 @@ export default function NotFoundPage() {
         <div className="bg-black rounded-lg border-2 border-amber-900/60 shadow-[0_0_40px_rgba(252,191,73,0.15)] overflow-hidden">
           <div className="flex items-center justify-between bg-amber-900/30 px-4 py-2 border-b border-amber-900/60 font-mono text-xs text-amber-400/80 uppercase tracking-widest">
             <span>● Departures</span>
-            <span className="hidden sm:inline">Chicago Transit Alerts</span>
+            <span className="hidden sm:inline">{SITE_NAME}</span>
             <span>Track 404</span>
           </div>
           <div className="px-4 sm:px-6 py-5 sm:py-7">

@@ -1,14 +1,14 @@
 import ActiveAlerts from './ActiveAlerts.jsx';
-import MetraUpcomingCancellations from './MetraUpcomingCancellations.jsx';
+import RailUpcomingCancellations from './RailUpcomingCancellations.jsx';
 
-// The homepage "All" view's live-status block, split into a CTA lane and a
-// Metra lane that sit side-by-side and never interleave. Each lane answers
+// The homepage "All" view's live-status block, split into a Metro & Bus lane
+// and a Regional Rail lane that sit side-by-side and never interleave. Each lane answers
 // "is anything wrong on this system right now?" on its own — the core fix for
-// the old single mixed stream, where a wall of Metra delays and CTA reroutes
-// blurred together. A single selected agency skips this and renders one full
+// a single mixed stream, where a wall of Regional Rail delays and bus detours
+// would blur together. A single selected network skips this and renders one full
 // ActiveAlerts upstream (in App), so this component is All-view only.
 
-// Per-lane status pill shown beside the agency name in the lane header.
+// Per-lane status pill shown beside the network name in the lane header.
 function LaneStatus({ activeCount, scheduledCount }) {
   if (activeCount > 0) {
     return (
@@ -34,7 +34,7 @@ function LaneStatus({ activeCount, scheduledCount }) {
   );
 }
 
-// Quiet-lane filler shown when an agency has nothing live (and, for Metra, no
+// Quiet-lane filler shown when a network has nothing live (and, for Regional Rail, no
 // upcoming cancellations either). Calmer than the old full-width green banner —
 // it just needs to confirm the lane is empty, not shout it.
 function LaneAllClear({ label }) {
@@ -60,10 +60,10 @@ function Lane({ name, status, children }) {
 }
 
 export default function RightNow({
-  ctaRecent,
-  ctaLong,
-  metraRecent,
-  metraLong,
+  transitRecent,
+  transitLong,
+  railRecent,
+  railLong,
   activeIncidents,
   upcomingCount = 0,
   now,
@@ -72,8 +72,8 @@ export default function RightNow({
   stationIndex,
   burst,
 }) {
-  const ctaActiveCount = ctaRecent.length + ctaLong.length;
-  const metraActiveCount = metraRecent.length + metraLong.length;
+  const transitActiveCount = transitRecent.length + transitLong.length;
+  const railActiveCount = railRecent.length + railLong.length;
   const burstActive =
     burst != null && burst.recentCount >= 3 && burst.ratio != null && burst.ratio >= 2;
 
@@ -94,28 +94,31 @@ export default function RightNow({
       </div>
 
       <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-        <Lane name="CTA" status={<LaneStatus activeCount={ctaActiveCount} scheduledCount={0} />}>
+        <Lane
+          name="Metro & Bus"
+          status={<LaneStatus activeCount={transitActiveCount} scheduledCount={0} />}
+        >
           <ActiveAlerts
-            incidents={ctaRecent}
-            longRunningIncidents={ctaLong}
+            incidents={transitRecent}
+            longRunningIncidents={transitLong}
             now={now}
             highlightedIds={highlightedIds}
             typicalDurations={typicalDurations}
             stationIndex={stationIndex}
             showHeader={false}
             showGantt={false}
-            emptyState={<LaneAllClear label="CTA" />}
+            emptyState={<LaneAllClear label="Metro & Bus" />}
           />
         </Lane>
 
         <Lane
-          name="Metra"
-          status={<LaneStatus activeCount={metraActiveCount} scheduledCount={upcomingCount} />}
+          name="Regional Rail"
+          status={<LaneStatus activeCount={railActiveCount} scheduledCount={upcomingCount} />}
         >
-          <MetraUpcomingCancellations incidents={activeIncidents} now={now} showLine />
+          <RailUpcomingCancellations incidents={activeIncidents} now={now} showLine />
           <ActiveAlerts
-            incidents={metraRecent}
-            longRunningIncidents={metraLong}
+            incidents={railRecent}
+            longRunningIncidents={railLong}
             now={now}
             highlightedIds={highlightedIds}
             typicalDurations={typicalDurations}
@@ -124,7 +127,7 @@ export default function RightNow({
             showGantt={false}
             // When cancellations are already shown above, skip the green filler
             // so the lane doesn't say "all clear" directly under a heads-up.
-            emptyState={upcomingCount > 0 ? null : <LaneAllClear label="Metra" />}
+            emptyState={upcomingCount > 0 ? null : <LaneAllClear label="Regional Rail" />}
           />
         </Lane>
       </div>

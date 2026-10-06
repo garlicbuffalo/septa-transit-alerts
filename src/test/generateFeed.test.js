@@ -10,18 +10,23 @@ import {
   scopedRecords,
   updatedTs,
 } from '../../scripts/generate-feed.js';
+import { SITE_ORIGIN } from '../lib/site.js';
 
 const NOW = 1_700_000_000_000;
 const MIN = 60_000;
 const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
+// The site origin is configurable (SITE_URL), so derive the expected URLs.
+const TAG = `tag:${new URL(SITE_ORIGIN).host},2026`;
 
-// A merged/alert-backed train incident (carries a headline + post_url).
+// An alert-backed Metro incident (carries a headline + alert id).
 const alertInc = (over = {}) => ({
-  kind: 'train',
-  routes: ['red'],
-  headline: 'Red Line Delays',
-  alert_id: 'a1',
-  post_url: 'https://bsky.app/profile/x/post/r1',
+  _incidentId: 'alert-1',
+  kind: 'metro',
+  routes: ['l1'],
+  headline: 'L1 Delays',
+  alert_id: '1',
+  source_url: 'https://www.septa.org/schedules/L1',
   first_seen_ts: NOW - HOUR,
   resolved_ts: NOW,
   active: false,
@@ -30,10 +35,10 @@ const alertInc = (over = {}) => ({
 
 // A standalone bot observation (no headline/alert_id).
 const obsInc = (over = {}) => ({
-  kind: 'train',
-  line: 'blue',
+  _incidentId: 'gap-1',
+  kind: 'metro',
+  line: 'b1',
   detection_source: 'gap',
-  post_url: 'https://bsky.app/profile/x/post/o1',
   first_seen_ts: NOW - HOUR,
   ts: NOW - HOUR,
   resolved_ts: NOW,
@@ -52,10 +57,8 @@ describe('updatedTs (resolution bump)', () => {
 });
 
 describe('entryId', () => {
-  it('derives a stable tag URI from the Bluesky post rkey', () => {
-    expect(entryId({ post_url: 'https://bsky.app/profile/x/post/abc123' })).toBe(
-      'tag:chicagotransitalerts.app,2026:event/abc123',
-    );
+  it('derives a stable tag URI from the incident id', () => {
+    expect(entryId({ _incidentId: 'alert-136615' })).toBe(`${TAG}:event/alert-136615`);
   });
 
   it('is identical for the same incident across feeds (global vs scoped)', () => {
@@ -63,12 +66,8 @@ describe('entryId', () => {
     expect(entryId(inc)).toBe(entryId(inc));
   });
 
-  it('prefers the alert post over the observation post', () => {
-    const id = entryId({
-      post_url: 'https://bsky.app/profile/x/post/alert',
-      obs_post_url: 'https://bsky.app/profile/x/post/obs',
-    });
-    expect(id).toBe('tag:chicagotransitalerts.app,2026:event/alert');
+  it('falls back to the record id for hand-built records', () => {
+    expect(entryId({ id: 'delay-2026-10-05-3556' })).toBe(`${TAG}:event/delay-2026-10-05-3556`);
   });
 });
 
@@ -104,116 +103,131 @@ describe('feedMeta', () => {
   it('builds a distinct id + self/home URLs for a scoped feed', () => {
     expect(
       feedMeta({
-        idPath: 'feed/line/red',
-        title: 'Chicago Transit Alerts · Red Line',
-        subtitle: 'Red Line disruptions.',
-        homePath: '/line/red',
-        selfBase: '/feed/line/red',
+        idPath: 'feed/line/l1',
+        title: 'SEPTA Transit Alerts · L1 Market-Frankford Line',
+        subtitle: 'L1 disruptions.',
+        homePath: '/line/l1',
+        selfBase: '/feed/line/l1',
       }),
     ).toEqual({
-      id: 'tag:chicagotransitalerts.app,2026:feed/line/red',
-      title: 'Chicago Transit Alerts · Red Line',
-      subtitle: 'Red Line disruptions.',
-      homeUrl: 'https://chicagotransitalerts.app/line/red',
-      selfXml: 'https://chicagotransitalerts.app/feed/line/red.xml',
-      selfJson: 'https://chicagotransitalerts.app/feed/line/red.json',
+      id: `${TAG}:feed/line/l1`,
+      title: 'SEPTA Transit Alerts · L1 Market-Frankford Line',
+      subtitle: 'L1 disruptions.',
+      homeUrl: `${SITE_ORIGIN}/line/l1`,
+      selfXml: `${SITE_ORIGIN}/feed/line/l1.xml`,
+      selfJson: `${SITE_ORIGIN}/feed/line/l1.json`,
     });
   });
 });
 
 describe('buildEntryRecord', () => {
   it('carries the stable id, the resolution-bumped updated time, and a cache-busted thumbnail', () => {
-    const rec = buildEntryRecord(alertInc());
-    expect(rec.id).toBe('tag:chicagotransitalerts.app,2026:event/r1');
+    const rec = buildEntryRecord(alertInc(), { now: NOW });
+    expect(rec.id).toBe(`${TAG}:event/alert-1`);
+    expect(rec.link).toBe(`${SITE_ORIGIN}/event/alert-1`);
     expect(rec.updatedMs).toBe(NOW); // resolved → bumped
     // The OG thumbnail is cache-busted on the same key, so it flips when the
     // entry's <updated> bumps (ongoing → resolved).
-    expect(rec.thumb).toContain('/event/r1/og.jpg?v=' + NOW);
+    expect(rec.thumb).toContain(`/event/alert-1/og.jpg?v=${NOW}`);
+  });
+
+  it('omits the thumbnail once the incident ages out of the prerendered window', () => {
+    const rec = buildEntryRecord(alertInc(), { now: NOW + 200 * DAY });
+    expect(rec.thumb).toBe(null);
+  });
+
+  it("links SEPTA's route page and labels the route", () => {
+    const rec = buildEntryRecord(alertInc({ kind: 'bus', routes: ['17'] }), { now: NOW });
+    expect(rec.title).toBe('Route 17: L1 Delays');
+    expect(rec.contentHtml).toContain('https://www.septa.org/schedules/L1');
+    expect(rec.categories).toContainEqual({ term: 'route-17', label: 'Route 17' });
+  });
+
+  it("doesn't repeat a route the headline already names", () => {
+    const rec = buildEntryRecord(alertInc({ headline: 'L1 Service Suspended' }), { now: NOW });
+    expect(rec.title).toBe('L1 Service Suspended');
   });
 });
 
 describe('scopedRecords', () => {
   // A pre-sorted (newest-first) pool spanning two lines and a bus route.
   const pool = [
+    alertInc({ _incidentId: 'l1-new', first_seen_ts: NOW - 1 * HOUR }),
     alertInc({
-      post_url: 'https://bsky.app/profile/x/post/red-new',
-      first_seen_ts: NOW - 1 * HOUR,
-    }),
-    alertInc({
-      routes: ['red', 'purple'],
-      post_url: 'https://bsky.app/profile/x/post/redpurple',
+      _incidentId: 'l1-b2',
+      routes: ['l1', 'b2'],
       first_seen_ts: NOW - 2 * HOUR,
       resolved_ts: NOW - 1 * HOUR,
     }),
     alertInc({
-      routes: ['blue'],
-      post_url: 'https://bsky.app/profile/x/post/blue',
+      _incidentId: 'b1',
+      routes: ['b1'],
       first_seen_ts: NOW - 3 * HOUR,
       resolved_ts: NOW - 2 * HOUR,
     }),
     alertInc({
+      _incidentId: 'bus17',
       kind: 'bus',
-      routes: ['66'],
-      post_url: 'https://bsky.app/profile/x/post/bus66',
+      routes: ['17'],
       first_seen_ts: NOW - 4 * HOUR,
       resolved_ts: NOW - 3 * HOUR,
     }),
   ];
 
-  it('selects only incidents on the scoped train line and preserves pool order', () => {
-    const ids = scopedRecords(pool, 'train', 'red').map((r) => r.id);
+  it('selects only incidents on the scoped Metro line and preserves pool order', () => {
+    const ids = scopedRecords(pool, 'metro', 'l1').map((r) => r.id);
     expect(ids).toEqual([
-      'tag:chicagotransitalerts.app,2026:event/red-new',
-      'tag:chicagotransitalerts.app,2026:event/redpurple', // multi-route red+purple still matches
+      `${TAG}:event/l1-new`,
+      `${TAG}:event/l1-b2`, // multi-route L1+B2 still matches
     ]);
   });
 
   it('matches a multi-route incident from any of its routes', () => {
-    const ids = scopedRecords(pool, 'train', 'purple').map((r) => r.id);
-    expect(ids).toEqual(['tag:chicagotransitalerts.app,2026:event/redpurple']);
+    const ids = scopedRecords(pool, 'metro', 'b2').map((r) => r.id);
+    expect(ids).toEqual([`${TAG}:event/l1-b2`]);
   });
 
-  it('scopes by kind so a bus route never picks up train incidents', () => {
-    const ids = scopedRecords(pool, 'bus', '66').map((r) => r.id);
-    expect(ids).toEqual(['tag:chicagotransitalerts.app,2026:event/bus66']);
+  it('scopes by kind so a bus route never picks up Metro incidents', () => {
+    const ids = scopedRecords(pool, 'bus', '17').map((r) => r.id);
+    expect(ids).toEqual([`${TAG}:event/bus17`]);
   });
 });
 
 describe('emitAtom', () => {
   const meta = feedMeta({
-    idPath: 'feed/line/red',
-    title: 'Chicago Transit Alerts · Red Line',
-    subtitle: 'Red Line disruptions.',
-    homePath: '/line/red',
-    selfBase: '/feed/line/red',
+    idPath: 'feed/line/l1',
+    title: 'SEPTA Transit Alerts · L1 Market-Frankford Line',
+    subtitle: 'L1 disruptions.',
+    homePath: '/line/l1',
+    selfBase: '/feed/line/l1',
   });
 
   it('renders the feed id, scoped self link, and one entry per record', () => {
     const xml = emitAtom([buildEntryRecord(alertInc())], '2026-01-01T00:00:00.000Z', meta);
-    expect(xml).toContain('<id>tag:chicagotransitalerts.app,2026:feed/line/red</id>');
+    expect(xml).toContain(`<id>${TAG}:feed/line/l1</id>`);
     expect(xml).toContain(
-      '<link rel="self" type="application/atom+xml" href="https://chicagotransitalerts.app/feed/line/red.xml"/>',
+      `<link rel="self" type="application/atom+xml" href="${SITE_ORIGIN}/feed/line/l1.xml"/>`,
     );
-    expect(xml).toContain('<link rel="hub"');
     expect((xml.match(/<entry>/g) || []).length).toBe(1);
   });
 
   it('produces a valid empty feed (no entries) for a quiet route', () => {
     const xml = emitAtom([], '2026-01-01T00:00:00.000Z', meta);
-    expect(xml).toContain('<id>tag:chicagotransitalerts.app,2026:feed/line/red</id>');
+    expect(xml).toContain(`<id>${TAG}:feed/line/l1</id>`);
     expect((xml.match(/<entry>/g) || []).length).toBe(0);
   });
 });
 
-// A Metra cancellation/delay: website-data-first, so NO Bluesky post, and a
-// zero-duration point event (resolved_ts == first_seen_ts).
-const metraInc = (over = {}) => ({
-  kind: 'metra',
-  id: 'metra-678',
-  routes: ['md-n'],
+// A Regional Rail cancellation/delay: a zero-duration point event
+// (resolved_ts == first_seen_ts).
+const railInc = (over = {}) => ({
+  kind: 'rail',
+  _incidentId: 'delay-2026-10-05-678',
+  id: 'delay-2026-10-05-678',
+  routes: ['war'],
   detection_source: 'delay',
-  from_station: 'Fox Lake',
-  to_station: 'Chicago Union Station',
+  from_station: 'Warminster',
+  to_station: 'Temple University',
   first_seen_ts: NOW,
   ts: NOW,
   resolved_ts: NOW,
@@ -221,29 +235,28 @@ const metraInc = (over = {}) => ({
   ...over,
 });
 
-describe('Metra incidents in the feed', () => {
-  it('links a postless Metra record to its SPA event page by id', () => {
-    const rec = buildEntryRecord(metraInc());
-    expect(rec.link).toBe('https://chicagotransitalerts.app/event/metra-678');
-    expect(rec.id).toBe('tag:chicagotransitalerts.app,2026:obs-metra-678');
-    expect(rec.thumb).toBe(null); // no OG card for postless Metra
+describe('Regional Rail incidents in the feed', () => {
+  it('links a Regional Rail record to its event page by incident id', () => {
+    const rec = buildEntryRecord(railInc(), { now: NOW });
+    expect(rec.link).toBe(`${SITE_ORIGIN}/event/delay-2026-10-05-678`);
+    expect(rec.id).toBe(`${TAG}:event/delay-2026-10-05-678`);
+    expect(rec.thumb).toContain('/event/delay-2026-10-05-678/og.jpg');
   });
 
   it('is never treated as a detector blip despite zero duration', () => {
-    expect(isLikelyDetectorBlip(metraInc())).toBe(false);
+    expect(isLikelyDetectorBlip(railInc())).toBe(false);
   });
 
-  it('tags a Metra entry with the Metra mode + line category', () => {
-    const rec = buildEntryRecord(metraInc());
-    const terms = rec.categories.map((c) => c.term);
-    expect(terms).toContain('metra');
-    expect(terms).toContain('metra-line-md-n');
+  it('tags a Regional Rail entry with the mode + line category', () => {
+    const rec = buildEntryRecord(railInc());
+    expect(rec.categories).toContainEqual({ term: 'rail', label: 'Regional Rail' });
+    expect(rec.categories).toContainEqual({ term: 'rail-line-war', label: 'Warminster Line' });
   });
 
-  it('scopes per-line Metra feeds by the lowercase line key', () => {
-    const pool = [metraInc(), metraInc({ id: 'metra-9', routes: ['up-n'] })];
-    expect(scopedRecords(pool, 'metra', 'md-n')).toHaveLength(1);
-    expect(scopedRecords(pool, 'metra', 'up-n')).toHaveLength(1);
-    expect(scopedRecords(pool, 'metra', 'bnsf')).toHaveLength(0);
+  it('scopes per-line Regional Rail feeds by the lowercase line key', () => {
+    const pool = [railInc(), railInc({ _incidentId: 'cancel-1', routes: ['nor'] })];
+    expect(scopedRecords(pool, 'rail', 'war')).toHaveLength(1);
+    expect(scopedRecords(pool, 'rail', 'nor')).toHaveLength(1);
+    expect(scopedRecords(pool, 'rail', 'pao')).toHaveLength(0);
   });
 });

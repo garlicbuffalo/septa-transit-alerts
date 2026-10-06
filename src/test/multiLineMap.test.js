@@ -39,7 +39,7 @@ describe('sliceTrackBetween', () => {
     // *beyond* the end station (y=12). The slice is a single vertex, so the
     // old per-segment trim (gated on length>=2) never fired and the highlight
     // drew a stub down to y=30 and back. The chord-projection trim drops it.
-    // Regression for the Brown Line Belmont→Fullerton overshoot.
+    // Regression for a sparse-track overshoot past the end station.
     const sparse = [
       { x: 0, y: 30 },
       { x: 0, y: 40 },
@@ -58,41 +58,41 @@ describe('buildMultiLineMap', () => {
   });
 
   it('projects every requested line with its brand color', () => {
-    const map = buildMultiLineMap(['purple', 'pink', 'green', 'brown', 'orange']);
+    const map = buildMultiLineMap(['l1', 'b1', 't1', 'm1', 'g1']);
     expect(map).not.toBeNull();
     expect(map.width).toBeGreaterThan(0);
     expect(map.height).toBeGreaterThan(0);
     const keys = map.tracksByLine.map((t) => t.key).sort();
-    expect(keys).toEqual(['brown', 'green', 'orange', 'pink', 'purple']);
+    expect(keys).toEqual(['b1', 'g1', 'l1', 'm1', 't1']);
     for (const t of map.tracksByLine) {
       expect(t.color).toMatch(/^#/);
       expect(t.tracks.length).toBeGreaterThan(0);
     }
   });
 
-  it('tags shared Loop stations with every serving line', () => {
-    const map = buildMultiLineMap(['purple', 'pink', 'green', 'brown', 'orange']);
-    const wabash = map.stations.find((s) => s.name === 'Washington/Wabash');
-    expect(wabash).toBeTruthy();
-    expect(wabash.lines.sort()).toEqual(['brown', 'green', 'orange', 'pink', 'purple']);
-    expect(wabash.slug).toBe('washington-wabash');
+  it('tags shared Center City stations with every serving line', () => {
+    const map = buildMultiLineMap(['l1', 'b1', 't1']);
+    const cityHall = map.stations.find((s) => s.name === '15th St/City Hall');
+    expect(cityHall).toBeTruthy();
+    expect(cityHall.lines.sort()).toEqual(['b1', 'b2', 'l1', 't1', 't2', 't3', 't4', 't5']);
+    expect(cityHall.slug).toBe('15th-st-city-hall');
   });
 
   it('dedups repeated line keys', () => {
-    const map = buildMultiLineMap(['purple', 'purple', 'pink']);
-    expect(map.tracksByLine.map((t) => t.key).sort()).toEqual(['pink', 'purple']);
+    const map = buildMultiLineMap(['b2', 'b2', 'd1']);
+    expect(map.tracksByLine.map((t) => t.key).sort()).toEqual(['b2', 'd1']);
   });
 });
 
 describe('affectedLineSegments', () => {
   it('returns one segment per merged observation, each on its own line', () => {
-    // Observation ts ordering vs the CTA anchor decides the primary (closest)
-    // and the order of the extras: brown (anchor), then pink, then orange.
+    // Observation ts ordering vs the alert anchor decides the primary (closest)
+    // and the order of the extras: M1 (anchor), then D1, then G1.
     const T = 1_000_000_000_000;
     const incident = v2Incident({
       id: '115102',
-      kind: 'train',
-      routes: ['purple', 'pink', 'green', 'brown', 'orange'],
+      kind: 'metro',
+      routes: ['b2', 'd1', 't1', 'm1', 'g1'],
       cta: {
         alert_id: '115102',
         first_seen_ts: T,
@@ -101,62 +101,77 @@ describe('affectedLineSegments', () => {
       },
       observations: [
         {
-          line: 'brown',
-          from_station: 'Armitage (Brown/Purple)',
-          to_station: 'Chicago (Brown/Purple)',
+          line: 'm1',
+          from_station: 'Bryn Mawr',
+          to_station: 'Villanova',
           ts: T,
         },
         {
-          line: 'pink',
-          from_station: 'Ashland (Green/Pink)',
-          to_station: 'Washington/Wabash',
+          line: 'd1',
+          from_station: '69th St Transit Center',
+          to_station: 'Drexel Hill Junction',
           ts: T + 1000,
         },
         {
-          line: 'orange',
-          from_station: '35th/Archer',
-          to_station: 'Halsted (Orange)',
+          line: 'g1',
+          from_station: 'Girard-Broad',
+          to_station: 'Girard-Frankford',
           ts: T + 2000,
         },
       ],
     });
     const segs = affectedLineSegments(incident);
     expect(segs).toEqual([
-      { line: 'brown', from: 'Armitage (Brown/Purple)', to: 'Chicago (Brown/Purple)' },
-      { line: 'pink', from: 'Ashland (Green/Pink)', to: 'Washington/Wabash' },
-      { line: 'orange', from: '35th/Archer', to: 'Halsted (Orange)' },
+      { line: 'm1', from: 'Bryn Mawr', to: 'Villanova' },
+      { line: 'd1', from: '69th St Transit Center', to: 'Drexel Hill Junction' },
+      { line: 'g1', from: 'Girard-Broad', to: 'Girard-Frankford' },
     ]);
   });
 
-  it('uses the alert-level segment (line null) for a pure CTA alert', () => {
+  it('uses the alert-level segment (line null) for a pure SEPTA alert', () => {
     const incident = v2Incident({
       id: 'a1',
-      kind: 'train',
-      routes: ['red', 'purple'],
-      cta: { alert_id: 'a1', affected_from_station: 'Belmont', affected_to_station: 'Howard' },
+      kind: 'metro',
+      routes: ['l1', 'b2'],
+      cta: {
+        alert_id: 'a1',
+        affected_from_station: 'Spring Garden',
+        affected_to_station: 'Frankford Transit Center',
+      },
       observations: [],
     });
-    expect(affectedLineSegments(incident)).toEqual([{ line: null, from: 'Belmont', to: 'Howard' }]);
+    expect(affectedLineSegments(incident)).toEqual([
+      { line: null, from: 'Spring Garden', to: 'Frankford Transit Center' },
+    ]);
   });
 
   it('returns the single segment for a standalone observation', () => {
     const incident = v2Incident({
       id: 'o1',
-      kind: 'train',
-      routes: ['red'],
+      kind: 'metro',
+      routes: ['l1'],
       cta: null,
-      observations: [{ line: 'red', from_station: 'Howard', to_station: 'Loyola', ts: 1 }],
+      observations: [
+        {
+          line: 'l1',
+          from_station: 'Frankford Transit Center',
+          to_station: 'Arrott Transit Center',
+          ts: 1,
+        },
+      ],
     });
-    expect(affectedLineSegments(incident)).toEqual([{ line: 'red', from: 'Howard', to: 'Loyola' }]);
+    expect(affectedLineSegments(incident)).toEqual([
+      { line: 'l1', from: 'Frankford Transit Center', to: 'Arrott Transit Center' },
+    ]);
   });
 
   it('skips segments with no endpoints', () => {
     const incident = v2Incident({
       id: 'm1',
-      kind: 'train',
-      routes: ['red'],
+      kind: 'metro',
+      routes: ['l1'],
       cta: { alert_id: 'm1', affected_from_station: null, affected_to_station: null },
-      observations: [{ line: 'red', from_station: null, to_station: null, ts: 1 }],
+      observations: [{ line: 'l1', from_station: null, to_station: null, ts: 1 }],
     });
     expect(affectedLineSegments(incident)).toEqual([]);
   });

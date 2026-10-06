@@ -10,10 +10,10 @@ const NOW = 1_000_000_000_000;
 // and an `observations[]` list.
 const obsRecord = (over = {}) => ({
   id: 1,
-  kind: 'train',
-  line: 'red',
-  from_station: 'Jarvis',
-  to_station: '95th/Dan Ryan',
+  kind: 'metro',
+  line: 'l1',
+  from_station: 'Spring Garden',
+  to_station: 'York-Dauphin',
   ts: NOW - 55 * 60_000,
   resolved_ts: NOW - 30 * 60_000,
   active: false,
@@ -24,14 +24,14 @@ const obsRecord = (over = {}) => ({
 const alertInc = (over = {}) =>
   incident({
     id: 'alert1',
-    kind: 'train',
-    routes: ['red'],
+    kind: 'metro',
+    routes: ['l1'],
     first_seen_ts: NOW - 60 * 60_000,
     resolved_ts: NOW - 30 * 60_000,
     active: false,
     cta: {
       alert_id: 'a1',
-      headline: 'Red Line Delays',
+      headline: 'L1 Delays',
       post_url: 'https://bsky.app/alert',
       first_seen_ts: NOW - 60 * 60_000,
     },
@@ -42,8 +42,8 @@ const alertInc = (over = {}) =>
 const obsInc = (over = {}) =>
   incident({
     id: 'obs1',
-    kind: 'train',
-    routes: ['red'],
+    kind: 'metro',
+    routes: ['l1'],
     first_seen_ts: NOW - 55 * 60_000,
     resolved_ts: NOW - 30 * 60_000,
     active: false,
@@ -55,14 +55,14 @@ const obsInc = (over = {}) =>
 const mergedInc = (over = {}) =>
   incident({
     id: 'm1',
-    kind: 'train',
-    routes: ['red'],
+    kind: 'metro',
+    routes: ['l1'],
     first_seen_ts: NOW - 60 * 60_000,
     resolved_ts: NOW - 30 * 60_000,
     active: false,
     cta: {
       alert_id: 'a1',
-      headline: 'Red Line Delays',
+      headline: 'L1 Delays',
       post_url: 'https://bsky.app/alert',
       first_seen_ts: NOW - 60 * 60_000,
     },
@@ -76,9 +76,9 @@ describe('IncidentList', () => {
     expect(screen.getByText(/no incidents/i)).toBeInTheDocument();
   });
 
-  it('shows "via CTA" tag for CTA-only incidents', () => {
+  it('shows "via SEPTA" tag for SEPTA-only incidents', () => {
     render(<IncidentList incidents={[alertInc()]} />);
-    expect(screen.getByText('via CTA')).toBeInTheDocument();
+    expect(screen.getByText('via SEPTA')).toBeInTheDocument();
   });
 
   it('shows "via auto-detection" tag for bot-only incidents', () => {
@@ -88,36 +88,36 @@ describe('IncidentList', () => {
 
   it('shows both tags for a merged incident', () => {
     render(<IncidentList incidents={[mergedInc()]} />);
-    expect(screen.getByText('via CTA')).toBeInTheDocument();
+    expect(screen.getByText('via SEPTA')).toBeInTheDocument();
     expect(screen.getByText('via auto-detection')).toBeInTheDocument();
   });
 
-  it('shows both Bluesky links for a merged incident', () => {
+  it('shows both source links for a merged incident', () => {
     render(<IncidentList incidents={[mergedInc()]} />);
-    expect(screen.getByText('Via CTA →')).toBeInTheDocument();
+    expect(screen.getByText('Via SEPTA →')).toBeInTheDocument();
     expect(screen.getByText('Bot detection (gap) →')).toBeInTheDocument();
   });
 
   it('shows the station segment for a merged incident', () => {
     render(<IncidentList incidents={[mergedInc()]} />);
-    expect(screen.getByText('Jarvis')).toBeInTheDocument();
-    expect(screen.getByText('95th/Dan Ryan')).toBeInTheDocument();
+    expect(screen.getByText('Spring Garden')).toBeInTheDocument();
+    expect(screen.getByText('York-Dauphin')).toBeInTheDocument();
   });
 
   it('shows the affected station segment as a subtitle for a pure official train alert', () => {
     const seg = alertInc({
       cta: {
         alert_id: 'a1',
-        headline: 'Red Line reroute',
+        headline: 'L1 reroute',
         post_url: 'https://bsky.app/alert',
         first_seen_ts: NOW - 60 * 60_000,
-        from_station: 'Howard',
-        to_station: '95th/Dan Ryan',
+        from_station: 'Frankford Transit Center',
+        to_station: 'York-Dauphin',
       },
     });
     render(<IncidentList incidents={[seg]} />);
-    expect(screen.getByText('Howard')).toBeInTheDocument();
-    expect(screen.getByText('95th/Dan Ryan')).toBeInTheDocument();
+    expect(screen.getByText('Frankford Transit Center')).toBeInTheDocument();
+    expect(screen.getByText('York-Dauphin')).toBeInTheDocument();
   });
 
   it('shows "ongoing" badge for active incidents', () => {
@@ -132,70 +132,70 @@ describe('IncidentList', () => {
     expect(rightBadgeColumn).toBeNull();
   });
 
-  it('shows a "delayed" badge and leads with the train number for a Metra delay', () => {
+  it('shows a "delayed" badge and leads with the train number for a Regional Rail delay', () => {
     const delayInc = incident({
-      id: 'metra-992',
-      kind: 'metra',
-      routes: ['bnsf'],
+      id: 'delay-992',
+      kind: 'rail',
+      routes: ['pao'],
       first_seen_ts: NOW,
       resolved_ts: NOW,
       active: false,
       cta: null,
       observations: [
         {
-          id: 'metra-992',
-          kind: 'metra',
-          line: 'bnsf',
+          id: 'delay-992',
+          kind: 'rail',
+          line: 'pao',
           train_number: '121',
-          from_station: 'Aurora',
-          to_station: 'Chicago Union Station',
+          from_station: 'Thorndale',
+          to_station: 'Suburban Station',
           detection_source: 'delay',
           ts: NOW,
           resolved_ts: NOW,
           active: false,
-          bot_description: '~57 min late — the 12:05 PM Chicago Union Station train',
+          bot_description: '~57 min late — the 12:05 PM Thorndale train',
         },
       ],
     });
     render(<IncidentList incidents={[delayInc]} />);
     expect(screen.getByText('delayed')).toBeInTheDocument();
-    expect(screen.getByText('BNSF train #121 delayed')).toBeInTheDocument();
+    expect(screen.getByText('Paoli/Thorndale Line train #121 delayed')).toBeInTheDocument();
     // The affected stretch moves to the secondary line.
-    expect(screen.getByText('Aurora')).toBeInTheDocument();
-    expect(screen.getByText('Chicago Union Station')).toBeInTheDocument();
+    expect(screen.getByText('Thorndale')).toBeInTheDocument();
+    expect(screen.getByText('Suburban Station')).toBeInTheDocument();
   });
 
-  it('shows a "possible cancellation" badge for an inferred Metra cancellation', () => {
+  it('shows a "possible cancellation" badge for an inferred Regional Rail cancellation', () => {
     const inferredInc = incident({
-      id: 'metra-972',
-      kind: 'metra',
-      routes: ['ri'],
+      id: 'cancel-972',
+      kind: 'rail',
+      routes: ['lan'],
       first_seen_ts: NOW,
       resolved_ts: NOW,
       active: false,
       cta: null,
       observations: [
         {
-          id: 'metra-972',
-          kind: 'metra',
-          line: 'ri',
-          from_station: 'LaSalle Street',
-          to_station: 'Joliet',
+          id: 'cancel-972',
+          kind: 'rail',
+          line: 'lan',
+          from_station: 'Suburban Station',
+          to_station: 'Doylestown',
           detection_source: 'cancellation-inferred',
           ts: NOW,
           resolved_ts: NOW,
           active: false,
-          bot_description: 'Scheduled train not seen running — the 9:55 AM Joliet train',
+          bot_description: 'Scheduled train not seen running — the 9:55 AM Doylestown train',
         },
       ],
     });
     render(<IncidentList incidents={[inferredInc]} />);
     expect(screen.getByText('possible cancellation')).toBeInTheDocument();
     expect(
-      screen.getByText('Scheduled train not seen running — the 9:55 AM Joliet train'),
+      screen.getByText('Scheduled train not seen running — the 9:55 AM Doylestown train'),
     ).toBeInTheDocument();
-    expect(screen.getByText('LaSalle Street')).toBeInTheDocument();
-    expect(screen.getByText('Joliet')).toBeInTheDocument();
+    expect(screen.getByText('Suburban Station')).toBeInTheDocument();
+    expect(screen.getByText('Doylestown')).toBeInTheDocument();
   });
 
   it('shows the canceled-trips count as an evidence chip for a cancellation surge', () => {

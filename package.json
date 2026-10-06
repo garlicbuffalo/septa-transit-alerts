@@ -1,5 +1,5 @@
 {
-  "name": "chicago-transit-alerts",
+  "name": "septa-transit-alerts",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -12,7 +12,9 @@
     "test": "vitest",
     "lint": "biome check",
     "format": "biome check --write",
-    "og": "rm -f /tmp/og-render.html.png && cp scripts/og-template.html /tmp/og-render.html && qlmanage -t -s 1200 -o /tmp /tmp/og-render.html >/dev/null && sips --cropToHeightWidth 630 1200 /tmp/og-render.html.png --out public/og-image.png >/dev/null && echo 'Wrote public/og-image.png (1200x630)'"
+    "collect": "node collector/collect.js --data-dir public/data --cache-dir .collector-cache",
+    "reference-data": "node scripts/build-reference-data.js && biome format --write src/lib",
+    "brand-assets": "node scripts/render-brand-assets.js"
   },
   "dependencies": {
     "react": "^19.0.0",

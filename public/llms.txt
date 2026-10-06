@@ -1,36 +1,36 @@
-# Chicago Transit Alerts
+# SEPTA Transit Alerts
 
-> An unofficial public archive of Chicago Transit Authority (CTA) train and bus plus Metra commuter-rail service alerts and bot-detected disruptions, with a rolling incident heatmap. Not affiliated with the CTA or Metra.
+> An unofficial public archive of SEPTA (Southeastern Pennsylvania Transportation Authority) service alerts and detected disruptions across SEPTA Metro, buses, and Regional Rail, with a rolling incident heatmap. Not affiliated with SEPTA.
 
-Each incident pairs an official alert with bot observations (gap, bunching, ghost-train, cold-platform, and related detections) into a single object, merged server-side. The same data the site renders is published at stable URLs as JSON, CSV, and feeds, with no auth. Every incident has a `kind` of `train`, `bus`, or `metra`. Train routes use full line names (`red`, `blue`, `green`, `brown`, `orange`, `pink`, `purple`, `yellow`); bus routes use route numbers (`66`, `X9`); Metra lines use lowercase route codes (`up-n`, `up-nw`, `md-w`, `bnsf`, `me`). Metra detections use the sources `cancellation`, `cancellation-inferred` (a scheduled train the bot never saw run), and `delay`. Timestamps are epoch milliseconds in JSON and ISO 8601 UTC in CSV.
+A collector polls SEPTA's public APIs about every 10 minutes. Each incident is one real-world disruption: an official SEPTA alert (`official_alert`) and/or bot detections (`detections[]`: Regional Rail delays and cancellations, bus/Metro trip cancellations, and gaps, bunching, missing vehicles, and held vehicles inferred from live bus and trolley positions). The same data the site renders is published at stable URLs as JSON, CSV, and feeds, with no auth. Every incident has a `mode` of `metro`, `bus`, or `regional_rail`. SEPTA Metro routes use lowercase line codes (`l1`, `b1`, `b2`, `b3`, `m1`, `t1`–`t5`, `g1`, `d1`, `d2`); bus routes use SEPTA route ids with spaces hyphenated (`17`, `K`, `LUCYGO`, `L1-OWL`); Regional Rail lines use lowercase route codes (`pao`, `wtr`, `lan`, `med`, …). Timestamps are epoch milliseconds in JSON and ISO 8601 UTC in CSV.
 
 ## Data API
-- [Incidents (JSON)](https://data.chicagotransitalerts.app/alerts.json): Full archive. Top-level `incidents[]`, one object per real-world disruption; `cta` block is the official alert (null for bot-only), `observations[]` are bot detections (empty for CTA-only), `sources` lists which contributed.
-- [Daily counts (JSON)](https://data.chicagotransitalerts.app/daily-counts.json): Per-day train/bus incident counts behind the calendar heatmap.
-- [Accessibility outages (JSON)](https://data.chicagotransitalerts.app/accessibility.json): CTA rail and Metra elevator, escalator, entrance, and ADA notices, separated from the general incident archive.
-- [Incidents (CSV)](https://data.chicagotransitalerts.app/alerts.csv): Flat mirror, one row per alert or observation, with an explicit `type` column.
-- [Data changelog](https://chicagotransitalerts.app/data/CHANGELOG.md): Breaking changes to the data shape — check before pinning to the format.
-- [Atom feed](https://chicagotransitalerts.app/feed.xml) and [JSON feed](https://chicagotransitalerts.app/feed.json): Recent incidents. Per-line/route feeds live at `/feed/line/<line>.xml` and `/feed/route/<route>.xml`, each with a JSON-feed twin.
-- [API catalog](https://chicagotransitalerts.app/.well-known/api-catalog): Machine-readable index of these endpoints (RFC 9264 linkset).
+- [Recent incidents (JSON)](__SITE_ORIGIN__/data/alerts-recent.json): Every active incident plus everything first seen in the last 93 days. Top-level `incidents[]`. Poll this.
+- [Archive index (JSON)](__SITE_ORIGIN__/data/alerts-index.json): Manifest of monthly shards (`alerts/<YYYY-MM>.json`) and per-line files (`incidents/by-line/<key>.json`); union the monthly shards for the full history.
+- [Daily counts (JSON)](__SITE_ORIGIN__/data/daily-counts.json): Per-day Metro/bus/Regional Rail incident counts behind the calendar heatmap.
+- [Accessibility outages (JSON)](__SITE_ORIGIN__/data/accessibility.json): SEPTA Metro and Regional Rail elevator outages, separated from the general incident archive.
+- [Incidents (CSV)](__SITE_ORIGIN__/data/alerts.csv): Flat mirror, one row per official alert or detection, with an explicit `record_type` column.
+- [Data changelog](__SITE_ORIGIN__/data/CHANGELOG.md): Changes to the data shape — check before pinning to the format.
+- [Atom feed](__SITE_ORIGIN__/feed.xml) and [JSON feed](__SITE_ORIGIN__/feed.json): Recent incidents. Per-line/route feeds live at `/feed/line/<line>.xml`, `/feed/route/<route>.xml`, and `/feed/rail/line/<line>.xml`, each with a JSON-feed twin.
+- [API catalog](__SITE_ORIGIN__/.well-known/api-catalog): Machine-readable index of these endpoints (RFC 9264 linkset).
 
 ## Pages
-- [Homepage](https://chicagotransitalerts.app/): Active alerts, line/route filters, daily summary, and the incident feed.
-- [Calendar](https://chicagotransitalerts.app/calendar): 12-month daily incident heatmap.
-- [This week](https://chicagotransitalerts.app/week): Recap of the current Sun–Sat week — counts, per-day breakdown, most-affected lines, and the longest incident. Archived weeks live at `https://chicagotransitalerts.app/week/<YYYY-MM-DD>` (the week's Sunday).
-- [Stats](https://chicagotransitalerts.app/stats): Worst day, worst hour, most-affected station, longest incident, plus year-over-year.
-- [Compare](https://chicagotransitalerts.app/compare): Side-by-side reliability for up to 3 lines or routes (`?trains=red,blue` / `?buses=66,X9` / `?metra=up-n,bnsf`).
-- [Accessibility](https://chicagotransitalerts.app/accessibility): CTA rail and Metra station accessibility outages and recent history.
-- [Train system health](https://chicagotransitalerts.app/system/trains), [Bus system health](https://chicagotransitalerts.app/system/buses), and [Metra system health](https://chicagotransitalerts.app/system/metra): Mode-wide dashboards.
-- Line pages: `https://chicagotransitalerts.app/line/<line>` (e.g. `/line/red`).
-- Metra line pages: `https://chicagotransitalerts.app/metra/line/<line>` (e.g. `/metra/line/up-n`).
-- Route pages: `https://chicagotransitalerts.app/route/<routeId>` (e.g. `/route/66`).
-- Station pages: `https://chicagotransitalerts.app/station/<slug>` (kebab-case, e.g. `/station/howard`).
-- [All stations](https://chicagotransitalerts.app/stations): A–Z directory of every 'L' station, each linking to its station page.
-- [All routes](https://chicagotransitalerts.app/routes): Directory of every train line, bus route, and Metra line, each linking to its line/route page.
-- Day pages: `https://chicagotransitalerts.app/day/<YYYY-MM-DD>`.
-- Event pages: `https://chicagotransitalerts.app/event/<id>` (id = Bluesky post rkey; the incident permalink).
+- [Homepage](__SITE_ORIGIN__/): Active alerts, network and line/route filters, daily summary, and the incident feed.
+- [Calendar](__SITE_ORIGIN__/calendar): 12-month daily incident heatmap.
+- [This week](__SITE_ORIGIN__/week): Recap of the current Sun–Sat week. Archived weeks live at `__SITE_ORIGIN__/week/<YYYY-MM-DD>` (the week's Sunday).
+- [Stats](__SITE_ORIGIN__/stats): Worst day, worst hour, most-affected station, longest incident, Regional Rail cancellations and delays, plus year-over-year.
+- [Compare](__SITE_ORIGIN__/compare): Side-by-side reliability for up to 3 lines or routes (`?metro=l1,b1` / `?buses=17,33` / `?rail=pao,wtr`).
+- [Accessibility](__SITE_ORIGIN__/accessibility): Elevator outages and recent history.
+- [Metro system health](__SITE_ORIGIN__/system/metro), [Bus system health](__SITE_ORIGIN__/system/buses), and [Regional Rail system health](__SITE_ORIGIN__/system/rail): Network-wide dashboards.
+- SEPTA Metro line pages: `__SITE_ORIGIN__/line/<line>` (e.g. `/line/l1`).
+- Regional Rail line pages: `__SITE_ORIGIN__/rail/line/<line>` (e.g. `/rail/line/pao`).
+- Bus route pages: `__SITE_ORIGIN__/route/<routeId>` (e.g. `/route/17`).
+- Station pages: `__SITE_ORIGIN__/station/<slug>` (Metro, e.g. `/station/8th-market`) and `__SITE_ORIGIN__/rail/station/<slug>` (Regional Rail, e.g. `/rail/station/suburban-station`).
+- [All stations](__SITE_ORIGIN__/stations) and [all routes](__SITE_ORIGIN__/routes): Directories.
+- Day pages: `__SITE_ORIGIN__/day/<YYYY-MM-DD>`.
+- Event pages: `__SITE_ORIGIN__/event/<id>` (the incident id, e.g. `alert-136615` or `delay-2026-10-05-3556`).
 
 ## Notes
-- Source code and field-by-field documentation: https://github.com/cailinpitt/chicago-transit-alerts
-- Full data schema: [/llms-full.txt](https://chicagotransitalerts.app/llms-full.txt)
+- Source code and field-by-field documentation: https://github.com/garlicbuffalo/septa-transit-alerts
+- Full data schema: [/llms-full.txt](__SITE_ORIGIN__/llms-full.txt)
 - Please be a courteous client: cache responses, don't poll faster than every few minutes, and credit the project if you build something public.

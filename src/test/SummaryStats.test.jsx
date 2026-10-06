@@ -8,9 +8,9 @@ import SummaryStats from '../components/SummaryStats.jsx';
 const baseProps = {
   activeCount: 2,
   weeklyCount: 5,
-  mostAffectedKind: 'train',
-  mostAffectedId: 'red',
-  quietestLineId: 'yellow',
+  mostAffectedKind: 'metro',
+  mostAffectedId: 'l1',
+  quietestLineId: 'd2',
   quietestLineDays: 10,
   alerts: [],
   observations: [],
@@ -44,9 +44,9 @@ describe('SummaryStats', () => {
     expect(screen.queryAllByText(/all clear/i)).toHaveLength(0);
   });
 
-  it('renders the most-affected train phrase', () => {
+  it('renders the most-affected Metro line phrase', () => {
     render(<SummaryStats {...baseProps} />);
-    expect(screen.getAllByText(/Red Line/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/L1 Market-Frankford Line/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/most affected \(last 30 days\)/i).length).toBeGreaterThan(0);
   });
 
@@ -54,58 +54,58 @@ describe('SummaryStats', () => {
     render(
       <SummaryStats
         {...baseProps}
-        metraMostAffectedId="bnsf"
-        metraQuietestLineId="up-n"
-        metraQuietestLineDays={9}
+        railMostAffectedId="pao"
+        railQuietestLineId="nor"
+        railQuietestLineDays={9}
       />,
     );
-    expect(screen.getAllByRole('link', { name: /Red Line/ })[0]).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: /L1 Market-Frankford Line/ })[0]).toHaveAttribute(
       'href',
-      '/line/red',
+      '/line/l1',
     );
-    expect(screen.getAllByRole('link', { name: /Yellow Line/ })[0]).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: /D2 Sharon Hill Trolley/ })[0]).toHaveAttribute(
       'href',
-      '/line/yellow',
+      '/line/d2',
     );
-    expect(screen.getAllByRole('link', { name: /BNSF/ })[0]).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: /Paoli\/Thorndale Line/ })[0]).toHaveAttribute(
       'href',
-      '/metra/line/bnsf',
+      '/rail/line/pao',
     );
-    expect(screen.getAllByRole('link', { name: /Union Pacific North/ })[0]).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: /Manayunk\/Norristown Line/ })[0]).toHaveAttribute(
       'href',
-      '/metra/line/up-n',
+      '/rail/line/nor',
     );
   });
 
-  it('renders separate CTA and Metra most-affected / quietest lines', () => {
+  it('renders separate Metro and Regional Rail most-affected / quietest lines', () => {
     render(
       <SummaryStats
         {...baseProps}
-        metraMostAffectedId="bnsf"
-        metraQuietestLineId="up-n"
-        metraQuietestLineDays={9}
+        railMostAffectedId="pao"
+        railQuietestLineId="nor"
+        railQuietestLineDays={9}
       />,
     );
-    expect(screen.getAllByText(/Red Line/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Yellow Line/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/BNSF/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Union Pacific North/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/L1 Market-Frankford Line/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/D2 Sharon Hill Trolley/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Paoli\/Thorndale Line/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Manayunk\/Norristown Line/).length).toBeGreaterThan(0);
   });
 
-  it('gates the per-agency lines on the agency filter', () => {
+  it('gates the per-network lines on the network filter', () => {
     const props = {
       ...baseProps,
-      metraMostAffectedId: 'bnsf',
-      metraQuietestLineId: 'up-n',
-      metraQuietestLineDays: 9,
+      railMostAffectedId: 'pao',
+      railQuietestLineId: 'nor',
+      railQuietestLineDays: 9,
     };
-    const { rerender } = render(<SummaryStats {...props} agency="cta" />);
-    expect(screen.getAllByText(/Red Line/).length).toBeGreaterThan(0);
-    expect(screen.queryAllByText(/BNSF/)).toHaveLength(0);
+    const { rerender } = render(<SummaryStats {...props} network="transit" />);
+    expect(screen.getAllByText(/L1 Market-Frankford Line/).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/Paoli\/Thorndale/)).toHaveLength(0);
 
-    rerender(<SummaryStats {...props} agency="metra" />);
-    expect(screen.queryAllByText(/Red Line/)).toHaveLength(0);
-    expect(screen.getAllByText(/BNSF/).length).toBeGreaterThan(0);
+    rerender(<SummaryStats {...props} network="rail" />);
+    expect(screen.queryAllByText(/L1 Market-Frankford Line/)).toHaveLength(0);
+    expect(screen.getAllByText(/Paoli\/Thorndale/).length).toBeGreaterThan(0);
   });
 
   it('renders an "all clear" active label when nothing is active', () => {
@@ -113,32 +113,36 @@ describe('SummaryStats', () => {
     expect(screen.getAllByText(/all clear/i).length).toBeGreaterThan(0);
   });
 
-  it('labels CTA train disruption hours explicitly', () => {
-    render(<SummaryStats {...baseProps} observations={[railObservation('train', 'red')]} />);
-    expect(screen.getAllByText(/CTA trains disrupted in last 7 days/i).length).toBeGreaterThan(0);
+  it('labels Metro disruption hours explicitly', () => {
+    render(<SummaryStats {...baseProps} observations={[railObservation('metro', 'l1')]} />);
+    expect(screen.getAllByText(/Metro trains disrupted in last 7 days/i).length).toBeGreaterThan(0);
   });
 
-  it('shows only CTA disruption cards when scoped to CTA', () => {
+  it('shows only Metro disruption cards when scoped to Metro & Bus', () => {
     render(
       <SummaryStats
         {...baseProps}
-        agency="cta"
-        observations={[railObservation('train', 'red'), railObservation('metra', 'me')]}
+        network="transit"
+        observations={[railObservation('metro', 'l1'), railObservation('rail', 'wtr')]}
       />,
     );
-    expect(screen.getAllByText(/CTA trains disrupted in last 7 days/i).length).toBeGreaterThan(0);
-    expect(screen.queryAllByText(/Metra trains disrupted in last 7 days/i)).toHaveLength(0);
+    expect(screen.getAllByText(/^Metro trains disrupted in last 7 days/i).length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.queryAllByText(/Regional Rail trains disrupted in last 7 days/i)).toHaveLength(0);
   });
 
-  it('shows only Metra disruption cards when scoped to Metra', () => {
+  it('shows only Regional Rail disruption cards when scoped to Regional Rail', () => {
     render(
       <SummaryStats
         {...baseProps}
-        agency="metra"
-        observations={[railObservation('train', 'red'), railObservation('metra', 'me')]}
+        network="rail"
+        observations={[railObservation('metro', 'l1'), railObservation('rail', 'wtr')]}
       />,
     );
-    expect(screen.queryAllByText(/CTA trains disrupted in last 7 days/i)).toHaveLength(0);
-    expect(screen.getAllByText(/Metra trains disrupted in last 7 days/i).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/^Metro trains disrupted in last 7 days/i)).toHaveLength(0);
+    expect(
+      screen.getAllByText(/Regional Rail trains disrupted in last 7 days/i).length,
+    ).toBeGreaterThan(0);
   });
 });

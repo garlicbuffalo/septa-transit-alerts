@@ -1,5 +1,5 @@
 // Verified-style badge that marks content as coming straight from the transit
-// agency (an official CTA/Metra alert), as opposed to a bot detection. The blue
+// agency (an official SEPTA alert), as opposed to a bot detection. The blue
 // circle + white check is the universally recognized "verified/official" mark.
 // `size` is a Tailwind width/height pair so callers can scale it to their
 // context (the event page uses the default; the dense home list uses smaller).

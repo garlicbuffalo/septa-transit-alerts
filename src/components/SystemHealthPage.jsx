@@ -8,10 +8,9 @@ import {
   computeWorstDay,
 } from '../lib/aggregate.js';
 import { topLevelTrail } from '../lib/breadcrumbs.js';
-import { BUS_ROUTE_NAMES, compareBusRoutes } from '../lib/busRoutes.js';
+import { BUS_ROUTE_NAMES, compareBusRoutes, formatBusRoute } from '../lib/busRoutes.js';
 import { cancellationInfo } from '../lib/cancellation.js';
-import { TRAIN_LINE_ORDER, TRAIN_LINES } from '../lib/ctaLines.js';
-import { chicagoDayUTC, formatChicagoDay, formatMinutesAsHours } from '../lib/format.js';
+import { formatMinutesAsHours, formatPhillyDay, phillyDayUTC } from '../lib/format.js';
 import { loadAggregates, loadRecent } from '../lib/incidentStore.js';
 import {
   filterIncidents,
@@ -20,7 +19,9 @@ import {
   incidentRecords,
   legacyKind,
 } from '../lib/incidents.js';
-import { METRA_LINE_ORDER, METRA_LINES } from '../lib/metraLines.js';
+import { METRO_LINE_ORDER, METRO_LINES } from '../lib/metroLines.js';
+import { RAIL_LINE_ORDER, RAIL_LINES } from '../lib/railLines.js';
+import { SITE_NAME } from '../lib/site.js';
 import { buildStationIndex } from '../lib/stations.js';
 import ActiveAlerts from './ActiveAlerts.jsx';
 import Breadcrumb from './Breadcrumb.jsx';
@@ -30,7 +31,7 @@ import Header from './Header.jsx';
 import HourOfWeekHeatmap from './HourOfWeekHeatmap.jsx';
 import IncidentList from './IncidentList.jsx';
 import { LONG_RUNNING_THRESHOLD_MS } from './LongRunningBanner.jsx';
-import MetraUpcomingCancellations from './MetraUpcomingCancellations.jsx';
+import RailUpcomingCancellations from './RailUpcomingCancellations.jsx';
 import TrendSparkline from './TrendSparkline.jsx';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -41,14 +42,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const BUS_GRID_MIN_INCIDENTS_90D = 1;
 const LEADERBOARD_LIMIT = 5;
 
-// Train and Metra are "line-like": a fixed roster shown in canonical order and
+// Metro and Regional Rail are "line-like": a fixed roster shown in canonical order and
 // labeled by line. Buses are an open route set filtered to recent activity.
-const isLineLike = (kind) => kind === 'train' || kind === 'metra';
+const isLineLike = (kind) => kind === 'metro' || kind === 'rail';
 
 // Dedicated page for a route in this mode.
 function routeHref(kind, route) {
   if (kind === 'bus') return `/route/${route}`;
-  if (kind === 'metra') return `/metra/line/${route}`;
+  if (kind === 'rail') return `/rail/line/${route}`;
   return `/line/${route}`;
 }
 
@@ -85,10 +86,10 @@ function buildRouteStats({ kind, alerts, observations, now }) {
   }
 
   let routes;
-  if (kind === 'train') {
-    routes = [...TRAIN_LINE_ORDER];
-  } else if (kind === 'metra') {
-    routes = [...METRA_LINE_ORDER];
+  if (kind === 'metro') {
+    routes = [...METRO_LINE_ORDER];
+  } else if (kind === 'rail') {
+    routes = [...RAIL_LINE_ORDER];
   } else {
     routes = [...buckets.keys()].sort(compareBusRoutes);
   }
@@ -146,15 +147,15 @@ function buildRouteStats({ kind, alerts, observations, now }) {
     };
   });
 
-  // Line-like modes (train/Metra) keep the full canonical roster; buses filter
+  // Line-like modes (train/Regional Rail) keep the full canonical roster; buses filter
   // to routes with material recent activity.
   if (lineLike) return rows;
   return rows.filter((r) => r.count90d >= BUS_GRID_MIN_INCIDENTS_90D);
 }
 
 function RouteLabel({ kind, route }) {
-  if (kind === 'train') {
-    const info = TRAIN_LINES[route];
+  if (kind === 'metro') {
+    const info = METRO_LINES[route];
     return (
       <span
         className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold flex-shrink-0"
@@ -164,10 +165,10 @@ function RouteLabel({ kind, route }) {
       </span>
     );
   }
-  if (kind === 'metra') {
+  if (kind === 'rail') {
     // Colored route-code pill + the full line name beside it (mirrors the bus
-    // "#route + name" layout), since Metra's full names are too long for a pill.
-    const info = METRA_LINES[route];
+    // "#route + name" layout), since Regional Rail's full names are too long for a pill.
+    const info = RAIL_LINES[route];
     return (
       <span className="inline-flex items-baseline gap-1.5 min-w-0">
         <span
@@ -186,7 +187,7 @@ function RouteLabel({ kind, route }) {
   return (
     <span className="inline-flex items-baseline gap-1.5 min-w-0">
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-gh-subtle text-slate-700 dark:text-slate-200 flex-shrink-0">
-        #{route}
+        {formatBusRoute(route)}
       </span>
       {name && <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{name}</span>}
     </span>
@@ -320,7 +321,7 @@ function RouteGrid({ kind, rows, sortKey, onSortChange }) {
             </div>
             <div
               className="text-xs tabular-nums text-slate-600 dark:text-slate-300 text-right"
-              title="Disrupted time in the last 30 days"
+              title="Unplanned disrupted time in the last 30 days (planned work isn't counted)"
             >
               {row.disruptionMinutes > 0 ? (
                 formatMinutesAsHours(row.disruptionMinutes)
@@ -400,12 +401,12 @@ export default function SystemHealthPage({ kind }) {
   const [sortKey, setSortKey] = useState('default');
   const [search, setSearch] = useState('');
   // Date scope for the incident list: 'all' (no cutoff), 'today' (incidents
-  // whose [start, end] span overlaps the current Chicago calendar day), or
+  // whose [start, end] span overlaps the current Philadelphia calendar day), or
   // '7d' (last 7 days, matching the homepage default).
   const [dateScope, setDateScope] = useState('all');
 
   const lineLike = isLineLike(kind);
-  const modeLabel = kind === 'train' ? 'Trains' : kind === 'metra' ? 'Metra' : 'Buses';
+  const modeLabel = kind === 'metro' ? 'SEPTA Metro' : kind === 'rail' ? 'Regional Rail' : 'Bus';
 
   useEffect(() => {
     // Recent slice powers every ≤90d aggregate on the page; per-mode YoY (the
@@ -423,9 +424,9 @@ export default function SystemHealthPage({ kind }) {
   const flat = useMemo(() => (data ? incidentRecords(data.incidents) : null), [data]);
 
   useEffect(() => {
-    document.title = `${modeLabel} system health · Chicago Transit Alerts`;
+    document.title = `${modeLabel} system health · ${SITE_NAME}`;
     return () => {
-      document.title = 'Chicago Transit Alerts';
+      document.title = SITE_NAME;
     };
   }, [modeLabel]);
 
@@ -476,7 +477,7 @@ export default function SystemHealthPage({ kind }) {
   }, [data, modeAlerts, modeObservations, now]);
 
   // Per-mode year-over-year, precomputed server-side (the recent slice can't
-  // supply the prior-year window). `kind` is already the train/bus/metra key
+  // supply the prior-year window). `kind` is already the train/bus/rail key
   // aggregates.by_mode is keyed on.
   const yoy = aggregates?.yoy?.by_mode?.[kind] ?? null;
 
@@ -497,7 +498,7 @@ export default function SystemHealthPage({ kind }) {
 
   // System-wide disruption hours: feeds the helper the union of every
   // route's lines so the service-hours denominator scales with the actual
-  // scope (e.g. all 8 train lines, or every active bus route).
+  // scope (e.g. all 13 Metro lines, or every active bus route).
   const systemDisruption = useMemo(() => {
     if (!data) return null;
     const lines = routeRows.map((r) => ({ kind, line: r.route }));
@@ -522,11 +523,11 @@ export default function SystemHealthPage({ kind }) {
 
   // Narrow the incident list by search + the selected date scope. The mode
   // is already locked by the modeAlerts/modeObservations slice. 'today'
-  // pins to the current Chicago calendar day (so an incident that started
+  // pins to the current Philadelphia calendar day (so an incident that started
   // yesterday and is still active still shows up — overlapping the day),
   // '7d' uses a rolling 7-day cutoff.
   const listFiltered = useMemo(() => {
-    const selectedDay = dateScope === 'today' ? chicagoDayUTC(now) : null;
+    const selectedDay = dateScope === 'today' ? phillyDayUTC(now) : null;
     const startTs = dateScope === '7d' ? now - 7 * DAY_MS : null;
     return filterIncidents(modeIncidents, {
       lines: null,
@@ -550,16 +551,16 @@ export default function SystemHealthPage({ kind }) {
   }
 
   const headline =
-    kind === 'train'
-      ? 'Train system health'
-      : kind === 'metra'
-        ? 'Metra system health'
+    kind === 'metro'
+      ? 'SEPTA Metro system health'
+      : kind === 'rail'
+        ? 'Regional Rail system health'
         : 'Bus system health';
   const subhead =
-    kind === 'train'
-      ? 'All eight L lines at a glance — active disruptions, recent activity, and disruption time over the last 30 days.'
-      : kind === 'metra'
-        ? 'Every Metra line at a glance — active disruptions, cancellations, and delays over the last 30 days.'
+    kind === 'metro'
+      ? 'Every SEPTA Metro line — the L, B, M, T, G, and D — at a glance: active disruptions, recent activity, and disruption time over the last 30 days.'
+      : kind === 'rail'
+        ? 'Every Regional Rail line at a glance — active disruptions, cancellations, and delays over the last 30 days.'
         : 'Every bus route with recent incidents — active disruptions, recent activity, and disruption time over the last 30 days.';
 
   return (
@@ -591,8 +592,8 @@ export default function SystemHealthPage({ kind }) {
 
         {data && (
           <>
-            {kind === 'metra' && (
-              <MetraUpcomingCancellations incidents={modeIncidents} now={now} showLine />
+            {kind === 'rail' && (
+              <RailUpcomingCancellations incidents={modeIncidents} now={now} showLine />
             )}
 
             {(recentActive.length > 0 || longRunningActive.length > 0) && (
@@ -625,12 +626,13 @@ export default function SystemHealthPage({ kind }) {
                   {systemDisruption && systemDisruption.disruptedMinutes > 0 && (
                     <p
                       className="text-xs text-slate-500 dark:text-slate-400"
-                      title="Total line-time spent in a detected disruption over the last 30 days, summed across every route in this mode."
+                      title="Total line-time spent in an unplanned disruption over the last 30 days, summed across every route in this mode. Planned work — scheduled closures, construction, and maintenance — isn't counted."
                     >
                       <strong className="text-slate-700 dark:text-slate-200">
                         {formatMinutesAsHours(systemDisruption.disruptedMinutes)}
                       </strong>{' '}
-                      disrupted across all {modeLabel.toLowerCase()} over the last 30 days
+                      of unplanned disruption across all {modeLabel.toLowerCase()} over the last 30
+                      days
                       {systemDisruption.ratio > 0 && (
                         <>
                           {' · '}
@@ -669,7 +671,7 @@ export default function SystemHealthPage({ kind }) {
                         href={`/day/${new Date(worstDay.dayUtc).toISOString().slice(0, 10)}`}
                         className="text-blue-500 hover:text-blue-400 hover:underline"
                       >
-                        <strong>{formatChicagoDay(worstDay.dayUtc)}</strong>
+                        <strong>{formatPhillyDay(worstDay.dayUtc)}</strong>
                       </a>{' '}
                       ({worstDay.count} incident{worstDay.count === 1 ? '' : 's'})
                     </p>

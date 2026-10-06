@@ -63,12 +63,12 @@ export default function EventNav({ incident, incidents }) {
   const lineLabel = formatRoutesLabel(kind, routes);
   const listHref =
     routes.length === 1
-      ? kind === 'train'
+      ? kind === 'metro'
         ? `/line/${routes[0]}`
         : kind === 'bus'
           ? `/route/${routes[0]}`
-          : kind === 'metra'
-            ? `/metra/line/${routes[0]}`
+          : kind === 'rail'
+            ? `/rail/line/${routes[0]}`
             : null
       : null;
 

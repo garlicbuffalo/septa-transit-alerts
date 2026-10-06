@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { TRAIN_LINES } from '../lib/ctaLines.js';
 import { hexToRgba } from '../lib/format.js';
 import { buildLineMap } from '../lib/lineMap.js';
-import { buildMetraLineMap } from '../lib/metraLineMap.js';
-import { METRA_LINES } from '../lib/metraLines.js';
+import { METRO_LINES } from '../lib/metroLines.js';
+import { buildRailLineMap } from '../lib/railLineMap.js';
+import { RAIL_LINES } from '../lib/railLines.js';
 import { displayStationName } from '../lib/stations.js';
 
 // Five intensity stops keyed off the line's max station count so the
@@ -120,17 +120,17 @@ function TerminalLabel({ station, mapWidth, mapHeight, radius }) {
 // shouldn't paper over a blank rendering with a "no data" placeholder.
 //
 // When ≥4 stations cluster downtown (true for every line except Yellow),
-// a zoom inset is rendered in the lower-right corner so the dense Loop
+// a zoom inset is rendered in the lower-right corner so the dense Center City
 // stations are individually clickable rather than overlapping dots.
-export default function LineMap({ lineKey, stationIndex, kind = 'train' }) {
-  const isMetra = kind === 'metra';
+export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
+  const isRail = kind === 'rail';
   const map = useMemo(
     () =>
-      (isMetra ? buildMetraLineMap : buildLineMap)(lineKey, stationIndex, {
+      (isRail ? buildRailLineMap : buildLineMap)(lineKey, stationIndex, {
         maxWidth: 720,
         maxHeight: 540,
       }),
-    [lineKey, stationIndex, isMetra],
+    [lineKey, stationIndex, isRail],
   );
   // Track whether the map's horizontal scroll has more content to the right.
   // The fade overlay is `position: absolute; right: 0` inside the scroll
@@ -158,13 +158,13 @@ export default function LineMap({ lineKey, stationIndex, kind = 'train' }) {
     };
   }, []);
   if (!map) return null;
-  const info = isMetra ? METRA_LINES[lineKey] : TRAIN_LINES[lineKey];
+  const info = isRail ? RAIL_LINES[lineKey] : METRO_LINES[lineKey];
   const accent = info?.color ?? '#475569';
-  // CTA lines read "Red Line"; Metra lines are named outright ("Union Pacific
+  // SEPTA lines read "L1"; Regional Rail lines are named outright ("Union Pacific
   // North"), so only the train side gets the " Line" suffix.
   const lineName = info?.label ?? lineKey;
-  const mapLabel = isMetra ? lineName : `${lineName} Line`;
-  const hrefBase = isMetra ? '/metra/station' : '/station';
+  const mapLabel = isRail ? lineName : `${lineName} Line`;
+  const hrefBase = isRail ? '/rail/station' : '/station';
 
   const trackPaths = map.tracks.filter((t) => t.length >= 2).map(pathFor);
   const inset = map.downtown;

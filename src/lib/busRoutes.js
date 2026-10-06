@@ -1,150 +1,15 @@
-// CTA bus route display names, keyed by the `rt` value used in alerts and
-// observations. Sourced from the CTA bustime `getroutes` endpoint.
-export const BUS_ROUTE_NAMES = {
-  1: 'Bronzeville/Union Station',
-  2: 'Hyde Park Express',
-  3: 'King Drive',
-  4: 'Cottage Grove',
-  X4: 'Cottage Grove Express',
-  N4: 'Cottage Grove Night Bus',
-  N5: 'South Shore Night Bus',
-  6: 'Jackson Park Express',
-  7: 'Harrison',
-  8: 'Halsted',
-  '8A': 'South Halsted',
-  9: 'Ashland',
-  X9: 'Ashland Express',
-  N9: 'Ashland Night Bus',
-  10: 'Obama Presidential Center/Museum of Science & Industry',
-  11: 'Lincoln',
-  12: 'Roosevelt',
-  J14: 'Jeffery Jump',
-  15: 'Jeffery Local',
-  18: '16th-18th',
-  19: 'United Center Express',
-  20: 'Madison',
-  N20: 'Madison Night Bus',
-  21: 'Cermak',
-  22: 'Clark',
-  N22: 'Clark Night Bus',
-  24: 'Wentworth',
-  26: 'South Shore Express',
-  28: 'Stony Island',
-  29: 'State',
-  30: 'South Chicago',
-  31: '31st',
-  34: 'South Michigan',
-  N34: 'South Michigan Night Bus',
-  35: '31st/35th',
-  36: 'Broadway',
-  37: 'Sedgwick',
-  39: 'Pershing',
-  43: '43rd',
-  44: 'Wallace/Racine',
-  47: '47th',
-  48: 'South Damen',
-  49: 'Western',
-  '49B': 'North Western',
-  X49: 'Western Express',
-  N49: 'Western Night Bus',
-  50: 'Damen',
-  51: '51st',
-  52: 'Kedzie',
-  '52A': 'South Kedzie',
-  53: 'Pulaski',
-  '53A': 'South Pulaski',
-  N53: 'Pulaski Night Bus',
-  54: 'Cicero',
-  '54A': 'North Cicero/Skokie Blvd.',
-  '54B': 'South Cicero',
-  55: 'Garfield',
-  '55A': '55th/Austin',
-  '55N': '55th/Narragansett',
-  N55: 'Garfield Night Bus',
-  56: 'Milwaukee',
-  57: 'Laramie',
-  59: '59th/61st',
-  60: 'Blue Island/26th',
-  N60: 'Blue Island/26th Night Bus',
-  62: 'Archer',
-  '62H': 'Archer/Harlem',
-  N62: 'Archer Night Bus',
-  63: '63rd',
-  '63W': 'West 63rd',
-  N63: '63rd Night Bus',
-  65: 'Grand',
-  66: 'Chicago',
-  N66: 'Chicago Night Bus',
-  67: '67th-69th-71st',
-  68: 'Northwest Highway',
-  70: 'Division',
-  71: '71st/South Shore',
-  72: 'North',
-  73: 'Armitage',
-  74: 'Fullerton',
-  75: '74th-75th',
-  76: 'Diversey',
-  77: 'Belmont',
-  N77: 'Belmont Night Bus',
-  78: 'Montrose',
-  79: '79th',
-  N79: '79th Night Bus',
-  80: 'Irving Park',
-  81: 'Lawrence',
-  '81W': 'West Lawrence',
-  N81: 'Lawrence Night Bus',
-  82: 'Kimball-Homan',
-  84: 'Peterson',
-  85: 'Central',
-  '85A': 'North Central',
-  86: 'Narragansett/Ridgeland',
-  87: '87th',
-  N87: '87th Night Bus',
-  88: 'Higgins',
-  90: 'Harlem',
-  91: 'Austin',
-  92: 'Foster',
-  93: 'California/Dodge',
-  94: 'California',
-  95: '95th',
-  96: 'Lunt',
-  97: 'Skokie',
-  100: 'Jeffery Manor Express',
-  103: 'West 103rd',
-  106: 'East 103rd',
-  108: 'Halsted/95th',
-  111: '111th/King Drive',
-  '111A': 'Pullman Shuttle',
-  112: 'Vincennes/111th',
-  115: 'Pullman/115th',
-  119: 'Michigan/119th',
-  120: 'Ogilvie/Streeterville Express',
-  121: 'Union/Streeterville Express',
-  124: 'Navy Pier',
-  125: 'Water Tower Express',
-  126: 'Jackson',
-  128: 'Soldier Field Express',
-  130: 'Museum Campus',
-  134: 'Stockton/LaSalle Express',
-  135: 'Clarendon/LaSalle Express',
-  136: 'Sheridan/LaSalle Express',
-  143: 'Stockton/Michigan Express',
-  146: 'Inner Lake Shore/Michigan Express',
-  147: 'Outer DuSable Lake Shore Express',
-  148: 'Clarendon/Michigan Express',
-  151: 'Sheridan',
-  152: 'Addison',
-  155: 'Devon',
-  156: 'LaSalle',
-  157: 'Streeterville/Taylor',
-  165: 'West 65th',
-  169: '69th/UPS Express',
-  171: 'U. of Chicago/Hyde Park',
-  172: 'U. of Chicago/Kenwood',
-  192: 'U. of Chicago Hospitals Express',
-  201: 'Central/Ridge',
-  206: 'Evanston Circulator',
-};
+// SEPTA bus route names, keyed by the route id used in the published data —
+// GTFS `route_short_name` with spaces hyphenated ('17', 'K', 'LUCYGO',
+// 'L1-OWL'). Generated from SEPTA's GTFS by scripts/build-reference-data.js;
+// the long name is SEPTA's terminal-to-terminal description ("Front-Mkt to
+// 20-Johnston"). Includes trackless trolleys (59, 66, 75) and the shuttle /
+// overnight bus routes that stand in for Metro and Regional Rail service.
+import busRoutes from './busRoutes.json' with { type: 'json' };
+
+export const BUS_ROUTE_NAMES = busRoutes;
+
+/** Every bus route id in SEPTA's display order. */
+export const BUS_ROUTE_ORDER = Object.keys(busRoutes);
 
 /**
  * Returns the display name for a bus route, or null if unknown.
@@ -156,31 +21,36 @@ export function busRouteName(routeId) {
 }
 
 /**
- * Formats a bus route as `#66 Chicago` (or `#66` when the name is unknown).
+ * The route id as riders see it — hyphenated keys revert to SEPTA's spaced
+ * spelling ('L1-OWL' → 'L1 OWL').
+ * @param {string|number} routeId
+ * @returns {string}
+ */
+export function busRouteDisplayId(routeId) {
+  return String(routeId ?? '').replace(/-(?=[A-Za-z])/g, ' ');
+}
+
+/**
+ * Formats a bus route as `Route 17` (SEPTA's own convention). The long name
+ * is left to callers that have room for it (see busRouteName).
  * @param {string|number} routeId
  * @returns {string}
  */
 export function formatBusRoute(routeId) {
-  const name = busRouteName(routeId);
-  return name ? `#${routeId} ${name}` : `#${routeId}`;
+  return `Route ${busRouteDisplayId(routeId)}`;
 }
 
 // Compare two bus route IDs by their embedded number, then by the full
-// string. Letter-prefixed variants (X9, J14, N20) and letter-suffixed
-// variants (8A) share their parent's numeric component, so the comparator
-// groups them next to the plain-number route: `9, X9, 10, 11, 12, J14, 15`
-// instead of pushing every letter-bearing route to the tail. A pure-number
-// route always sorts before its prefixed siblings (digit < letter codepoints
-// under localeCompare), and prefixed siblings tie-break alphabetically.
+// string, so numbered routes sort numerically (`2, 9, 17, 108`) and lettered
+// routes (K, LUCYGO, L1-OWL) group after them. A pure-number route always sorts
+// before its lettered siblings (digit < letter codepoints under localeCompare).
 export function compareBusRoutes(a, b) {
   const sa = String(a);
   const sb = String(b);
-  const ma = sa.match(/\d+/);
-  const mb = sb.match(/\d+/);
-  const na = ma ? parseInt(ma[0], 10) : Number.NaN;
-  const nb = mb ? parseInt(mb[0], 10) : Number.NaN;
+  const na = /^\d+$/.test(sa) ? parseInt(sa, 10) : Number.NaN;
+  const nb = /^\d+$/.test(sb) ? parseInt(sb, 10) : Number.NaN;
   if (Number.isNaN(na) && Number.isNaN(nb)) return sa.localeCompare(sb);
   if (Number.isNaN(na)) return 1;
   if (Number.isNaN(nb)) return -1;
-  return na - nb || sa.localeCompare(sb);
+  return na - nb;
 }

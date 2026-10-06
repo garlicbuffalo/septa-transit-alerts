@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNow } from '../hooks/useNow.js';
 import { formatRelativeTime } from '../lib/format.js';
+import { SITE_NAME } from '../lib/site.js';
 import BrowseMenu from './BrowseMenu.jsx';
 
 const FRESHNESS_NOTE =
-  'This is the last time the alerts changed. The page checks for new data every 5 minutes while visible — an older time here just means nothing new has happened.';
+  'When the collector last published data from SEPTA. The page checks for new data every 5 minutes while visible.';
 
 function InfoPopover({ children, label = 'What does this mean?' }) {
   const [open, setOpen] = useState(false);
@@ -52,7 +53,7 @@ export default function Header({
   observations,
 }) {
   // Tick once a minute so the relative "Nm ago" label stays honest on a tab
-  // left open. The absolute Chicago time rides along as the hover tooltip.
+  // left open. The absolute Philadelphia time rides along as the hover tooltip.
   const now = useNow();
   const updatedAbs = generatedAt
     ? new Date(generatedAt).toLocaleString('en-US', {
@@ -60,7 +61,7 @@ export default function Header({
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
-        timeZone: 'America/Chicago',
+        timeZone: 'America/New_York',
       }) + ' CT'
     : null;
   const updatedRel = generatedAt ? formatRelativeTime(generatedAt, now) : null;
@@ -79,7 +80,7 @@ export default function Header({
               className="text-left hover:opacity-70 transition-opacity"
               aria-label="Reset filters and return to default view"
             >
-              Chicago Transit Alerts
+              {SITE_NAME}
             </button>
           </h1>
           <div className="relative flex items-center gap-2 flex-shrink-0">
@@ -97,21 +98,19 @@ export default function Header({
                 row below on mobile to keep this row short. */}
             {updatedRel && (
               <div className="hidden sm:flex items-center text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                <span title={updatedAbs ?? undefined}>Last data change: {updatedRel}</span>
+                <span title={updatedAbs ?? undefined}>Updated {updatedRel}</span>
                 <InfoPopover>{FRESHNESS_NOTE}</InfoPopover>
               </div>
             )}
           </div>
         </div>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-          Major CTA &amp; Metra alerts and service observations
+          SEPTA Metro, bus, and Regional Rail alerts and disruptions
         </p>
-        {/* Last-updated note on mobile (sm+ shows it beside the controls above).
-            The bot links moved into the Browse menu's "Follow on Bluesky"
-            section so the header opens straight onto the page's content. */}
+        {/* Last-updated note on mobile (sm+ shows it beside the controls above). */}
         {updatedRel && (
           <div className="sm:hidden relative flex items-center text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-            <span title={updatedAbs ?? undefined}>Last data change: {updatedRel}</span>
+            <span title={updatedAbs ?? undefined}>Updated {updatedRel}</span>
             <InfoPopover>{FRESHNESS_NOTE}</InfoPopover>
           </div>
         )}

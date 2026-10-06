@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { compareBusRoutes } from '../lib/busRoutes.js';
-import { TRAIN_LINE_ORDER, TRAIN_LINES } from '../lib/ctaLines.js';
-import { METRA_LINE_ORDER, METRA_LINES } from '../lib/metraLines.js';
-import { buildMetraStationIndex } from '../lib/metraStations.js';
+import { busRouteDisplayId, compareBusRoutes } from '../lib/busRoutes.js';
+import { METRO_LINE_ORDER, METRO_LINES } from '../lib/metroLines.js';
+import { RAIL_LINE_ORDER, RAIL_LINES } from '../lib/railLines.js';
+import { buildRailStationIndex } from '../lib/railStations.js';
 import { buildStationIndex } from '../lib/stations.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -44,7 +44,7 @@ function topBusRoutes(alerts, observations, now) {
     .map(([id, count]) => ({ id, count }));
 }
 
-// Busiest CTA stations in the window, count-descending. Unlike bus routes (kept
+// Busiest SEPTA stations in the window, count-descending. Unlike bus routes (kept
 // alphabetical as a directory), this is an explicit "top N" cut, so the most-
 // affected order is the point — the count badge and the ranking reinforce each
 // other. The full list is on /stations.
@@ -56,59 +56,28 @@ function topStations(alerts, observations, now) {
     .slice(0, STATION_LIMIT);
 }
 
-// Busiest Metra stations in the window — the Metra analog of topStations.
-function topMetraStations(alerts, observations, now) {
+// Busiest Regional Rail stations in the window — the Regional Rail analog of topStations.
+function topRailStations(alerts, observations, now) {
   if (!alerts || !observations) return [];
-  const idx = buildMetraStationIndex(alerts, observations, { now, windowDays: WINDOW_DAYS });
+  const idx = buildRailStationIndex(alerts, observations, { now, windowDays: WINDOW_DAYS });
   return [...idx.values()]
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
     .slice(0, STATION_LIMIT);
 }
 
-// Bluesky bot accounts that post the underlying alerts/observations. These used
-// to ride a chip row in the page header; they live here now so the header opens
-// straight onto content. Each is a follow target, grouped under "Follow".
-const BOTS = [
-  {
-    label: 'CTA Alerts',
-    emoji: '⚠️',
-    href: 'https://bsky.app/profile/ctaalertinsights.chicagotransitalerts.app',
-  },
-  {
-    label: 'CTA Trains',
-    emoji: '🚇',
-    href: 'https://bsky.app/profile/ctatraininsights.chicagotransitalerts.app',
-  },
-  {
-    label: 'CTA Buses',
-    emoji: '🚌',
-    href: 'https://bsky.app/profile/ctabusinsights.chicagotransitalerts.app',
-  },
-  {
-    label: 'Metra Alerts',
-    emoji: '🚆',
-    href: 'https://bsky.app/profile/metraalertinsights.chicagotransitalerts.app',
-  },
-  {
-    label: 'Metra',
-    emoji: '🛤️',
-    href: 'https://bsky.app/profile/metrainsights.chicagotransitalerts.app',
-  },
-];
-
 const ROW_LINK =
   'flex items-center gap-2 px-2 py-1 rounded text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-gh-border transition-colors';
 const SUB_LABEL =
   'text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5';
-const AGENCY_LABEL =
+const NETWORK_LABEL =
   'text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200';
 const PILL =
   'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold hover:opacity-80 transition-opacity';
 const MORE_LINK =
   'block px-2 py-1 mt-1.5 rounded text-xs text-blue-500 hover:text-blue-400 hover:underline';
 
-// Top-N station list (shared by the CTA and Metra groups). `hrefBase` is
-// `/station` or `/metra/station`; `moreHref`/`moreLabel` drive the "All →" link.
+// Top-N station list (shared by SEPTA and Regional Rail groups). `hrefBase` is
+// `/station` or `/rail/station`; `moreHref`/`moreLabel` drive the "All →" link.
 function StationList({ stations, hrefBase, moreHref, moreLabel }) {
   if (stations.length === 0) return null;
   return (
@@ -138,11 +107,11 @@ function StationList({ stations, hrefBase, moreHref, moreLabel }) {
   );
 }
 
-// Browse dropdown surfaced in the Header on every page. Organized by agency:
-// a cross-agency Views block, then a CTA group (train lines, bus routes,
-// stations) and a Metra group (lines, stations). Lines are the stable rosters;
-// bus routes and stations are scoped to the rolling 90-day window so the menu
-// reflects what's actually been happening recently.
+// Browse dropdown surfaced in the Header on every page. Organized by network:
+// a cross-network Views block, then a Metro & Bus group (Metro lines, bus
+// routes, stations) and a Regional Rail group (lines, stations). Lines are the
+// stable rosters; bus routes and stations are scoped to the rolling 90-day
+// window so the menu reflects what's actually been happening recently.
 export default function BrowseMenu({ alerts, observations, align = 'right' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -176,8 +145,8 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
     () => topStations(alerts, observations, now),
     [alerts, observations, now],
   );
-  const metraStations = useMemo(
-    () => topMetraStations(alerts, observations, now),
+  const railStations = useMemo(
+    () => topRailStations(alerts, observations, now),
     [alerts, observations, now],
   );
 
@@ -251,11 +220,11 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
               <div className="flex flex-wrap items-center gap-1.5 mt-1 px-2 py-1">
                 <span className="text-xs text-slate-500 dark:text-slate-400">System health</span>
                 <a
-                  href="/system/trains"
+                  href="/system/metro"
                   role="menuitem"
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-gh-subtle text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gh-border transition-colors"
                 >
-                  🚇 Trains
+                  🚇 Metro
                 </a>
                 <a
                   href="/system/buses"
@@ -265,11 +234,11 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
                   🚌 Buses
                 </a>
                 <a
-                  href="/system/metra"
+                  href="/system/rail"
                   role="menuitem"
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-gh-subtle text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gh-border transition-colors"
                 >
-                  🚆 Metra
+                  🚆 Regional Rail
                 </a>
               </div>
             </section>
@@ -294,36 +263,17 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
                 </span>
                 Privacy
               </a>
-
-              <div className="mt-3">
-                <p className={SUB_LABEL}>Follow on Bluesky</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {BOTS.map((bot) => (
-                    <a
-                      key={bot.href}
-                      href={bot.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      role="menuitem"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-gh-subtle text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gh-border transition-colors"
-                    >
-                      <span aria-hidden="true">{bot.emoji}</span>
-                      {bot.label}
-                    </a>
-                  ))}
-                </div>
-              </div>
             </section>
 
-            {/* CTA group — train lines, bus routes, and 'L' stations. */}
+            {/* Metro & Bus group — SEPTA Metro lines, bus routes, and Metro stations. */}
             <section>
-              <h3 className={AGENCY_LABEL}>CTA</h3>
+              <h3 className={NETWORK_LABEL}>Metro &amp; Bus</h3>
 
               <div className="mt-2.5">
-                <p className={SUB_LABEL}>Train lines</p>
+                <p className={SUB_LABEL}>SEPTA Metro lines</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {TRAIN_LINE_ORDER.map((line) => {
-                    const info = TRAIN_LINES[line];
+                  {METRO_LINE_ORDER.map((line) => {
+                    const info = METRO_LINES[line];
                     return (
                       <a
                         key={line}
@@ -331,6 +281,7 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
                         role="menuitem"
                         className={PILL}
                         style={{ backgroundColor: info.color, color: info.textColor }}
+                        title={info.name}
                       >
                         {info.label}
                       </a>
@@ -351,7 +302,7 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
                         title={`${r.count} incident${r.count === 1 ? '' : 's'} in the last 90 days`}
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-gh-subtle text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gh-border transition-colors"
                       >
-                        #{r.id}
+                        {busRouteDisplayId(r.id)}
                         <span className="font-normal tabular-nums opacity-60">{r.count}</span>
                       </a>
                     ))}
@@ -370,19 +321,19 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
               />
             </section>
 
-            {/* Metra group — lines and stations. */}
+            {/* Regional Rail group — lines and stations. */}
             <section>
-              <h3 className={AGENCY_LABEL}>Metra</h3>
+              <h3 className={NETWORK_LABEL}>Regional Rail</h3>
 
               <div className="mt-2.5">
                 <p className={SUB_LABEL}>Lines</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {METRA_LINE_ORDER.map((line) => {
-                    const info = METRA_LINES[line];
+                  {RAIL_LINE_ORDER.map((line) => {
+                    const info = RAIL_LINES[line];
                     return (
                       <a
                         key={line}
-                        href={`/metra/line/${line}`}
+                        href={`/rail/line/${line}`}
                         role="menuitem"
                         className={PILL}
                         style={{ backgroundColor: info.color, color: info.textColor }}
@@ -395,10 +346,10 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
               </div>
 
               <StationList
-                stations={metraStations}
-                hrefBase="/metra/station"
+                stations={railStations}
+                hrefBase="/rail/station"
                 moreHref="/stations"
-                moreLabel="All Metra stations →"
+                moreLabel="All Regional Rail stations →"
               />
             </section>
           </div>

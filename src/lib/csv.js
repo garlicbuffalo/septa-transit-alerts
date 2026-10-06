@@ -1,14 +1,8 @@
 // CSV row construction shared by the postbuild full-dataset export
 // (`scripts/generate-csv.js`) and the in-browser "Download filtered CSV"
-// button (`IncidentList`). Mirrors the public alerts.json v2 concepts.
+// button (`IncidentList`). Mirrors the published incident-file concepts.
 
-import {
-  incidentAgency,
-  incidentDetections,
-  incidentLifecycle,
-  incidentMode,
-  officialAlert,
-} from './incidents.js';
+import { incidentDetections, incidentLifecycle, incidentMode, officialAlert } from './incidents.js';
 
 export const CSV_COLUMNS = [
   'record_type',
@@ -32,6 +26,7 @@ export const CSV_COLUMNS = [
   'active',
   'post_url',
   'resolved_post_url',
+  'source_url',
 ];
 
 export function csvEscape(value) {
@@ -65,7 +60,7 @@ function officialRow(incident, alert) {
   return {
     record_type: 'official_alert',
     incident_id: incident.id,
-    agency: incidentAgency(incident),
+    agency: incident.agency ?? 'septa',
     mode: incidentMode(incident),
     routes: (incident.routes ?? []).join(';'),
     source: 'official',
@@ -86,6 +81,7 @@ function officialRow(incident, alert) {
     active: lifecycle.active ? 'true' : 'false',
     post_url: alert.post_url ?? '',
     resolved_post_url: alert.resolved_reply_url ?? '',
+    source_url: alert.source_url ?? '',
   };
 }
 
@@ -95,7 +91,7 @@ function detectionRow(incident, detection) {
   return {
     record_type: 'detection',
     incident_id: incident.id,
-    agency: incidentAgency(incident),
+    agency: incident.agency ?? 'septa',
     mode: incidentMode(incident),
     routes: (incident.routes ?? []).join(';'),
     source: detection.source ?? '',
@@ -114,6 +110,7 @@ function detectionRow(incident, detection) {
     active: lifecycle.active ? 'true' : 'false',
     post_url: detection.post_url ?? '',
     resolved_post_url: detection.resolved_post_url ?? '',
+    source_url: '',
   };
 }
 

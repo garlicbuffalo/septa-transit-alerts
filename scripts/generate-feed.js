@@ -8,8 +8,12 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { BUS_ROUTE_NAMES, compareBusRoutes } from '../src/lib/busRoutes.js';
-import { TRAIN_LINE_ORDER, TRAIN_LINES } from '../src/lib/ctaLines.js';
+import {
+  BUS_ROUTE_NAMES,
+  busRouteDisplayId,
+  compareBusRoutes,
+  formatBusRoute,
+} from '../src/lib/busRoutes.js';
 import { formatDuration, formatEstimatedEnd } from '../src/lib/format.js';
 import {
   formatEvidenceChip,
@@ -17,12 +21,13 @@ import {
   groupIncidentRecords,
   incidentRecords,
   observationSignals,
-  postUrlRkey,
   SIGNAL_LABELS,
   summarizeSignals,
 } from '../src/lib/incidents.js';
-import { gateIncidents } from '../src/lib/metraGate.js';
-import { METRA_LINE_ORDER, METRA_LINES } from '../src/lib/metraLines.js';
+import { METRO_LINE_ORDER, METRO_LINES, metroLineFullName } from '../src/lib/metroLines.js';
+import { RAIL_LINE_ORDER, RAIL_LINES, railLineFullName } from '../src/lib/railLines.js';
+import { SITE_NAME, SITE_ORIGIN } from '../src/lib/site.js';
+import { hasEventStub } from './eventScope.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -30,16 +35,17 @@ const DATA = resolve(ROOT, 'dist', 'data', 'alerts.json');
 const OUT_ATOM = resolve(ROOT, 'dist', 'feed.xml');
 const OUT_JSON = resolve(ROOT, 'dist', 'feed.json');
 
-const SITE = 'https://chicagotransitalerts.app';
-// The 2026 here is the tag URI authority date (RFC 4151) — pinned forever,
-// not a "current year". Changing it would alter every entry/feed <id> and
-// re-mark every subscriber's read entries as unread.
-const TAG_AUTHORITY = 'tag:chicagotransitalerts.app,2026';
+const SITE = SITE_ORIGIN;
+// Tag URI authority (RFC 4151): the site's host plus a pinned date. The 2026
+// is not a "current year" — changing it (or the host) alters every entry/feed
+// <id> and re-marks every subscriber's read entries as unread, so set the
+// final SITE_URL before people subscribe.
+const TAG_AUTHORITY = `tag:${new URL(SITE_ORIGIN).host},2026`;
 const ENTRY_LIMIT = 50;
 // Skip standalone observation-only incidents that resolved within this window
 // — almost always a transient detector hiccup (single missed snapshot, etc.)
 // rather than a real outage worth pushing to subscribers. Anything backed by
-// a CTA alert is surfaced regardless of duration; a CTA alert that came and
+// a SEPTA alert is surfaced regardless of duration; an alert that came and
 // went in 2 minutes is itself signal.
 const FP_FILTER_MS = 5 * 60 * 1000;
 
@@ -72,35 +78,37 @@ function routesFor(incident) {
   return [];
 }
 
+// The incident id — stable for the life of the incident, and what the SPA
+// routes /event/:id by. Records built by incidentRecords carry it as
+// `_incidentId`; hand-built records (tests) fall back to their own id.
+function incidentId(incident) {
+  return incident._incidentId ?? incident.alert_id ?? incident.id ?? null;
+}
+
 export function entryId(incident) {
-  const rkey = postUrlRkey(incident.post_url) ?? postUrlRkey(incident.obs_post_url);
-  if (rkey) return `${TAG_AUTHORITY}:event/${rkey}`;
-  // Postless records — Metra cancellations/delays are website-data-first (no
-  // individual Bluesky post), so they reach this path normally. Their stable
-  // identity is the incident id, which the SPA routes by (`/event/:id`).
-  return `${TAG_AUTHORITY}:${incident.alert_id ?? `obs-${incident.id}`}`;
+  return `${TAG_AUTHORITY}:event/${incidentId(incident)}`;
 }
 
 function entryLink(incident) {
-  const rkey = postUrlRkey(incident.post_url) ?? postUrlRkey(incident.obs_post_url);
-  if (rkey) return `${SITE}/event/${rkey}`;
-  // No post → link to the SPA event page keyed by incident id (findIncidentById
-  // matches inc.id), so postless Metra records still get a real detail page.
-  return incident.id ? `${SITE}/event/${encodeURIComponent(incident.id)}` : SITE;
+  const id = incidentId(incident);
+  return id ? `${SITE}/event/${encodeURIComponent(id)}` : SITE;
 }
 
 // Cache-bust the OG image per-state. Readers and CDNs cache by URL, so without
 // `?v=...` an incident that transitioned ongoing→resolved keeps showing the
 // stale "ongoing" thumbnail. Keying on updatedTs flips the URL exactly when
 // the state changes (entry's <updated> bumps too), so each state caches once.
-function entryThumbnail(incident, updatedTs) {
-  const rkey = postUrlRkey(incident.post_url) ?? postUrlRkey(incident.obs_post_url);
-  if (!rkey) return null;
-  return updatedTs ? `${SITE}/event/${rkey}/og.jpg?v=${updatedTs}` : `${SITE}/event/${rkey}/og.jpg`;
+// Only incidents inside the prerender window have a card to point at.
+function entryThumbnail(incident, updatedTs, now = Date.now()) {
+  const id = incidentId(incident);
+  if (!id || !hasEventStub(incident, now)) return null;
+  const base = `${SITE}/event/${encodeURIComponent(id)}/og.jpg`;
+  return updatedTs ? `${base}?v=${updatedTs}` : base;
 }
 
-function blueskyPostUrl(incident) {
-  return incident.post_url ?? incident.obs_post_url ?? null;
+// SEPTA's own page for the affected route (alerts have no permalinks).
+function sourceUrl(incident) {
+  return incident.source_url ?? null;
 }
 
 function describeObservation(obs) {
@@ -115,23 +123,34 @@ function describeObservation(obs) {
   return 'Service disruption detected';
 }
 
-// True when the headline already names this incident's first route — in which
-// case prepending the routes label produces awkward duplication ("#82
-// Kimball-Homan: #82 Kimball/Homan…", "Brown Line: Brown Line Service…").
+// True when the headline already names this incident's route — in which case
+// prepending the routes label produces awkward duplication ("Route 17: Route
+// 17 Detour…", "L1 Market-Frankford Line: L1 Service…").
 function headlineNamesRoute(headline, kind, routes) {
   if (!headline || !routes || routes.length === 0) return false;
   const lower = headline.toLowerCase();
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const hasToken = (token) =>
+    new RegExp(`(^|[^a-z0-9])${escapeRe(token.toLowerCase())}([^a-z0-9]|$)`).test(lower);
   if (kind === 'bus') {
-    // CTA bus headlines almost always lead with `#NN`; match that token
-    // form to avoid stray substring hits like "53" inside a date or address.
-    return new RegExp(`#${routes[0]}\\b`).test(lower);
+    // Match the "Route 17" form, not a bare number, to avoid stray hits like
+    // "17" inside a date or address.
+    return hasToken(`route ${busRouteDisplayId(routes[0])}`);
   }
-  // train: any route's full name ("Brown Line", "Red", "Yellow Line") in the
-  // headline means the line is already identified.
-  return routes.some((r) => {
-    const label = TRAIN_LINES[r]?.label?.toLowerCase();
-    return label && lower.includes(label);
-  });
+  if (kind === 'metro') {
+    // Any line's code ("L1") or name ("Market-Frankford") identifies it.
+    return routes.some((r) => {
+      const info = METRO_LINES[r];
+      return info && (hasToken(info.label) || hasToken(info.name));
+    });
+  }
+  if (kind === 'rail') {
+    return routes.some((r) => {
+      const info = RAIL_LINES[r];
+      return info && hasToken(info.label);
+    });
+  }
+  return false;
 }
 
 function entryTitle(incident) {
@@ -145,11 +164,11 @@ function entryTitle(incident) {
   return `${routesLabel}: ${describeObservation(incident)}`;
 }
 
-// Friendly direction labels. The bot encodes pulse direction as
-// `branch-0-outbound` / `branch-1-inbound` for loop lines, plus a synthetic
-// `branch-len92-…` form (line bbox digest) for full-line outages — that one
-// is meaningless to a reader, so suppress it. Bus alerts arrive as compass
-// words or `'all'`; we map compass to `Northbound`/etc.
+// Friendly direction labels. Detections may encode direction as
+// `branch-0-outbound` / `branch-1-inbound`, plus a synthetic `branch-len…`
+// form for full-line outages — that one is meaningless to a reader, so
+// suppress it. Alerts arrive as compass words or `'all'`; we map compass to
+// `Northbound`/etc.
 const COMPASS_LABELS = {
   north: 'Northbound',
   south: 'Southbound',
@@ -188,20 +207,20 @@ function entrySummary(incident) {
 function entryContentHtml(incident, thumb) {
   const start = startTs(incident);
   const resolved = incident.resolved_ts ?? null;
-  // For still-ongoing incidents, append CTA's posted EventEnd ("estimated
+  // For still-ongoing incidents, append SEPTA's posted end time ("estimated
   // end") when present and meaningfully in the future. Skipped on resolved
   // entries: the actual resolution time is more useful than a stale
   // estimate at that point.
   const estimatedEndText = !resolved
-    ? formatEstimatedEnd(incident.cta_event_end_ts, undefined, {
-        dateOnly: incident.cta_event_end_is_date_only === true,
+    ? formatEstimatedEnd(incident.agency_event_end_ts, undefined, {
+        dateOnly: incident.agency_event_end_is_date_only === true,
       })
     : null;
   const stateLine = resolved
     ? `<strong>Resolved</strong> after ${escapeXml(formatDuration(resolved - start) ?? '')}`
     : incident.active
       ? estimatedEndText
-        ? `<strong>Ongoing</strong> · CTA estimated end ${escapeXml(estimatedEndText)}`
+        ? `<strong>Ongoing</strong> · SEPTA estimated end ${escapeXml(estimatedEndText)}`
         : '<strong>Ongoing</strong>'
       : '';
   const stations = [incident.from_station, incident.to_station].filter(Boolean).join(' → ');
@@ -210,7 +229,7 @@ function entryContentHtml(incident, thumb) {
   const fallback = headline ? null : escapeXml(describeObservation(incident));
   const routesLabel = formatRoutesLabel(incident.kind, routesFor(incident));
   const direction = directionLabel(incident.direction ?? incident.affected_direction);
-  const blueskyUrl = blueskyPostUrl(incident);
+  const source = sourceUrl(incident);
 
   const parts = [];
   if (thumb) {
@@ -227,38 +246,34 @@ function entryContentHtml(incident, thumb) {
   const meta = [routesLabel, direction].filter(Boolean).join(' · ');
   if (meta) parts.push(`<p>${escapeXml(meta)}</p>`);
   if (chip) parts.push(`<p>${escapeXml(chip)}</p>`);
-  if (blueskyUrl) {
-    parts.push(`<p><a href="${escapeXml(blueskyUrl)}">View original post on Bluesky →</a></p>`);
+  if (source) {
+    parts.push(`<p><a href="${escapeXml(source)}">Route page on SEPTA.org →</a></p>`);
   }
   return parts.join('');
 }
 
 // Atom <category>/JSON tags. Built as a list of {term, label} pairs:
-//   - mode: bus | train
-//   - per-route: route-82 (#82) for bus; line-brown (Brown Line) for train
+//   - mode: metro | bus | rail
+//   - per-route: line-l1 (L1 Market-Frankford Line), route-17 (Route 17),
+//     rail-line-pao (Paoli/Thorndale Line)
 //   - state: ongoing | resolved
 //   - source: official-alert and/or any signal kinds (pulse-cold, ghost, …)
 // Atom uses term + optional label; JSON Feed gets the labels.
 function entryCategories(incident) {
   const cats = [];
   const kind = incident.kind;
-  if (kind === 'bus' || kind === 'train') {
-    cats.push({ term: kind, label: kind === 'bus' ? 'Bus' : 'Train' });
-  } else if (kind === 'metra') {
-    cats.push({ term: 'metra', label: 'Metra' });
-  }
+  const MODE_LABELS = { metro: 'SEPTA Metro', bus: 'Bus', rail: 'Regional Rail' };
+  if (MODE_LABELS[kind]) cats.push({ term: kind, label: MODE_LABELS[kind] });
   const routes = routesFor(incident);
-  if (kind === 'train') {
+  if (kind === 'metro') {
     for (const r of routes) {
-      const label = TRAIN_LINES[r]?.label;
-      cats.push({ term: `line-${r}`, label: label ? `${label} Line` : r });
+      cats.push({ term: `line-${r}`, label: METRO_LINES[r] ? metroLineFullName(r) : r });
     }
   } else if (kind === 'bus') {
-    for (const r of routes) cats.push({ term: `route-${r}`, label: `#${r}` });
-  } else if (kind === 'metra') {
+    for (const r of routes) cats.push({ term: `route-${r}`, label: formatBusRoute(r) });
+  } else if (kind === 'rail') {
     for (const r of routes) {
-      const label = METRA_LINES[r]?.label;
-      cats.push({ term: `metra-line-${r}`, label: label ?? r });
+      cats.push({ term: `rail-line-${r}`, label: RAIL_LINES[r] ? railLineFullName(r) : r });
     }
   }
   cats.push(
@@ -293,31 +308,33 @@ function toIso(ms) {
 // Filter out standalone observations that resolved within FP_FILTER_MS — they
 // almost always represent a transient detector hiccup (single missed
 // snapshot, a pulse that flips back inside the same minute) rather than a
-// real outage worth a push notification. Anything backed by a CTA alert
+// real outage worth a push notification. Anything backed by a SEPTA alert
 // (merged or standalone alert) passes regardless of duration.
 export function isLikelyDetectorBlip(incident) {
   if (incident.alert_id || incident.headline) return false; // alert-backed
-  // Metra cancellations/delays are point-in-time records (resolved_ts ==
+  // Regional Rail cancellations/delays are point-in-time records (resolved_ts ==
   // first_seen_ts), not detector flicker — the zero "duration" is by design, so
   // the duration-based blip filter must not drop them.
-  if (incident.kind === 'metra') return false;
+  if (incident.kind === 'rail') return false;
   if (!incident.resolved_ts) return false;
   const start = startTs(incident);
   if (!start) return false;
   return incident.resolved_ts - start < FP_FILTER_MS;
 }
 
-export function buildEntryRecord(incident) {
+// `now` decides whether the incident still has a prerendered OG card to use as
+// the entry thumbnail (see eventScope.js).
+export function buildEntryRecord(incident, { now = Date.now() } = {}) {
   const id = entryId(incident);
   const link = entryLink(incident);
   const title = entryTitle(incident);
   const summary = entrySummary(incident);
   const publishedMs = startTs(incident);
   const updatedMs = updatedTs(incident);
-  const thumb = entryThumbnail(incident, updatedMs);
+  const thumb = entryThumbnail(incident, updatedMs, now);
   const contentHtml = entryContentHtml(incident, thumb);
   const categories = entryCategories(incident);
-  const blueskyUrl = blueskyPostUrl(incident);
+  const source = sourceUrl(incident);
   return {
     id,
     link,
@@ -328,7 +345,7 @@ export function buildEntryRecord(incident) {
     thumb,
     contentHtml,
     categories,
-    blueskyUrl,
+    sourceUrl: source,
   };
 }
 
@@ -358,7 +375,7 @@ export function emitAtom(records, feedUpdatedIso, meta) {
       if (r.thumb) {
         lines.push(
           `    <media:thumbnail url="${escapeXml(r.thumb)}"/>`,
-          `    <media:content url="${escapeXml(r.thumb)}" medium="image" type="image/png"/>`,
+          `    <media:content url="${escapeXml(r.thumb)}" medium="image" type="image/jpeg"/>`,
         );
       }
       lines.push('  </entry>');
@@ -374,9 +391,8 @@ export function emitAtom(records, feedUpdatedIso, meta) {
   <link rel="alternate" type="text/html" href="${escapeXml(meta.homeUrl)}"/>
   <link rel="self" type="application/atom+xml" href="${escapeXml(meta.selfXml)}"/>
   <link rel="alternate" type="application/feed+json" href="${escapeXml(meta.selfJson)}"/>
-  <link rel="hub" href="https://pubsubhubbub.superfeedr.com/"/>
   <updated>${feedUpdatedIso}</updated>
-  <author><name>chicago-transit-alerts</name></author>
+  <author><name>${escapeXml(SITE_NAME)}</name></author>
 ${entries}
 </feed>
 `;
@@ -390,12 +406,11 @@ function emitJsonFeed(records, meta) {
     home_page_url: meta.homeUrl,
     feed_url: meta.selfJson,
     language: 'en-US',
-    authors: [{ name: 'chicago-transit-alerts' }],
-    hubs: [{ type: 'WebSub', url: 'https://pubsubhubbub.superfeedr.com/' }],
+    authors: [{ name: SITE_NAME }],
     items: records.map((r) => ({
       id: r.id,
       url: r.link,
-      external_url: r.blueskyUrl ?? undefined,
+      external_url: r.sourceUrl ?? undefined,
       title: r.title,
       summary: r.summary,
       content_html: r.contentHtml,
@@ -432,19 +447,15 @@ function writeFeed(records, meta, feedUpdatedIso, xmlPath, jsonPath) {
 
 // Most-recent-first slice of `pool` scoped to one route, capped at ENTRY_LIMIT.
 // `pool` is already sorted newest-first, so the slice preserves that order.
-export function scopedRecords(pool, kind, route) {
+export function scopedRecords(pool, kind, route, { now = Date.now() } = {}) {
   return pool
     .filter((i) => i.kind === kind && routesFor(i).includes(route))
     .slice(0, ENTRY_LIMIT)
-    .map(buildEntryRecord);
+    .map((i) => buildEntryRecord(i, { now }));
 }
 
 function main() {
   const raw = JSON.parse(readFileSync(DATA, 'utf8'));
-  // Feeds (global + per-line) and the CSV are Metra-aware, so opt in explicitly
-  // (showMetra=true) — the Node-default gate stays CTA-only for the not-yet-Metra
-  // build outputs (OG-prerendered event/sitemap pages).
-  raw.incidents = gateIncidents(raw.incidents || [], true);
   const payload = { ...raw, ...incidentRecords(raw.incidents || []) };
   const { merged, standaloneAlerts, standaloneObs } = groupIncidentRecords(
     payload.officialRecords || [],
@@ -474,13 +485,14 @@ function main() {
 
   // Global feed — unchanged URLs and <id>, so existing subscribers are
   // unaffected by the per-line additions below.
-  const globalRecords = pool.slice(0, ENTRY_LIMIT).map(buildEntryRecord);
+  const globalRecords = pool.slice(0, ENTRY_LIMIT).map((i) => buildEntryRecord(i));
   writeFeed(
     globalRecords,
     feedMeta({
       idPath: 'feed',
-      title: 'Chicago Transit Alerts',
-      subtitle: 'Chicago Transit Authority service alerts and bot-detected disruptions.',
+      title: SITE_NAME,
+      subtitle:
+        'SEPTA service alerts and detected disruptions — SEPTA Metro, buses, and Regional Rail.',
       homePath: '/',
       selfBase: '/feed',
     }),
@@ -489,20 +501,20 @@ function main() {
     OUT_JSON,
   );
 
-  // One feed per train line (all eight) and one per bus route in the CTA
-  // roster — every line/route is subscribable up front, so a rider can follow
+  // One feed per SEPTA Metro line and one per bus route in SEPTA's roster —
+  // every line/route is subscribable up front, so a rider can follow
   // their route today and just get a quiet feed until something happens,
   // rather than waiting for a first incident to bring the feed into existence.
   let lineFeeds = 0;
-  for (const line of TRAIN_LINE_ORDER) {
-    const records = scopedRecords(pool, 'train', line);
-    const label = TRAIN_LINES[line]?.label ?? line;
+  for (const line of METRO_LINE_ORDER) {
+    const records = scopedRecords(pool, 'metro', line);
+    const label = metroLineFullName(line);
     writeFeed(
       records,
       feedMeta({
         idPath: `feed/line/${line}`,
-        title: `Chicago Transit Alerts · ${label} Line`,
-        subtitle: `CTA service alerts and bot-detected disruptions on the ${label} Line.`,
+        title: `${SITE_NAME} · ${label}`,
+        subtitle: `SEPTA service alerts and detected disruptions on the ${label}.`,
         homePath: `/line/${line}`,
         selfBase: `/feed/line/${line}`,
       }),
@@ -517,13 +529,13 @@ function main() {
   for (const route of Object.keys(BUS_ROUTE_NAMES).sort(compareBusRoutes)) {
     const records = scopedRecords(pool, 'bus', route);
     const name = BUS_ROUTE_NAMES[route];
-    const label = name ? `#${route} ${name}` : `#${route}`;
+    const label = name ? `${formatBusRoute(route)} (${name})` : formatBusRoute(route);
     writeFeed(
       records,
       feedMeta({
         idPath: `feed/route/${route}`,
-        title: `Chicago Transit Alerts · ${label}`,
-        subtitle: `CTA service alerts and bot-detected disruptions on the ${label} bus.`,
+        title: `${SITE_NAME} · ${label}`,
+        subtitle: `SEPTA service alerts and detours on bus ${label}.`,
         homePath: `/route/${route}`,
         selfBase: `/feed/route/${route}`,
       }),
@@ -534,33 +546,33 @@ function main() {
     routeFeeds++;
   }
 
-  // One feed per Metra line, under /feed/metra/line/{key} so it never collides
-  // with the CTA /feed/line/{key} namespace (a CTA key and a Metra key could
-  // otherwise coincide). Same proactive-coverage rationale as the CTA feeds.
-  let metraFeeds = 0;
-  for (const line of METRA_LINE_ORDER) {
-    const records = scopedRecords(pool, 'metra', line);
-    const label = METRA_LINES[line]?.label ?? line;
+  // One feed per Regional Rail line, under /feed/rail/line/{key} so it never
+  // collides with the Metro /feed/line/{key} namespace. Same proactive-coverage
+  // rationale as the Metro and bus feeds.
+  let railFeeds = 0;
+  for (const line of RAIL_LINE_ORDER) {
+    const records = scopedRecords(pool, 'rail', line);
+    const label = railLineFullName(line);
     writeFeed(
       records,
       feedMeta({
-        idPath: `feed/metra/line/${line}`,
-        title: `Chicago Transit Alerts · Metra ${label}`,
-        subtitle: `Metra service alerts and bot-detected cancellations/delays on the ${label} line.`,
-        homePath: `/metra/line/${line}`,
-        selfBase: `/feed/metra/line/${line}`,
+        idPath: `feed/rail/line/${line}`,
+        title: `${SITE_NAME} · Regional Rail ${label}`,
+        subtitle: `SEPTA Regional Rail service alerts, cancellations, and delays on the ${label}.`,
+        homePath: `/rail/line/${line}`,
+        selfBase: `/feed/rail/line/${line}`,
       }),
       isoUpdated(records),
-      resolve(ROOT, 'dist', 'feed', 'metra', 'line', `${line}.xml`),
-      resolve(ROOT, 'dist', 'feed', 'metra', 'line', `${line}.json`),
+      resolve(ROOT, 'dist', 'feed', 'rail', 'line', `${line}.xml`),
+      resolve(ROOT, 'dist', 'feed', 'rail', 'line', `${line}.json`),
     );
-    metraFeeds++;
+    railFeeds++;
   }
 
   const droppedNote = dropped > 0 ? ` (${dropped} short-lived obs skipped)` : '';
   console.log(
     `generate-feed: wrote ${globalRecords.length} entries to feed.xml + feed.json, ` +
-      `plus ${lineFeeds} line + ${routeFeeds} route + ${metraFeeds} metra feeds${droppedNote}`,
+      `plus ${lineFeeds} Metro line + ${routeFeeds} bus route + ${railFeeds} Regional Rail feeds${droppedNote}`,
   );
 }
 

@@ -7,13 +7,14 @@
 //
 // Scope (intentionally bounded — generating 150+ bus routes when only a few
 // are ever shared would be wasteful):
-//   - All 8 train lines + all 11 Metra lines (stable sets, always rendered)
+//   - All 13 SEPTA Metro lines + all 13 Regional Rail lines (stable sets,
+//     always rendered)
 //   - Bus routes that appear in alerts/observations within the 90-day window
 //   - Stations from buildStationIndex (already filtered to >=1 incident)
 //   - /calendar (singleton, always rendered)
 //   - /stats (singleton, always rendered)
 //   - /compare (singleton, always rendered)
-//   - /system/trains, /system/buses, and /system/metra (singletons, always rendered)
+//   - /system/metro, /system/buses, and /system/rail (singletons, always rendered)
 //   - /stations and /routes (A–Z directory indexes, singletons)
 //
 // Anything outside the scope falls back to the generic homepage OG card,
@@ -31,30 +32,26 @@ import {
 } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
 import { buildWeekSummary, computeStatsLeaderboards, listWeeks } from '../src/lib/aggregate.js';
 import { breadcrumbJsonLd, dayTrail, topLevelTrail, weekTrail } from '../src/lib/breadcrumbs.js';
-import { BUS_ROUTE_NAMES } from '../src/lib/busRoutes.js';
+import { BUS_ROUTE_NAMES, busRouteDisplayId, compareBusRoutes } from '../src/lib/busRoutes.js';
 import { buildCalendarMonths, maxCountAcrossMonths } from '../src/lib/calendar.js';
-import { TRAIN_LINE_ORDER, TRAIN_LINES } from '../src/lib/ctaLines.js';
 import {
-  chicagoDayIsoUTC,
-  chicagoDayUTC,
-  formatChicagoDay,
   formatDuration,
+  formatPhillyDay,
   formatWeekRange,
+  phillyDayIsoUTC,
+  phillyDayUTC,
 } from '../src/lib/format.js';
-import {
-  formatRoutesLabel,
-  groupIncidentRecords,
-  incidentRecords,
-  legacyKind,
-} from '../src/lib/incidents.js';
-import { gateIncidents } from '../src/lib/metraGate.js';
-import { METRA_LINE_ORDER, METRA_LINES } from '../src/lib/metraLines.js';
-import { buildMetraStationIndex } from '../src/lib/metraStations.js';
+import { formatRoutesLabel, groupIncidentRecords, incidentRecords } from '../src/lib/incidents.js';
+import { METRO_LINE_ORDER, METRO_LINES, metroLineFullName } from '../src/lib/metroLines.js';
+import metroStations from '../src/lib/metroStations.json' with { type: 'json' };
+import { RAIL_LINE_ORDER, RAIL_LINES, railLineFullName } from '../src/lib/railLines.js';
+import { buildRailStationIndex } from '../src/lib/railStations.js';
+import railStations from '../src/lib/railStations.json' with { type: 'json' };
+import { SITE_NAME, SITE_ORIGIN } from '../src/lib/site.js';
 import { buildStationIndex } from '../src/lib/stations.js';
-import trainStations from '../src/lib/trainStations.json' with { type: 'json' };
+import { launchChromium } from './browser.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -75,11 +72,17 @@ const INDEX_TPL = resolve(__dirname, 'og-index-template.html');
 const CACHE = resolve(ROOT, '.og-cache-pages');
 const CONCURRENCY = Number(process.env.PRERENDER_CONCURRENCY ?? 6);
 
-const SITE = 'https://chicagotransitalerts.app';
+const SITE = SITE_ORIGIN;
+const SITE_HOST = new URL(SITE_ORIGIN).host;
 const BUS_ACCENT = { color: '#475569', soft: 'rgba(71, 85, 105, 0.18)', text: '#fff' };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_DAYS = 90;
+
+// Templates carry a `__SITE_HOST__` placeholder for the footer URL.
+function readTemplate(path) {
+  return readFileSync(path, 'utf8').replaceAll('__SITE_HOST__', SITE_HOST);
+}
 
 function escHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -151,7 +154,7 @@ function buildStatsHtml(leaders) {
   if (leaders.worstDay) {
     items.push({
       label: 'Worst day',
-      value: `${formatChicagoDay(leaders.worstDay.dayUtc)} · ${leaders.worstDay.count} incident${leaders.worstDay.count === 1 ? '' : 's'}`,
+      value: `${formatPhillyDay(leaders.worstDay.dayUtc)} · ${leaders.worstDay.count} incident${leaders.worstDay.count === 1 ? '' : 's'}`,
     });
   } else {
     items.push({ label: 'Worst day', value: 'Not enough data yet' });
@@ -198,50 +201,41 @@ function statsSubtitle(payload) {
 function calendarSubtitle(dailyPayload) {
   let total = 0;
   for (const d of dailyPayload?.days ?? []) {
-    total += (d.train_count || 0) + (d.bus_count || 0);
+    total += (d.metro_count || 0) + (d.bus_count || 0) + (d.rail_count || 0);
   }
   const span = (dailyPayload?.days ?? []).length;
   if (total === 0) return 'Daily incident heatmap';
   return `${total} incident${total === 1 ? '' : 's'} across ${span} day${span === 1 ? '' : 's'}`;
 }
 
-// Compute which train lines and bus routes currently have an active
-// disruption (alert or observation that hasn't resolved). The OG card
-// switches into an "Active disruption" variant for those, so a shared
-// link surfaces the in-progress state instead of a stale-looking card.
+// Compute which Metro lines, bus routes, and Regional Rail lines currently have
+// an active disruption (alert or observation that hasn't resolved). The OG card
+// switches into an "Active disruption" variant for those, so a shared link
+// surfaces the in-progress state instead of a stale-looking card.
 function activeRoutesByKind(payload) {
-  const trains = new Set();
-  const buses = new Set();
+  const active = { metro: new Set(), bus: new Set(), rail: new Set() };
   for (const a of payload.officialRecords ?? []) {
-    if (!a.active) continue;
-    if (a.kind === 'train') for (const r of a.routes ?? []) trains.add(r);
-    else if (a.kind === 'bus') for (const r of a.routes ?? []) buses.add(String(r));
+    if (!a.active || !active[a.kind]) continue;
+    for (const r of a.routes ?? []) active[a.kind].add(String(r));
   }
   for (const o of payload.detectionRecords ?? []) {
-    if (!o.active || !o.line) continue;
-    if (o.kind === 'train') trains.add(o.line);
-    else if (o.kind === 'bus') buses.add(String(o.line));
+    if (!o.active || !o.line || !active[o.kind]) continue;
+    active[o.kind].add(String(o.line));
   }
-  return { trains, buses };
+  return active;
 }
+
+const busPill = (route) =>
+  `<span class="line-pill" style="background:#475569;color:#fff">${escHtml(busRouteDisplayId(route))}</span>`;
 
 // Build the list of line/route/station "pages" to render. Each item carries
 // everything the renderer needs: a stable slug for the cache key and output
 // path, the raw input fields, and the kind so we pick the right template.
-function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations: [] }) {
+function planPages(payload, dailyPayload) {
   const now = Date.now();
   const cutoff = now - WINDOW_DAYS * DAY_MS;
   const pages = [];
-  const { trains: activeTrains, buses: activeBuses } = activeRoutesByKind(payload);
-
-  // Active Metra lines (ungated) — drives the "Active disruption" card variant.
-  const activeMetra = new Set();
-  for (const a of metraFlat.officialRecords ?? []) {
-    if (a.active) for (const r of a.routes ?? []) activeMetra.add(r);
-  }
-  for (const o of metraFlat.detectionRecords ?? []) {
-    if (o.active && o.line) activeMetra.add(o.line);
-  }
+  const { metro: activeMetro, bus: activeBuses, rail: activeRail } = activeRoutesByKind(payload);
 
   // Calendar — singleton page. Always rendered so a fresh deploy never
   // ships without its share card. The grid HTML is computed up front and
@@ -255,8 +249,8 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
       outDir: resolve(DIST, 'calendar'),
       url: `${SITE}/calendar`,
       path: '/calendar',
-      ogTitle: '12-Month Calendar · Chicago Transit Alerts',
-      desc: 'A 12-month heatmap of daily CTA service alerts and bot-detected disruptions — archived on chicagotransitalerts.app.',
+      ogTitle: `12-Month Calendar · ${SITE_NAME}`,
+      desc: `A 12-month heatmap of daily SEPTA service alerts and detected disruptions — archived on ${SITE_HOST}.`,
       subtitle,
       gridHtml,
     });
@@ -273,8 +267,8 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
       outDir: resolve(DIST, 'compare'),
       url: `${SITE}/compare`,
       path: '/compare',
-      ogTitle: 'Compare CTA lines · Chicago Transit Alerts',
-      desc: 'Side-by-side reliability, signal mix, and resolution time for up to 3 CTA train lines or bus routes — archived on chicagotransitalerts.app.',
+      ogTitle: `Compare SEPTA lines · ${SITE_NAME}`,
+      desc: `Side-by-side reliability and resolution time for up to 3 SEPTA Metro lines, bus routes, or Regional Rail lines — archived on ${SITE_HOST}.`,
       subtitle: '',
     });
   }
@@ -286,19 +280,19 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
       outDir: resolve(DIST, 'accessibility'),
       url: `${SITE}/accessibility`,
       path: '/accessibility',
-      ogTitle: 'Accessibility · Chicago Transit Alerts',
-      desc: 'CTA and Metra elevator, escalator, entrance, and ADA outage status and recent station accessibility history — archived on chicagotransitalerts.app.',
+      ogTitle: `Accessibility · ${SITE_NAME}`,
+      desc: `SEPTA Metro and Regional Rail elevator outages and recent station accessibility history — archived on ${SITE_HOST}.`,
       subtitle:
-        'CTA and Metra elevator, escalator, entrance, and ADA outage status, archived separately from service disruptions.',
+        'SEPTA Metro and Regional Rail elevator outages, archived separately from service disruptions.',
     });
   }
 
-  // System-health pages — one card per mode (train / bus). Trains get the
-  // 8 brand-color line pills; buses get the top-N most-active route pills,
-  // capped so the card never overflows. Both share a single template.
+  // System-health pages — one card per mode (Metro / bus / Regional Rail).
+  // Metro gets the line-code pills; buses get service-category pills; Regional
+  // Rail gets its route codes. All share a single template.
   {
-    const trainPills = TRAIN_LINE_ORDER.map((lineId) => {
-      const info = TRAIN_LINES[lineId];
+    const metroPills = METRO_LINE_ORDER.map((lineId) => {
+      const info = METRO_LINES[lineId];
       if (!info) return '';
       return `<span class="pill" style="background:${info.color};color:${info.textColor}">${escHtml(info.label)}</span>`;
     }).join('');
@@ -307,7 +301,7 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
     // were the only ones covered — they're not; every route with recent
     // activity gets a row on the page. Categories convey the breadth of
     // the bus network without singling anyone out.
-    const BUS_CATEGORIES = ['Local', 'Express', 'Limited', 'Owl service'];
+    const BUS_CATEGORIES = ['City', 'Suburban', 'Express', 'Owl service'];
     const busPills = BUS_CATEGORIES.map(
       (label) =>
         `<span class="pill" style="background:#475569;color:#fff">${escHtml(label)}</span>`,
@@ -329,24 +323,23 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
 
     pages.push({
       kind: 'system',
-      mode: 'train',
-      slug: 'system-trains',
-      outDir: resolve(DIST, 'system', 'trains'),
-      url: `${SITE}/system/trains`,
-      path: '/system/trains',
-      ogTitle: 'Train system health · Chicago Transit Alerts',
-      desc: 'System-wide health for the L: active disruptions, per-line incident counts, disruption hours, and 30-day trends — archived on chicagotransitalerts.app.',
-      title: 'Train system health',
+      mode: 'metro',
+      slug: 'system-metro',
+      outDir: resolve(DIST, 'system', 'metro'),
+      url: `${SITE}/system/metro`,
+      path: '/system/metro',
+      ogTitle: `SEPTA Metro system health · ${SITE_NAME}`,
+      desc: `System-wide health for SEPTA Metro (subway, elevated, trolley, and Norristown lines): active disruptions, per-line incident counts, disruption hours, and 30-day trends — archived on ${SITE_HOST}.`,
+      title: 'SEPTA Metro system health',
       subtitle:
-        'All eight L lines at a glance — active disruptions, recent activity, and 30-day disruption time.',
-      pillHtml: trainPills,
-      // Trains: a wash of the L brand colors across the card, plus a
-      // vertical multi-stop bar mirroring the same palette so the card
-      // reads as "the L" at a glance.
+        'Every SEPTA Metro line at a glance — active disruptions, recent activity, and 30-day disruption time.',
+      pillHtml: metroPills,
+      // Metro: a wash of the line colors across the card, plus a vertical
+      // multi-stop bar mirroring the same palette.
       bgGradient:
-        'linear-gradient(120deg, rgba(198, 12, 48, 0.12) 0%, rgba(249, 70, 28, 0.10) 28%, rgba(0, 161, 222, 0.12) 55%, rgba(82, 35, 152, 0.12) 82%, rgba(0, 155, 58, 0.10) 100%)',
+        'linear-gradient(120deg, rgba(0, 151, 214, 0.12) 0%, rgba(242, 97, 0, 0.10) 28%, rgba(95, 36, 159, 0.10) 50%, rgba(90, 150, 10, 0.12) 75%, rgba(220, 46, 107, 0.10) 100%)',
       accentBar:
-        'linear-gradient(180deg, #C60C30 0%, #F9461C 18%, #62361B 32%, #009B3A 50%, #00A1DE 68%, #522398 82%, #E27EA6 92%, #F9E300 100%)',
+        'linear-gradient(180deg, #0097D6 0%, #F26100 22%, #5F249F 42%, #5A960A 62%, #FFD700 80%, #DC2E6B 100%)',
     });
     pages.push({
       kind: 'system',
@@ -355,8 +348,8 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
       outDir: resolve(DIST, 'system', 'buses'),
       url: `${SITE}/system/buses`,
       path: '/system/buses',
-      ogTitle: 'Bus system health · Chicago Transit Alerts',
-      desc: 'System-wide health for CTA buses: active disruptions, per-route incident counts, disruption hours, and 30-day trends — archived on chicagotransitalerts.app.',
+      ogTitle: `Bus system health · ${SITE_NAME}`,
+      desc: `System-wide health for SEPTA buses: active disruptions, per-route incident counts, disruption hours, and 30-day trends — archived on ${SITE_HOST}.`,
       title: 'Bus system health',
       subtitle:
         totalBusRoutes > 0
@@ -371,31 +364,30 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
       accentBar: 'linear-gradient(180deg, #334155 0%, #64748b 60%, #f97316 100%)',
     });
 
-    // Metra system card — the 11 lines as compact route-code pills (full names
-    // overflow). Palette washes a few Metra brand colors so the card reads as
-    // "Metra" at a glance.
-    const metraPills = METRA_LINE_ORDER.map((line) => {
-      const info = METRA_LINES[line];
+    // Regional Rail system card — the 13 lines as compact route-code pills
+    // (full names overflow). Regional Rail shares one brand color, so the card
+    // uses SEPTA's rail slate with a blue/orange wash.
+    const railPills = RAIL_LINE_ORDER.map((line) => {
+      const info = RAIL_LINES[line];
       if (!info) return '';
-      return `<span class="pill" style="background:${info.color};color:${info.textColor}">${escHtml(line.toUpperCase())}</span>`;
+      return `<span class="pill" style="background:${info.color};color:${info.textColor}">${escHtml(info.code)}</span>`;
     }).join('');
     pages.push({
       kind: 'system',
-      mode: 'metra',
-      slug: 'system-metra',
-      outDir: resolve(DIST, 'system', 'metra'),
-      url: `${SITE}/system/metra`,
-      path: '/system/metra',
-      ogTitle: 'Metra system health · Chicago Transit Alerts',
-      desc: 'System-wide health for Metra commuter rail: active disruptions, per-line cancellations and delays, and 30-day trends — archived on chicagotransitalerts.app.',
-      title: 'Metra system health',
+      mode: 'rail',
+      slug: 'system-rail',
+      outDir: resolve(DIST, 'system', 'rail'),
+      url: `${SITE}/system/rail`,
+      path: '/system/rail',
+      ogTitle: `Regional Rail system health · ${SITE_NAME}`,
+      desc: `System-wide health for SEPTA Regional Rail: active disruptions, per-line cancellations and delays, and 30-day trends — archived on ${SITE_HOST}.`,
+      title: 'Regional Rail system health',
       subtitle:
-        'Every Metra line at a glance — active disruptions, cancellations, and delays over the last 30 days.',
-      pillHtml: metraPills,
+        'Every Regional Rail line at a glance — active disruptions, cancellations, and delays over the last 30 days.',
+      pillHtml: railPills,
       bgGradient:
-        'linear-gradient(120deg, rgba(0, 128, 0, 0.12) 0%, rgba(235, 92, 0, 0.10) 30%, rgba(224, 36, 0, 0.10) 55%, rgba(0, 66, 168, 0.12) 80%, rgba(255, 230, 0, 0.10) 100%)',
-      accentBar:
-        'linear-gradient(180deg, #29C233 0%, #EB5C00 22%, #E02400 42%, #9785BC 60%, #0042A8 78%, #FFE600 100%)',
+        'linear-gradient(120deg, rgba(79, 117, 139, 0.16) 0%, rgba(0, 151, 214, 0.10) 50%, rgba(242, 97, 0, 0.08) 100%)',
+      accentBar: 'linear-gradient(180deg, #4F758B 0%, #0097D6 60%, #F26100 100%)',
     });
   }
 
@@ -416,8 +408,8 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
     outDir: resolve(DIST, 'stats'),
     url: `${SITE}/stats`,
     path: '/stats',
-    ogTitle: 'Stats · Chicago Transit Alerts',
-    desc: 'Worst days, hours, stations, and longest incidents on the CTA — archived on chicagotransitalerts.app.',
+    ogTitle: `Stats · ${SITE_NAME}`,
+    desc: `Worst days, hours, stations, and longest incidents on SEPTA — archived on ${SITE_HOST}.`,
     subtitle: statsSubtitle(payload),
     statsHtml,
   });
@@ -425,14 +417,17 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
   // Directory index pages (/stations, /routes) — singletons backed by the
   // static roster, so they always render. They're the canonical A–Z entry
   // points into every station/line/route page, hence their own share cards
-  // rather than the generic homepage one. Pills wash the L palette so the card
-  // reads as "the whole system".
-  const indexTrainPills = TRAIN_LINE_ORDER.map((lineId) => {
-    const info = TRAIN_LINES[lineId];
+  // rather than the generic homepage one. Pills wash the Metro palette so the
+  // card reads as "the whole system".
+  const indexMetroPills = METRO_LINE_ORDER.map((lineId) => {
+    const info = METRO_LINES[lineId];
     if (!info) return '';
     return `<span class="pill" style="background:${info.color};color:${info.textColor}">${escHtml(info.label)}</span>`;
   }).join('');
   const busRouteCount = Object.keys(BUS_ROUTE_NAMES).length;
+  const railStationCount = new Set(
+    Object.values(railStations).flatMap((list) => list.map((st) => st.name)),
+  ).size;
   pages.push({
     kind: 'index',
     slug: 'stations-index',
@@ -440,10 +435,10 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
     url: `${SITE}/stations`,
     path: '/stations',
     title: 'All stations',
-    ogTitle: 'All stations · Chicago Transit Alerts',
-    desc: `A–Z index of all ${trainStations.length} CTA 'L' stations, each linking to its service-alert and disruption history — archived on chicagotransitalerts.app.`,
-    subtitle: `Every CTA 'L' station, A–Z — ${trainStations.length} stops across the eight lines, each with its full alert history.`,
-    pillHtml: indexTrainPills,
+    ogTitle: `All stations · ${SITE_NAME}`,
+    desc: `A–Z index of SEPTA Metro and Regional Rail stations, each linking to its service-alert and disruption history — archived on ${SITE_HOST}.`,
+    subtitle: `Every SEPTA Metro and Regional Rail station, A–Z — ${metroStations.length} Metro stops and ${railStationCount} rail stations, each with its alert history.`,
+    pillHtml: indexMetroPills,
   });
   pages.push({
     kind: 'index',
@@ -452,12 +447,12 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
     url: `${SITE}/routes`,
     path: '/routes',
     title: 'All routes',
-    ogTitle: 'All routes · Chicago Transit Alerts',
-    desc: `Index of every CTA train line and bus route, each linking to its service-alert and disruption history — archived on chicagotransitalerts.app.`,
-    subtitle: `Every CTA line and route in one place — 8 train lines and ${busRouteCount} bus routes, each with its full alert history.`,
+    ogTitle: `All routes · ${SITE_NAME}`,
+    desc: `Index of every SEPTA Metro line, bus route, and Regional Rail line, each linking to its service-alert and disruption history — archived on ${SITE_HOST}.`,
+    subtitle: `Every SEPTA line and route in one place — ${METRO_LINE_ORDER.length} Metro lines, ${busRouteCount} bus routes, and ${RAIL_LINE_ORDER.length} Regional Rail lines.`,
     pillHtml:
-      indexTrainPills +
-      ['Local', 'Express', 'Limited', 'Owl service']
+      indexMetroPills +
+      ['Bus', 'Regional Rail']
         .map(
           (label) =>
             `<span class="pill" style="background:#475569;color:#fff">${escHtml(label)}</span>`,
@@ -465,11 +460,13 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
         .join(''),
   });
 
-  // Train lines: always all of them — small stable set, deserves full coverage.
-  for (const lineId of TRAIN_LINE_ORDER) {
-    const info = TRAIN_LINES[lineId];
+  // SEPTA Metro lines: always all of them — small stable set, deserves full
+  // coverage. The pill carries the line code ("L1"); the line name goes in the
+  // headline slot.
+  for (const lineId of METRO_LINE_ORDER) {
+    const info = METRO_LINES[lineId];
     if (!info) continue;
-    const active = activeTrains.has(lineId);
+    const active = activeMetro.has(lineId);
     pages.push({
       kind: 'line',
       slug: `line-${lineId}`,
@@ -477,39 +474,38 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
       url: `${SITE}/line/${lineId}`,
       path: `/line/${lineId}`,
       feedPath: `/feed/line/${lineId}.xml`,
-      label: `${info.label} Line`,
-      // Train pill already says "Red Line"; an additional headline would
-      // be redundant. Leave the title empty so the template hides it.
-      title: '',
-      ogTitle: `${info.label} Line · Chicago Transit Alerts`,
-      desc: `Service alerts and bot-detected disruptions on the ${info.label} Line — archived on chicagotransitalerts.app.`,
+      label: info.label,
+      crumbLabel: metroLineFullName(lineId),
+      title: info.name,
+      ogTitle: `${metroLineFullName(lineId)} · ${SITE_NAME}`,
+      desc: `Service alerts and detected disruptions on SEPTA Metro's ${metroLineFullName(lineId)} — archived on ${SITE_HOST}.`,
       subtitle: active
         ? 'Active disruption right now — see live status.'
-        : 'Service alerts and bot-detected disruptions, archived.',
+        : 'Service alerts and disruptions, archived.',
       accent: { color: info.color, soft: softColor(info.color, 0.22), text: info.textColor },
       active,
     });
   }
 
-  // Metra lines — stable set of 11, always rendered. The pill carries the short
-  // route code (UP-N) and the full line name goes in the headline slot, since
-  // Metra's full names ("Union Pacific Northwest") are too long for the pill.
-  for (const lineId of METRA_LINE_ORDER) {
-    const info = METRA_LINES[lineId];
+  // Regional Rail lines — stable set of 13, always rendered. The pill carries
+  // SEPTA's three-letter code (PAO) and the full line name goes in the headline
+  // slot, since names like "Manayunk/Norristown" are too long for the pill.
+  for (const lineId of RAIL_LINE_ORDER) {
+    const info = RAIL_LINES[lineId];
     if (!info) continue;
-    const active = activeMetra.has(lineId);
+    const active = activeRail.has(lineId);
     pages.push({
       kind: 'line',
-      slug: `metra-line-${lineId}`,
-      outDir: resolve(DIST, 'metra', 'line', lineId),
-      url: `${SITE}/metra/line/${lineId}`,
-      path: `/metra/line/${lineId}`,
-      feedPath: `/feed/metra/line/${lineId}.xml`,
-      label: lineId.toUpperCase(),
-      crumbLabel: `${info.label} (Metra)`,
-      title: info.label,
-      ogTitle: `${info.label} · Metra · Chicago Transit Alerts`,
-      desc: `Cancellations, delays, and service alerts on the Metra ${info.label} line — archived on chicagotransitalerts.app.`,
+      slug: `rail-line-${lineId}`,
+      outDir: resolve(DIST, 'rail', 'line', lineId),
+      url: `${SITE}/rail/line/${lineId}`,
+      path: `/rail/line/${lineId}`,
+      feedPath: `/feed/rail/line/${lineId}.xml`,
+      label: info.code,
+      crumbLabel: railLineFullName(lineId),
+      title: railLineFullName(lineId),
+      ogTitle: `${railLineFullName(lineId)} · Regional Rail · ${SITE_NAME}`,
+      desc: `Cancellations, delays, and service alerts on SEPTA Regional Rail's ${railLineFullName(lineId)} — archived on ${SITE_HOST}.`,
       subtitle: active
         ? 'Active disruption right now — see live status.'
         : 'Cancellations, delays, and service alerts, archived.',
@@ -528,13 +524,14 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
     if (a.kind !== 'bus' || a.first_seen_ts < cutoff) continue;
     for (const r of a.routes || []) busRoutes.add(r);
   }
-  for (const route of [...busRoutes].sort()) {
-    const name = BUS_ROUTE_NAMES[route] ?? BUS_ROUTE_NAMES[String(route)];
-    // Pill stays compact ("#10") so it doesn't overflow with long CTA route
-    // names like "Obama Presidential Center/Museum of Science & Industry".
+  for (const route of [...busRoutes].map(String).sort(compareBusRoutes)) {
+    const name = BUS_ROUTE_NAMES[route];
+    const display = busRouteDisplayId(route);
+    // Pill stays compact ("17") so it doesn't overflow with long SEPTA route
+    // names like "Frankford Transportation Center to Plymouth Meeting Mall".
     // The full name lives in the title slot underneath, where it can wrap
     // and clamp gracefully.
-    const ogLabel = name ? `#${route} ${name}` : `#${route}`;
+    const ogLabel = name ? `Route ${display} (${name})` : `Route ${display}`;
     const active = activeBuses.has(String(route));
     pages.push({
       kind: 'route',
@@ -543,19 +540,20 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
       url: `${SITE}/route/${route}`,
       path: `/route/${route}`,
       feedPath: `/feed/route/${route}.xml`,
-      label: `#${route}`,
+      label: display,
+      crumbLabel: `Route ${display}`,
       title: name ?? '',
-      ogTitle: `${ogLabel} · Chicago Transit Alerts`,
-      desc: `Service alerts and bot-detected disruptions on the ${ogLabel} bus route — archived on chicagotransitalerts.app.`,
+      ogTitle: `${ogLabel} · ${SITE_NAME}`,
+      desc: `Service alerts and detours on SEPTA bus ${ogLabel} — archived on ${SITE_HOST}.`,
       subtitle: active
         ? 'Active disruption right now — see live status.'
-        : 'Service alerts and bot-detected disruptions, archived.',
+        : 'Service alerts and detours, archived.',
       accent: BUS_ACCENT,
       active,
     });
   }
 
-  // Day pages — every Chicago calendar day in the rolling window that had at
+  // Day pages — every Philadelphia calendar day in the rolling window that had at
   // least one incident. Skipped when the merge step yields nothing for that
   // day, so a zero-incident day doesn't claim a share card.
   const DAY_PRERENDER_WINDOW_DAYS = 30;
@@ -563,21 +561,22 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
     payload.officialRecords ?? [],
     payload.detectionRecords ?? [],
   );
-  const daysWithIncidents = new Map(); // dayUtc → { trainLines: Set, busRoutes: Set, count }
+  const daysWithIncidents = new Map(); // dayUtc → { metroLines, busRoutes, railLines, count }
   function bumpDay(ts, kind, routes) {
     if (ts == null) return;
-    const day = chicagoDayUTC(ts);
-    if (day < chicagoDayUTC(now) - (DAY_PRERENDER_WINDOW_DAYS - 1) * DAY_MS) return;
-    if (day > chicagoDayUTC(now)) return;
+    const day = phillyDayUTC(ts);
+    if (day < phillyDayUTC(now) - (DAY_PRERENDER_WINDOW_DAYS - 1) * DAY_MS) return;
+    if (day > phillyDayUTC(now)) return;
     let entry = daysWithIncidents.get(day);
     if (!entry) {
-      entry = { trainLines: new Set(), busRoutes: new Set(), count: 0 };
+      entry = { metroLines: new Set(), busRoutes: new Set(), railLines: new Set(), count: 0 };
       daysWithIncidents.set(day, entry);
     }
     entry.count += 1;
     for (const r of routes ?? []) {
-      if (kind === 'train') entry.trainLines.add(r);
+      if (kind === 'metro') entry.metroLines.add(r);
       else if (kind === 'bus') entry.busRoutes.add(String(r));
+      else if (kind === 'rail') entry.railLines.add(r);
     }
   }
   for (const m of merged) bumpDay(m.first_seen_ts, m.kind, m.routes);
@@ -588,21 +587,24 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
     const d = new Date(dayUtc);
     const isoDate = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
     const pillHtml = [
-      ...[...entry.trainLines]
+      ...[...entry.metroLines]
         .map((line) => {
-          const info = TRAIN_LINES[line];
+          const info = METRO_LINES[line];
           if (!info) return null;
           return `<span class="line-pill" style="background:${info.color};color:${info.textColor}">${escHtml(info.label)}</span>`;
         })
         .filter(Boolean),
-      ...[...entry.busRoutes]
-        .sort()
-        .slice(0, 8)
-        .map(
-          (route) =>
-            `<span class="line-pill" style="background:#475569;color:#fff">#${escHtml(route)}</span>`,
-        ),
+      ...[...entry.busRoutes].sort(compareBusRoutes).slice(0, 8).map(busPill),
+      ...[...entry.railLines]
+        .map((line) => {
+          const info = RAIL_LINES[line];
+          if (!info) return null;
+          return `<span class="line-pill" style="background:${info.color};color:${info.textColor}">${escHtml(info.code)}</span>`;
+        })
+        .filter(Boolean)
+        .slice(0, 6),
     ].join('');
+    const lineCount = entry.metroLines.size + entry.busRoutes.size + entry.railLines.size;
     pages.push({
       kind: 'day',
       slug: `day-${isoDate}`,
@@ -610,10 +612,10 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
       url: `${SITE}/day/${isoDate}`,
       path: `/day/${isoDate}`,
       dayUtc,
-      ogTitle: `${formatChicagoDay(dayUtc)} · Chicago Transit Alerts`,
-      desc: `CTA service alerts and bot-detected disruptions on ${formatChicagoDay(dayUtc)} — archived on chicagotransitalerts.app.`,
-      title: formatChicagoDay(dayUtc),
-      subtitle: `${entry.count} incident${entry.count === 1 ? '' : 's'} across ${entry.trainLines.size + entry.busRoutes.size} line${entry.trainLines.size + entry.busRoutes.size === 1 ? '' : 's'}/route${entry.trainLines.size + entry.busRoutes.size === 1 ? '' : 's'}`,
+      ogTitle: `${formatPhillyDay(dayUtc)} · ${SITE_NAME}`,
+      desc: `SEPTA service alerts and detected disruptions on ${formatPhillyDay(dayUtc)} — archived on ${SITE_HOST}.`,
+      title: formatPhillyDay(dayUtc),
+      subtitle: `${entry.count} incident${entry.count === 1 ? '' : 's'} across ${lineCount} line${lineCount === 1 ? '' : 's'}/route${lineCount === 1 ? '' : 's'}`,
       pillHtml,
     });
   }
@@ -626,18 +628,19 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
     return summary.mostAffected
       .slice(0, 8)
       .map((m) => {
-        if (m.kind === 'train') {
-          const info = TRAIN_LINES[m.id];
+        if (m.kind === 'metro' || m.kind === 'rail') {
+          const info = m.kind === 'metro' ? METRO_LINES[m.id] : RAIL_LINES[m.id];
           if (!info) return null;
-          return `<span class="line-pill" style="background:${info.color};color:${info.textColor}">${escHtml(info.label)}</span>`;
+          const label = m.kind === 'metro' ? info.label : info.code;
+          return `<span class="line-pill" style="background:${info.color};color:${info.textColor}">${escHtml(label)}</span>`;
         }
-        return `<span class="line-pill" style="background:#475569;color:#fff">#${escHtml(m.id)}</span>`;
+        return busPill(m.id);
       })
       .filter(Boolean)
       .join('');
   }
   for (const weekStartUtc of weeks) {
-    const iso = chicagoDayIsoUTC(weekStartUtc);
+    const iso = phillyDayIsoUTC(weekStartUtc);
     const range = formatWeekRange(weekStartUtc, { year: true });
     const summary = buildWeekSummary(
       payload.officialRecords ?? [],
@@ -645,21 +648,22 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
       weekStartUtc,
       now,
     );
+    const modeSplit = `${summary.metroCount} Metro, ${summary.busCount} bus, ${summary.railCount} Regional Rail`;
     const subtitle =
       summary.total === 0
         ? 'No incidents started this week'
-        : `${summary.total} incident${summary.total === 1 ? '' : 's'} · ${summary.trainCount} train, ${summary.busCount} bus`;
+        : `${summary.total} incident${summary.total === 1 ? '' : 's'} · ${modeSplit}`;
     const desc =
       summary.total === 0
-        ? `Service alerts and bot-detected disruptions on the CTA for the week of ${range} (Sunday–Saturday) — archived on chicagotransitalerts.app.`
-        : `${summary.total} CTA incident${summary.total === 1 ? '' : 's'} during the week of ${range} (Sunday–Saturday) — ${summary.trainCount} train, ${summary.busCount} bus. Archived on chicagotransitalerts.app.`;
+        ? `Service alerts and detected disruptions on SEPTA for the week of ${range} (Sunday–Saturday) — archived on ${SITE_HOST}.`
+        : `${summary.total} SEPTA incident${summary.total === 1 ? '' : 's'} during the week of ${range} (Sunday–Saturday) — ${modeSplit}. Archived on ${SITE_HOST}.`;
     const common = {
       kind: 'week',
       weekStartUtc,
       title: `Week of ${range}`,
       subtitle,
       pillHtml: weekPillsHtml(summary),
-      ogTitle: `Week of ${range} · Chicago Transit Alerts`,
+      ogTitle: `Week of ${range} · ${SITE_NAME}`,
       desc,
     };
     pages.push({
@@ -689,7 +693,7 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
   for (const [slug, rec] of [...stationIndex].sort((a, b) => a[0].localeCompare(b[0]))) {
     const linePills = rec.lines
       .map((line) => {
-        const info = TRAIN_LINES[line];
+        const info = METRO_LINES[line];
         if (!info) return null;
         return `<span class="line-pill" style="background:${info.color};color:${info.textColor}">${escHtml(info.label)}</span>`;
       })
@@ -703,44 +707,42 @@ function planPages(payload, dailyPayload, metraFlat = { alerts: [], observations
       path: `/station/${slug}`,
       stationName: rec.name,
       linePills,
-      ogTitle: `${rec.name} · Chicago Transit Alerts`,
-      desc: `Service alerts and bot-detected disruptions at ${rec.name} — archived on chicagotransitalerts.app.`,
-      subtitle: `Train station · ${rec.count} incident${rec.count === 1 ? '' : 's'} on record (90d)`,
+      ogTitle: `${rec.name} · SEPTA Metro · ${SITE_NAME}`,
+      desc: `Service alerts and detected disruptions at ${rec.name} on SEPTA Metro — archived on ${SITE_HOST}.`,
+      subtitle: `SEPTA Metro station · ${rec.count} incident${rec.count === 1 ? '' : 's'} on record (90d)`,
     });
   }
 
-  // Metra stations — same card, built from the Metra incident index (metraFlat,
-  // since the CTA payload above has Metra stripped). They live under the
-  // /metra/station/ namespace, so applyDisclaimer's path check gives them the
-  // Metra disclaimer automatically.
-  const metraStationIndex = buildMetraStationIndex(
-    metraFlat.officialRecords,
-    metraFlat.detectionRecords,
+  // Regional Rail stations — same card, built from the Regional Rail station
+  // index. They live under the /rail/station/ namespace.
+  const railStationIndex = buildRailStationIndex(
+    payload.officialRecords,
+    payload.detectionRecords,
     {
       now,
       windowDays: WINDOW_DAYS,
     },
   );
-  for (const [slug, rec] of [...metraStationIndex].sort((a, b) => a[0].localeCompare(b[0]))) {
+  for (const [slug, rec] of [...railStationIndex].sort((a, b) => a[0].localeCompare(b[0]))) {
     const linePills = rec.lines
       .map((line) => {
-        const info = METRA_LINES[line];
+        const info = RAIL_LINES[line];
         if (!info) return null;
-        return `<span class="line-pill" style="background:${info.color};color:${info.textColor}">${escHtml(info.label)}</span>`;
+        return `<span class="line-pill" style="background:${info.color};color:${info.textColor}">${escHtml(info.code)}</span>`;
       })
       .filter(Boolean)
       .join('');
     pages.push({
       kind: 'station',
-      slug: `metra-station-${slug}`,
-      outDir: resolve(DIST, 'metra', 'station', slug),
-      url: `${SITE}/metra/station/${slug}`,
-      path: `/metra/station/${slug}`,
+      slug: `rail-station-${slug}`,
+      outDir: resolve(DIST, 'rail', 'station', slug),
+      url: `${SITE}/rail/station/${slug}`,
+      path: `/rail/station/${slug}`,
       stationName: rec.name,
       linePills,
-      ogTitle: `${rec.name} · Metra · Chicago Transit Alerts`,
-      desc: `Metra cancellations, delays, and service alerts at ${rec.name} — archived on chicagotransitalerts.app.`,
-      subtitle: `Metra station · ${rec.count} incident${rec.count === 1 ? '' : 's'} on record (90d)`,
+      ogTitle: `${rec.name} · Regional Rail · ${SITE_NAME}`,
+      desc: `SEPTA Regional Rail cancellations, delays, and service alerts at ${rec.name} — archived on ${SITE_HOST}.`,
+      subtitle: `Regional Rail station · ${rec.count} incident${rec.count === 1 ? '' : 's'} on record (90d)`,
     });
   }
 
@@ -867,17 +869,8 @@ function buildHtmlStub(shell, page) {
 const ACTIVE_RIBBON_HTML =
   '<div class="active-ribbon"><span class="dot"></span>Active disruption</div>';
 
-// Swap the static "…with the CTA" disclaimer to "…with Metra" on Metra cards,
-// keeping the shared templates otherwise untouched.
-function applyDisclaimer(html, page) {
-  if (page.path?.startsWith('/metra/') || page.mode === 'metra') {
-    return html.replace('Not affiliated with the CTA', 'Not affiliated with Metra');
-  }
-  return html;
-}
-
 function fillLineTemplate(tpl, page) {
-  const html = tpl
+  return tpl
     .replaceAll('__ACCENT__', page.accent.color)
     .replaceAll('__ACCENT_SOFT__', page.accent.soft)
     .replaceAll('__ACCENT_TEXT__', page.accent.text)
@@ -886,16 +879,14 @@ function fillLineTemplate(tpl, page) {
     .replaceAll('__SUBTITLE__', escHtml(page.subtitle))
     .replaceAll('__PATH__', escHtml(page.path))
     .replaceAll('__ACTIVE_RIBBON__', page.active ? ACTIVE_RIBBON_HTML : '');
-  return applyDisclaimer(html, page);
 }
 
 function fillStationTemplate(tpl, page) {
-  const html = tpl
+  return tpl
     .replaceAll('__STATION_NAME__', escHtml(page.stationName))
     .replaceAll('__LINE_PILLS__', page.linePills)
     .replaceAll('__SUBTITLE__', escHtml(page.subtitle))
     .replaceAll('__PATH__', escHtml(page.path));
-  return applyDisclaimer(html, page);
 }
 
 function fillCalendarTemplate(tpl, page) {
@@ -922,14 +913,13 @@ function fillAccessibilityTemplate(tpl, page) {
 }
 
 function fillSystemTemplate(tpl, page) {
-  const html = tpl
+  return tpl
     .replaceAll('__BG_GRADIENT__', page.bgGradient)
     .replaceAll('__ACCENT_BAR__', page.accentBar)
     .replaceAll('__TITLE__', escHtml(page.title))
     .replaceAll('__SUBTITLE__', escHtml(page.subtitle))
     .replaceAll('__PILLS__', page.pillHtml)
     .replaceAll('__PATH__', escHtml(page.path));
-  return applyDisclaimer(html, page);
 }
 
 // Directory-index card shares the system card's TITLE/SUBTITLE/PILLS/PATH
@@ -1009,9 +999,6 @@ function signatureFor(page, templateHash) {
       active: !!page.active,
     };
   }
-  // The Metra disclaimer swap (applyDisclaimer) changes the rendered PNG without
-  // touching any field above, so fold it into the signature to bust the cache.
-  if (page.path?.startsWith('/metra/') || page.mode === 'metra') payload.disc = 'metra';
   h.update(JSON.stringify({ ...payload, templateHash }));
   return h.digest('hex');
 }
@@ -1043,32 +1030,23 @@ async function main() {
     return;
   }
   const raw = JSON.parse(readFileSync(DATA, 'utf8'));
-  // The CTA aggregates (stats, calendar, day/week, system trains/buses) read the
-  // gated payload — gateIncidents is CTA-only in Node, so Metra is stripped from
-  // those cards. Metra's own roster cards (line pages + /system/metra) are driven
-  // by this separate ungated slice so they can show the active-disruption variant.
-  const allIncidents = raw.incidents || [];
-  const metraFlat = incidentRecords(allIncidents.filter((inc) => legacyKind(inc) === 'metra'));
-  raw.incidents = gateIncidents(allIncidents);
   const payload = { ...raw, ...incidentRecords(raw.incidents || []) };
   // daily-counts.json is optional — if it's missing (e.g. during a build
   // before the cron has dropped one in), skip the calendar OG card rather
   // than failing the whole step.
   const dailyPayload = existsSync(DAILY_DATA) ? JSON.parse(readFileSync(DAILY_DATA, 'utf8')) : null;
   const shell = readFileSync(SHELL, 'utf8');
-  const lineTpl = readFileSync(LINE_TPL, 'utf8');
-  const stationTpl = readFileSync(STATION_TPL, 'utf8');
-  const calendarTpl = existsSync(CALENDAR_TPL) ? readFileSync(CALENDAR_TPL, 'utf8') : null;
-  const statsTpl = existsSync(STATS_TPL) ? readFileSync(STATS_TPL, 'utf8') : null;
-  const compareTpl = existsSync(COMPARE_TPL) ? readFileSync(COMPARE_TPL, 'utf8') : null;
-  const accessibilityTpl = existsSync(ACCESSIBILITY_TPL)
-    ? readFileSync(ACCESSIBILITY_TPL, 'utf8')
-    : null;
+  const lineTpl = readTemplate(LINE_TPL);
+  const stationTpl = readTemplate(STATION_TPL);
+  const calendarTpl = existsSync(CALENDAR_TPL) ? readTemplate(CALENDAR_TPL) : null;
+  const statsTpl = existsSync(STATS_TPL) ? readTemplate(STATS_TPL) : null;
+  const compareTpl = existsSync(COMPARE_TPL) ? readTemplate(COMPARE_TPL) : null;
+  const accessibilityTpl = existsSync(ACCESSIBILITY_TPL) ? readTemplate(ACCESSIBILITY_TPL) : null;
   // DAY_TPL is required (ships in the repo). Treat like LINE_TPL/STATION_TPL.
-  const dayTpl = readFileSync(DAY_TPL, 'utf8');
-  const weekTpl = readFileSync(WEEK_TPL, 'utf8');
-  const systemTpl = readFileSync(SYSTEM_TPL, 'utf8');
-  const indexTpl = readFileSync(INDEX_TPL, 'utf8');
+  const dayTpl = readTemplate(DAY_TPL);
+  const weekTpl = readTemplate(WEEK_TPL);
+  const systemTpl = readTemplate(SYSTEM_TPL);
+  const indexTpl = readTemplate(INDEX_TPL);
   const lineHash = createHash('sha256').update(lineTpl).digest('hex').slice(0, 16);
   const stationHash = createHash('sha256').update(stationTpl).digest('hex').slice(0, 16);
   const calendarHash = calendarTpl
@@ -1088,7 +1066,7 @@ async function main() {
   const systemHash = createHash('sha256').update(systemTpl).digest('hex').slice(0, 16);
   const indexHash = createHash('sha256').update(indexTpl).digest('hex').slice(0, 16);
 
-  const pages = planPages(payload, dailyPayload, metraFlat);
+  const pages = planPages(payload, dailyPayload);
   if (pages.length === 0) {
     console.log('prerender-pages: nothing to render');
     return;
@@ -1146,7 +1124,7 @@ async function main() {
   const cached = pages.length - renders.length;
 
   if (renders.length > 0) {
-    const browser = await chromium.launch();
+    const browser = await launchChromium();
     const ctx = await browser.newContext({
       viewport: { width: 1200, height: 630 },
       deviceScaleFactor: 1,

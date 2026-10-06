@@ -16,30 +16,30 @@ const defaultProps = {
 };
 
 describe('Filters', () => {
-  it('renders all train line buttons', () => {
+  it('renders all Metro line buttons', () => {
     render(<Filters {...defaultProps} />);
-    expect(screen.getByText('Red')).toBeInTheDocument();
-    expect(screen.getByText('Yellow')).toBeInTheDocument();
+    expect(screen.getByText('L1')).toBeInTheDocument();
+    expect(screen.getByText('D2')).toBeInTheDocument();
   });
 
   it('calls onLinesChange when a line is toggled', async () => {
     const onLinesChange = vi.fn();
     render(<Filters {...defaultProps} onLinesChange={onLinesChange} />);
-    await userEvent.click(screen.getByText('Red'));
+    await userEvent.click(screen.getByText('L1'));
     expect(onLinesChange).toHaveBeenCalled();
   });
 
-  it('hides all trains when Trains is clicked while trains are visible', async () => {
+  it('hides all Metro lines when Metro is clicked while they are visible', async () => {
     const onLinesChange = vi.fn();
     render(<Filters {...defaultProps} selectedLines={null} onLinesChange={onLinesChange} />);
-    await userEvent.click(screen.getByText('Trains'));
+    await userEvent.click(screen.getByText('Metro'));
     expect(onLinesChange).toHaveBeenCalledWith([]);
   });
 
-  it('shows all trains when Trains is clicked while trains are hidden', async () => {
+  it('shows all Metro lines when Metro is clicked while they are hidden', async () => {
     const onLinesChange = vi.fn();
     render(<Filters {...defaultProps} selectedLines={[]} onLinesChange={onLinesChange} />);
-    await userEvent.click(screen.getByText('Trains'));
+    await userEvent.click(screen.getByText('Metro'));
     expect(onLinesChange).toHaveBeenCalledWith(null);
   });
 

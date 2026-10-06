@@ -14,13 +14,13 @@ function fixture(kind, routes) {
 }
 
 describe('MiniTimeline day links', () => {
-  it('scopes a train day link to the line via ?lines=<line>', () => {
-    const { incident, incidents } = fixture('train', ['orange']);
+  it('scopes a Metro day link to the line via ?lines=<line>', () => {
+    const { incident, incidents } = fixture('metro', ['g1']);
     render(<MiniTimeline incident={incident} incidents={incidents} dark={false} />);
     const links = screen.getAllByRole('link');
     expect(links.length).toBeGreaterThan(0);
     for (const a of links) {
-      expect(a.getAttribute('href')).toMatch(/^\/day\/\d{4}-\d{2}-\d{2}\?lines=orange$/);
+      expect(a.getAttribute('href')).toMatch(/^\/day\/\d{4}-\d{2}-\d{2}\?lines=g1$/);
     }
   });
 
@@ -39,8 +39,8 @@ describe('MiniTimeline day links', () => {
     // A line with no incidents in the window renders only inert cells.
     const incident = v2Incident({
       id: 'evt',
-      kind: 'train',
-      routes: ['pink'],
+      kind: 'metro',
+      routes: ['d1'],
       first_seen_ts: Date.now(),
       cta: null,
     });

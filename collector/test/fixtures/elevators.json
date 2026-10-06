@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "elevators_out": 6,
+    "updated": "2026-10-05 19:50:49"
+  },
+  "results": [
+    {
+      "line": "Market Frankford Line",
+      "station": "8th-Market",
+      "elevator": "Eastbound (City of Philadelphia)",
+      "message": "No access to/from station",
+      "message_html": "<ul><li>No access to/from station</li></ul>",
+      "alternate_url": "https://www5.septa.org/about/accessibility/alternative-transportation/mfl-alternate/"
+    },
+    {
+      "line": "Market Frankford Line",
+      "station": "63rd St",
+      "elevator": "Westbound",
+      "message": "No access to/from westbound platform",
+      "message_html": "<ul><li>No access to/from westbound platform</li></ul>",
+      "alternate_url": "https://www5.septa.org/about/accessibility/alternative-transportation/mfl-alternate/"
+    },
+    {
+      "line": "Broad Street Subway / Broad Ridge Spur",
+      "station": "Broad-Girard",
+      "elevator": "Southbound Platform",
+      "message": "No access to/from southbound platform",
+      "message_html": "<ul><li>No access to/from southbound platform</li></ul>",
+      "alternate_url": "https://www5.septa.org/about/accessibility/alternative-transportation/bsl-alternate/"
+    },
+    {
+      "line": "Broad Street Subway / Broad Ridge Spur",
+      "station": "Race-Vine",
+      "elevator": "Street to Mezzanine",
+      "message": "No access to/from station",
+      "message_html": "<ul><li>No access to/from station</li></ul>",
+      "alternate_url": "https://www5.septa.org/about/accessibility/alternative-transportation/bsl-alternate/"
+    },
+    {
+      "line": "Broad Street Subway / Broad Ridge Spur",
+      "station": "Susquehanna-Dauphin",
+      "elevator": "Southbound",
+      "message": "No access to/from southbound platform",
+      "message_html": "<ul><li>No access to/from southbound platform</li></ul>",
+      "alternate_url": "https://www5.septa.org/about/accessibility/alternative-transportation/bsl-alternate/"
+    },
+    {
+      "line": "Norristown High Speed Line",
+      "station": "Norristown Transit Center",
+      "elevator": "NTC Terminal Elevator\r\n",
+      "message": "No access to/from station\r\n",
+      "message_html": "<ul><li>No access to/from station</li></ul>\r\n",
+      "alternate_url": "https://www5.septa.org/about/accessibility/alternative-transportation/norristown-alternate/"
+    }
+  ]
+}

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMediaQuery } from '../hooks/useMediaQuery.js';
-import { TRAIN_LINES } from '../lib/ctaLines.js';
 import { fetchEventTrack } from '../lib/eventTracks.js';
 import { hexToRgba } from '../lib/format.js';
 import { buildLineMap, sliceTrackBetween, terminalPointsFor } from '../lib/lineMap.js';
+import { METRO_LINES } from '../lib/metroLines.js';
 import { displayStationName, slugifyStation } from '../lib/stations.js';
 
-// Trains drop out of the CTA feed for short stretches constantly (layovers at
+// Trains drop out of SEPTA feed for short stretches constantly (layovers at
 // terminals, tunnels, missing predictions). We bridge gaps up to this long —
 // interpolating straight through, since the train really is still running —
 // because pulse-cold needs 15+ min of emptiness by definition, so an 8-min
@@ -29,7 +29,7 @@ function fmtClock(ms) {
   return new Date(ms).toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'America/Chicago',
+    timeZone: 'America/New_York',
   });
 }
 
@@ -99,17 +99,17 @@ function vehicleSample(v, t, reducedMotion = false) {
   return { lat, lon, opacity, fromLL: [a[1], a[2]], toLL: [b[1], b[2]] };
 }
 
-// CTA Loop center — the aim point for "toward the Loop"/"downtown" labels,
-// which name a destination area rather than a single terminus station.
-const LOOP_CENTER = [41.8807, -87.6298];
+// Center City (City Hall) — the aim point for "toward Center City"/"downtown"
+// labels, which name a destination area rather than a single terminus station.
+const DOWNTOWN_CENTER = [39.9524, -75.1636];
 
-// A train whose last sample lands within this many px of a terminus (or the
-// Loop, for round-trip lines) ran off the end of its line — a clean exit, not a
+// A train whose last sample lands within this many px of a terminus (or
+// Center City, where trolleys loop back) ran off the end of its line — a clean exit, not a
 // data dropout. Beyond it, a stream that ends mid-route before the incident
 // resolves is the feed losing the train; we mark that distinctly so it doesn't
 // read as a train that simply left.
 const TERMINUS_NEAR_PX = 20;
-const LOOP_NEAR_PX = 40;
+const DOWNTOWN_NEAR_PX = 40;
 // How long (playback seconds) a "signal lost" ghost lingers, fading, at the last
 // known spot after a mid-route disappearance.
 const LOST_SIGNAL_HOLD_SEC = 90;
@@ -131,7 +131,7 @@ function dotInBox(d, a, b, margin = 9) {
 }
 
 // "toward Midway" → slug for matching a terminus station. Returns null for
-// non-station phrasings like "toward the Loop" (caller just skips the arrow).
+// non-station phrasings like "toward Center City" (caller just skips the arrow).
 function terminusSlug(directionLabel) {
   const m = directionLabel?.match(/toward\s+(.+)$/i);
   return m ? slugifyStation(m[1].trim()) : null;
@@ -141,7 +141,7 @@ function terminusSlug(directionLabel) {
 // name. A lone station — or a well-separated pair — rides centered above its
 // dot, dropping below only to dodge the top edge so the text doesn't clip. Two
 // stations that sit close together would otherwise collide, so:
-//   • a vertical stack (e.g. Damen / Irving Park where the Brown Line bends)
+//   • a vertical stack (e.g. two stations where a line bends sharply)
 //     sets its labels *beside* the dots, like a real transit map — on the side
 //     opposite the direction arrow so the two don't collide — instead of
 //     stacked on top of the track;
@@ -157,7 +157,7 @@ function affectedLabelOffsets(affected, width, height, arrowSide = 0) {
     if (close && dy >= dx) {
       // Vertical stack: labels beside the dots, fanned outward (upper label up,
       // lower label down) so each clears a horizontal track arm at its own dot's
-      // level — e.g. Damen sits at the Brown Line's bend, so a label level with
+      // level — e.g. a station at a sharp bend, so a label level with
       // it would land on the westbound arm. Sit on the side opposite the arrow
       // if there is one; otherwise the side toward the map's center (the more
       // open margin). Anchor so the text grows into open canvas, clear of the
@@ -279,7 +279,7 @@ function arcLenOnPoly(px, py, poly) {
   return { s: bestS, d2: bestD };
 }
 
-// CTA train positions jitter — a train can report a position slightly *behind*
+// SEPTA train positions jitter — a train can report a position slightly *behind*
 // its last one, which the renderer would draw as a stutter backward. Drop those
 // regressions: express each sample as arc-length along the train's dominant
 // polyline and keep only samples that advance (within a small tolerance) in the
@@ -383,13 +383,13 @@ export default function EventReplay({ eventId, lineKey, fromStation, toStation, 
   const terminalPts = useMemo(() => (map ? terminalPointsFor(map, lineKey) : []), [map, lineKey]);
 
   // Trains whose track simply *ends* mid-route, before the clip does and away
-  // from any terminus or the Loop — i.e. the CTA feed lost them, they didn't
+  // from any terminus or Center City — i.e. the feed lost them, they didn't
   // leave service. We mark these with a brief fading "signal lost" ring at their
   // last spot (below), so a data dropout reads differently from a train that
   // cleanly reached the end of its run. Memoized per loaded track.
   const lostSignalVehicles = useMemo(() => {
     if (!track || !map || track.durSec <= 0) return [];
-    const loopPt = map.project(LOOP_CENTER[0], LOOP_CENTER[1]);
+    const downtownPt = map.project(DOWNTOWN_CENTER[0], DOWNTOWN_CENTER[1]);
     const out = [];
     for (const v of vehicles) {
       if (!v.s?.length) continue;
@@ -402,8 +402,8 @@ export default function EventReplay({ eventId, lineKey, fromStation, toStation, 
       const nearTerminus = terminalPts.some(
         (tp) => Math.hypot(tp.x - sn.x, tp.y - sn.y) <= TERMINUS_NEAR_PX,
       );
-      const nearLoop = Math.hypot(loopPt.x - sn.x, loopPt.y - sn.y) <= LOOP_NEAR_PX;
-      if (nearTerminus || nearLoop) continue; // clean exit — not a dropout
+      const nearDowntown = Math.hypot(downtownPt.x - sn.x, downtownPt.y - sn.y) <= DOWNTOWN_NEAR_PX;
+      if (nearTerminus || nearDowntown) continue; // clean exit — not a dropout
       out.push({ id: v.id, dir: v.dir, lastSec, x: sn.x, y: sn.y });
     }
     return out;
@@ -475,7 +475,7 @@ export default function EventReplay({ eventId, lineKey, fromStation, toStation, 
 
   if (status !== 'ready' || !map || !track) return null;
 
-  const info = TRAIN_LINES[lineKey];
+  const info = METRO_LINES[lineKey];
   const accent = info?.color ?? '#475569';
   const trackPaths = map.tracks
     .filter((tr) => tr.length >= 2)
@@ -563,9 +563,9 @@ export default function EventReplay({ eventId, lineKey, fromStation, toStation, 
   let targetPt = termSlug
     ? (map.stations.find((s) => slugifyStation(s.name) === termSlug) ?? null)
     : null;
-  // "toward the Loop"/"downtown" isn't a station — aim at the downtown end.
-  if (!targetPt && /loop|downtown/i.test(directionLabel ?? '')) {
-    targetPt = map.project(LOOP_CENTER[0], LOOP_CENTER[1]);
+  // "toward Center City"/"downtown" isn't a station — aim at the downtown end.
+  if (!targetPt && /center city|downtown/i.test(directionLabel ?? '')) {
+    targetPt = map.project(DOWNTOWN_CENTER[0], DOWNTOWN_CENTER[1]);
   }
   let directionArrow = null;
   let arrowSide = 0; // horizontal side the arrow took: -1 left, +1 right, 0 none

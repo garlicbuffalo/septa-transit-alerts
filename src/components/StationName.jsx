@@ -1,13 +1,13 @@
-import { isKnownMetraStationSlug } from '../lib/metraStations.js';
+import { isKnownRailStationSlug } from '../lib/railStations.js';
 import { displayStationName, isKnownStationSlug, slugifyStation } from '../lib/stations.js';
 import HighlightedText from './HighlightedText.jsx';
 
-// Render a station name. Becomes a link to /station/:slug (CTA) or
-// /metra/station/:slug (Metra) whenever the slug resolves to a known roster
+// Render a station name. Becomes a link to /station/:slug (SEPTA) or
+// /rail/station/:slug (Regional Rail) whenever the slug resolves to a known roster
 // station — even if there are no recent incidents in the window, the page itself
 // is still a useful destination. Falls back to plain text only when the slug
 // doesn't match the roster at all. `kind` selects which roster to check; pass the
-// incident's kind so a Metra station resolves against the Metra roster.
+// incident's kind so a Regional Rail station resolves against the Regional Rail roster.
 // When `searchQuery` is non-empty, matched substrings get wrapped in <mark>.
 export default function StationName({ name, kind, stationIndex: _stationIndex, searchQuery = '' }) {
   if (!name) return null;
@@ -18,9 +18,9 @@ export default function StationName({ name, kind, stationIndex: _stationIndex, s
   // distinct from /station/central-green.
   const display = displayStationName(name);
   const inner = <HighlightedText text={display} query={searchQuery} />;
-  const isMetra = kind === 'metra';
-  const known = slug && (isMetra ? isKnownMetraStationSlug(slug) : isKnownStationSlug(slug));
-  const href = isMetra ? `/metra/station/${slug}` : `/station/${slug}`;
+  const isRail = kind === 'rail';
+  const known = slug && (isRail ? isKnownRailStationSlug(slug) : isKnownStationSlug(slug));
+  const href = isRail ? `/rail/station/${slug}` : `/station/${slug}`;
   if (known) {
     // Dotted underline as a "this text is interactive" cue without going as
     // loud as full blue-link styling — these names appear inline inside

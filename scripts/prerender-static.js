@@ -10,11 +10,12 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SITE_NAME, SITE_ORIGIN } from '../src/lib/site.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, '..', 'dist');
 const SHELL = resolve(DIST, 'index.html');
-const SITE = 'https://chicagotransitalerts.app';
+const SITE = SITE_ORIGIN;
 
 function escAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -27,19 +28,19 @@ const PAGES = [
   {
     path: '/about',
     title: 'About',
-    desc: 'About Chicago Transit Alerts — an unofficial public archive of CTA service alerts and bot-detected disruptions, and where the data comes from.',
+    desc: `About ${SITE_NAME} — an unofficial public archive of SEPTA service alerts and detected disruptions, and where the data comes from.`,
   },
   {
     path: '/subscribe',
     title: 'Subscribe',
-    desc: 'Subscribe to CTA service-alert feeds — a global Atom/JSON feed plus a feed for every train line and bus route.',
+    desc: 'Subscribe to SEPTA service-alert feeds — a global Atom/JSON feed plus a feed for every SEPTA Metro line, bus route, and Regional Rail line.',
   },
   {
     path: '/privacy',
     title: 'Privacy',
-    desc: 'Privacy policy for Chicago Transit Alerts: no accounts, no cookies, no advertising, and only cookieless Cloudflare Web Analytics for aggregate page-view counts.',
+    desc: `Privacy policy for ${SITE_NAME}: no accounts, no cookies, no advertising, and no analytics.`,
   },
-  // Note: Metra line pages and /system/metra are prerendered by
+  // Note: Regional Rail line pages and /system/rail are prerendered by
   // prerender-pages.js (which runs before this step) with their own OG cards,
   // so they're intentionally NOT listed here — re-adding them would clobber
   // those richer stubs with the homepage-card variant.
@@ -49,7 +50,7 @@ const shell = readFileSync(SHELL, 'utf8');
 
 for (const page of PAGES) {
   const url = `${SITE}${page.path}`;
-  const title = `${page.title} · Chicago Transit Alerts`;
+  const title = `${page.title} · ${SITE_NAME}`;
   const html = shell
     .replace(/<title>[^<]*<\/title>/, `<title>${escHtml(title)}</title>`)
     .replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${escAttr(url)}" />`)

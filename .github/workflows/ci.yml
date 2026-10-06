@@ -35,12 +35,10 @@ jobs:
 
   # Smoke-build the site on every PR. `npm test`/`npm run lint` never exercise
   # `npm run build`, so a crash in the postbuild scripts (prerender-events,
-  # prerender-pages, generate-feed, generate-sitemap, generate-csv) used to slip
-  # through the gate and only surface in deploy.yml after merge — which can
-  # freeze the live site. This mirrors deploy.yml's build: prebuild fetches
-  # current data from the R2 origin into public/data, Vite copies it into
-  # dist/data, then postbuild runs every script against it, so any crash fails
-  # the PR instead of production.
+  # prerender-pages, generate-feed, generate-sitemap, generate-csv) would only
+  # surface in deploy.yml after merge — which can freeze the live site. The
+  # build runs against a data directory the collector builds from its test
+  # fixtures, so every postbuild script sees real-shaped incidents.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -81,4 +79,14 @@ jobs:
           restore-keys: |
             og-cache-
 
+      # Pinned to the fixtures' capture time (see collector/test/collector.test.js).
+      - name: Build sample data from the collector fixtures
+        run: >-
+          node collector/collect.js
+          --data-dir "$RUNNER_TEMP/sample-data"
+          --fixtures collector/test/fixtures
+          --now 1791244200000
+
       - run: npm run build
+        env:
+          DATA_DIR: ${{ runner.temp }}/sample-data

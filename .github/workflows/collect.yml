@@ -1,0 +1,90 @@
+name: Collect SEPTA data
+
+# One collector tick: poll SEPTA's alerts, TrainView, and elevator feeds, fold
+# them into the archive on the `data` branch, and redeploy the site when
+# something rider-visible changed (an incident opened, resolved, or was
+# edited, or an elevator went out or came back). deploy.yml's own schedule is
+# the catch-up net for everything else (running delay figures, timestamps).
+#
+# The `data` branch holds only the published data files (the collector's
+# state). It's rewritten as a single commit on every run, so the repository
+# doesn't accumulate a commit per tick; the monthly shards are the archive.
+#
+# GitHub may delay or skip scheduled runs under load; the collector is
+# idempotent, so a late tick just catches up.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      # The collector distills SEPTA's GTFS schedule into .collector-cache once
+      # a day; keep it between runs so most ticks skip the ~20 MB download.
+      - name: Date key
+        id: day
+        run: echo "day=$(TZ=America/New_York date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the schedule cache
+        uses: actions/cache@v5
+        with:
+          path: .collector-cache
+          key: collector-schedule-${{ steps.day.outputs.day }}
+          restore-keys: |
+            collector-schedule-
+
+      # The collector has no npm dependencies, so no `npm ci` here.
+      - name: Check out the data branch
+        run: |
+          if git ls-remote --exit-code --heads origin data >/dev/null; then
+            git fetch --depth=1 origin data
+            git worktree add --detach data-branch FETCH_HEAD
+          else
+            echo "No data branch yet — starting an empty archive."
+            git worktree add --orphan -b data data-branch
+          fi
+
+      - name: Collect
+        id: collect
+        run: |
+          set -o pipefail
+          node collector/collect.js --data-dir data-branch --cache-dir .collector-cache | tee collect-summary.json
+          echo "changed=$(jq -r '.changed // 0' collect-summary.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the data branch
+        working-directory: data-branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git rev-parse -q --verify HEAD >/dev/null && git diff --cached --quiet HEAD; then
+            echo "No data changes."
+            exit 0
+          fi
+          # Parentless commit, force-pushed: the branch is always one snapshot.
+          commit="$(git commit-tree "$(git write-tree)" -m "Data snapshot $(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+          git push --force origin "$commit:refs/heads/data"
+
+      - name: Redeploy the site
+        if: steps.collect.outputs.changed != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref "${{ github.event.repository.default_branch }}"

@@ -5,7 +5,7 @@ import Timeline from '../components/Timeline.jsx';
 const noop = () => {};
 
 describe('Timeline', () => {
-  it('renders a row for each train line', () => {
+  it('renders a row for each Metro line', () => {
     render(
       <Timeline
         alerts={[]}
@@ -15,8 +15,8 @@ describe('Timeline', () => {
         onLineClick={noop}
       />,
     );
-    expect(screen.getByText('Red')).toBeInTheDocument();
-    expect(screen.getByText('Yellow')).toBeInTheDocument();
+    expect(screen.getByText('L1')).toBeInTheDocument();
+    expect(screen.getByText('D2')).toBeInTheDocument();
   });
 
   it('only renders selected lines when a filter is active', () => {
@@ -24,21 +24,21 @@ describe('Timeline', () => {
       <Timeline
         alerts={[]}
         observations={[]}
-        selectedLines={['red']}
+        selectedLines={['l1']}
         numDays={30}
         onLineClick={noop}
       />,
     );
-    expect(screen.getByText('Red')).toBeInTheDocument();
-    expect(screen.queryByText('Blue')).not.toBeInTheDocument();
+    expect(screen.getByText('L1')).toBeInTheDocument();
+    expect(screen.queryByText('B1')).not.toBeInTheDocument();
   });
 
-  it('renders no train rows when selectedLines is empty array', () => {
+  it('renders no Metro rows when selectedLines is empty array', () => {
     render(
       <Timeline alerts={[]} observations={[]} selectedLines={[]} numDays={30} onLineClick={noop} />,
     );
-    expect(screen.queryByText('Red')).not.toBeInTheDocument();
-    expect(screen.queryByText('Yellow')).not.toBeInTheDocument();
+    expect(screen.queryByText('L1')).not.toBeInTheDocument();
+    expect(screen.queryByText('D2')).not.toBeInTheDocument();
   });
 
   it('renders line labels as links to /line/:id', () => {
@@ -51,9 +51,9 @@ describe('Timeline', () => {
         onLineClick={noop}
       />,
     );
-    const redLink = screen.getByText('Red').closest('a');
-    expect(redLink).toBeInTheDocument();
-    expect(redLink).toHaveAttribute('href', '/line/red');
+    const l1Link = screen.getByText('L1').closest('a');
+    expect(l1Link).toBeInTheDocument();
+    expect(l1Link).toHaveAttribute('href', '/line/l1');
   });
 
   it('renders the correct number of day columns', () => {
@@ -66,9 +66,9 @@ describe('Timeline', () => {
         onLineClick={noop}
       />,
     );
-    // Each row has numDays cells; check one row (Red line)
-    const redRow = screen.getByText('Red').closest('tr');
+    // Each row has numDays cells; check one row (L1)
+    const l1Row = screen.getByText('L1').closest('tr');
     // 1 label cell + 7 day cells
-    expect(redRow.querySelectorAll('td')).toHaveLength(8);
+    expect(l1Row.querySelectorAll('td')).toHaveLength(8);
   });
 });

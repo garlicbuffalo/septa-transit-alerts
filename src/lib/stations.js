@@ -1,39 +1,38 @@
-// Station discovery + slug helpers. Stations only show up on a small slice
-// of the data — train pulse-cold/pulse-held observations carry segment
-// endpoints (`from_station`, `to_station`), and a handful of bus alerts
-// reference stations for stop relocations. Roundups, train alerts, and the
-// rest don't carry station info, so this index is naturally sparse.
+// SEPTA Metro station discovery + slug helpers. Stations only show up on a
+// slice of the data — SEPTA alerts that name a stretch ("Shuttle Busing
+// Between Olney and Fern Rock") carry a scope the collector resolves against
+// the roster, and Metro detections carry segment endpoints (`from_station`,
+// `to_station`). Detours and most bus notices don't carry station info, so
+// this index is naturally sparse.
 //
-// Upstream (cta-insights) already disambiguates stations that share a name
-// across lines via parenthetical qualifiers — `Central (Green)` vs
-// `Central (Purple)`, `Western (Brown)` vs `Western (Blue/Forest Park)`.
-// We trust the literal string as station identity. If two physically
-// different stations ever share the exact same name in the data, that's a
-// data-quality issue upstream, not something to paper over here.
+// The roster (metroStations.json, generated from SEPTA GTFS) disambiguates
+// physically distinct stations that share a name with a parenthetical line
+// qualifier, mirroring how a rider would say it. We trust the literal string
+// as station identity.
 
-import { normalizeTrainLine, TRAIN_LINE_ORDER } from './ctaLines.js';
+import { METRO_LINE_ORDER, normalizeMetroLine } from './metroLines.js';
 // Node 22+ ESM requires the explicit import attribute when loading JSON;
 // without it the postbuild prerender scripts (which import this file
 // transitively via scripts/prerender-pages.js and scripts/generate-sitemap.js)
 // crash with ERR_IMPORT_ATTRIBUTE_MISSING. Vite 6 understands the same syntax.
-import trainStations from './trainStations.json' with { type: 'json' };
+import metroStations from './metroStations.json' with { type: 'json' };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // slug → array of normalized line keys that physically serve this station,
-// derived from the bundled trainStations.json roster. Without this, the
+// derived from the bundled metroStations.json roster. Without this, the
 // station's `lines` set would be inferred purely from incidents in the
-// rolling window — so a multi-line station like Ashland (Green/Pink)
-// renders only the Pink pill when only Pink had a recent incident, even
-// though the station physically serves Green too.
+// rolling window — so a shared station like 15th St/City Hall (L1, B1, and
+// the T trolleys) would render only the L1 pill when only L1 had a recent
+// incident, even though the station physically serves the others too.
 const SERVED_LINES_BY_SLUG = (() => {
   const map = new Map();
-  for (const s of trainStations) {
+  for (const s of metroStations) {
     const slug = slugifyStation(s.name);
     if (!slug) continue;
     map.set(
       slug,
-      (s.lines || []).map(normalizeTrainLine).filter((l) => TRAIN_LINE_ORDER.includes(l)),
+      (s.lines || []).map(normalizeMetroLine).filter((l) => METRO_LINE_ORDER.includes(l)),
     );
   }
   return map;
@@ -52,13 +51,13 @@ export function isKnownStationSlug(slug) {
 // page still renders, just in its "no recent activity" state.
 const ROSTER_BY_SLUG = (() => {
   const map = new Map();
-  for (const s of trainStations) {
+  for (const s of metroStations) {
     const slug = slugifyStation(s.name);
     if (!slug || map.has(slug)) continue;
     map.set(slug, {
       slug,
       name: s.name,
-      lines: [...(SERVED_LINES_BY_SLUG.get(slug) || [])].sort(compareByCtaOrder),
+      lines: [...(SERVED_LINES_BY_SLUG.get(slug) || [])].sort(compareByMetroOrder),
       alerts: [],
       observations: [],
       count: 0,
@@ -73,16 +72,15 @@ export function rosterStationBySlug(slug) {
 
 // All roster station names that physically serve any of the given lines.
 // Used to broaden the alert-text linkify pool beyond the upstream
-// extractor's `mentioned_stations` — CTA's prose often names stations
-// (e.g. "Garfield", "Ashland/63") that the extractor missed, and we still
-// want them clickable. Line-scoped so cross-line same-named stops like
+// collector's `mentioned_stations` — SEPTA's prose often names stations in
+// forms the matcher missed, and we still want them clickable. Line-scoped so cross-line same-named stops like
 // "Halsted" don't bleed in.
 export function stationsServingLines(lines) {
   if (!lines || lines.length === 0) return [];
-  const wanted = new Set(lines.map(normalizeTrainLine));
+  const wanted = new Set(lines.map(normalizeMetroLine));
   const out = [];
-  for (const s of trainStations) {
-    const served = (s.lines || []).map(normalizeTrainLine);
+  for (const s of metroStations) {
+    const served = (s.lines || []).map(normalizeMetroLine);
     if (served.some((l) => wanted.has(l))) out.push(s.name);
   }
   return out;
@@ -92,8 +90,8 @@ export function stationsServingLines(lines) {
 // resolved via its slug against the bundled roster. Empty when the name
 // doesn't match a known station. Used to spread a bot's single-line stretch
 // onto the OTHER affected lines that share the same trackage — e.g. a
-// pulse-cold the bot scoped to Pink between Ashland and Adams/Wabash also
-// hit Green, since both run those Lake St tracks.
+// detection scoped to T1 between 13th St and 33rd St also hit T2–T5, since
+// every subway-surface trolley shares that tunnel.
 /**
  * @param {string | null | undefined} name
  * @returns {string[]}
@@ -104,14 +102,14 @@ export function linesServingStation(name) {
   return SERVED_LINES_BY_SLUG.get(slug) ?? [];
 }
 
-function compareByCtaOrder(a, b) {
-  const ia = TRAIN_LINE_ORDER.indexOf(a);
-  const ib = TRAIN_LINE_ORDER.indexOf(b);
+function compareByMetroOrder(a, b) {
+  const ia = METRO_LINE_ORDER.indexOf(a);
+  const ib = METRO_LINE_ORDER.indexOf(b);
   return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
 }
 
 // Drop the parenthetical line qualifier upstream uses to disambiguate
-// same-named stations across lines: `Central (Purple)` → `Central`. Used
+// same-named stations across lines: `Walnut St (D1)` → `Walnut St`. Used
 // everywhere we display a station name *next to* a line pill or under a
 // line-page heading — the suffix is redundant noise in those contexts.
 // The StationPage heading still uses the raw name (with the suffix) since
@@ -128,8 +126,8 @@ export function displayStationName(name) {
 }
 
 // Slugify a station name for use in URLs. Lowercase, collapse runs of
-// non-alphanumeric chars to '-', trim. `Central (Green)` → `central-green`,
-// `Clark/Division` → `clark-division`, `O'Hare` → `o-hare`.
+// non-alphanumeric chars to '-', trim. `15th St/City Hall` → `15th-st-city-hall`,
+// `8th-Market` → `8th-market`, `St. Davids` → `st-davids`.
 export function slugifyStation(name) {
   if (!name) return null;
   const slug = String(name)
@@ -141,7 +139,7 @@ export function slugifyStation(name) {
 
 // Build a map of slug → station record covering the rolling window. Each
 // record collects the raw alerts and observations that touched the station
-// at either endpoint. Train-only by design: bus has 0% station coverage on
+// at either endpoint. Metro-only by design: bus has 0% station coverage on
 // observations and a handful of stop-relocation alerts isn't enough to
 // justify the added scope. Downstream consumers re-merge alerts/obs via
 // `groupIncidentRecords`, the same way LinePage and IncidentList do.
@@ -187,12 +185,12 @@ export function buildStationIndex(
     // Normalize so a raw short-code (`'p'`) coming from a caller that built
     // records by hand doesn't co-exist with the full-name (`'purple'`)
     // seeded from the master roster.
-    if (line) rec.lines.add(normalizeTrainLine(line));
+    if (line) rec.lines.add(normalizeMetroLine(line));
     return rec;
   }
 
   for (const o of observations || []) {
-    if (o.kind !== 'train') continue;
+    if (o.kind !== 'metro') continue;
     if (o.ts < cutoff) continue;
     // `stations` is the full segment fill (endpoints + inner stops) enumerated
     // upstream — tie the incident to every stop on the stretch, not just the
@@ -205,7 +203,7 @@ export function buildStationIndex(
   }
 
   for (const a of alerts || []) {
-    if (a.kind !== 'train') continue;
+    if (a.kind !== 'metro') continue;
     if (a.first_seen_ts < cutoff) continue;
     // affected_stations is the full segment fill (endpoints + inner stops)
     // enumerated upstream for "between X and Y" alerts; it supersedes the bare
@@ -233,7 +231,7 @@ export function buildStationIndex(
     out.set(slug, {
       slug: rec.slug,
       name: rec.name,
-      lines: [...rec.lines].sort(compareByCtaOrder),
+      lines: [...rec.lines].sort(compareByMetroOrder),
       alerts: rec.alerts,
       observations: rec.observations,
       count: rec.alerts.length + rec.observations.length,

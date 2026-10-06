@@ -1,0 +1,552 @@
+{
+  "3556": [
+    {
+      "station": "Wawa",
+      "sched_tm": "6:31 pm"
+    },
+    {
+      "station": "Elwyn Station",
+      "sched_tm": "6:38 pm"
+    },
+    {
+      "station": "Media",
+      "sched_tm": "6:41 pm"
+    },
+    {
+      "station": "Moylan-Rose Valley",
+      "sched_tm": "6:43 pm"
+    },
+    {
+      "station": "Wallingford",
+      "sched_tm": "6:46 pm"
+    },
+    {
+      "station": "Swarthmore",
+      "sched_tm": "6:49 pm"
+    },
+    {
+      "station": "Morton",
+      "sched_tm": "6:51 pm"
+    },
+    {
+      "station": "Secane",
+      "sched_tm": "6:53 pm"
+    },
+    {
+      "station": "Primos",
+      "sched_tm": "6:55 pm"
+    },
+    {
+      "station": "Clifton-Aldan",
+      "sched_tm": "6:57 pm"
+    },
+    {
+      "station": "Gladstone",
+      "sched_tm": "6:59 pm"
+    },
+    {
+      "station": "Lansdowne",
+      "sched_tm": "7:01 pm"
+    },
+    {
+      "station": "Fernwood-Yeadon",
+      "sched_tm": "7:03 pm"
+    },
+    {
+      "station": "Angora",
+      "sched_tm": "7:05 pm"
+    },
+    {
+      "station": "49th Street",
+      "sched_tm": "7:08 pm"
+    },
+    {
+      "station": "Penn Medicine Station",
+      "sched_tm": "7:12 pm"
+    },
+    {
+      "station": "Gray 30th Street",
+      "sched_tm": "7:15 pm"
+    },
+    {
+      "station": "Suburban Station",
+      "sched_tm": "7:20 pm"
+    },
+    {
+      "station": "Jefferson Station",
+      "sched_tm": "7:25 pm"
+    },
+    {
+      "station": "Temple University",
+      "sched_tm": "7:30 pm"
+    },
+    {
+      "station": "North Broad",
+      "sched_tm": "7:32 pm"
+    },
+    {
+      "station": "Wayne Junction",
+      "sched_tm": "7:37 pm"
+    },
+    {
+      "station": "Fern Rock T C",
+      "sched_tm": "7:41 pm"
+    },
+    {
+      "station": "Jenkintown Wyncote",
+      "sched_tm": "7:46 pm"
+    },
+    {
+      "station": "Glenside",
+      "sched_tm": "7:49 pm"
+    },
+    {
+      "station": "North Hills",
+      "sched_tm": "7:51 pm"
+    },
+    {
+      "station": "Oreland",
+      "sched_tm": "7:53 pm"
+    },
+    {
+      "station": "Fort Washington",
+      "sched_tm": "7:56 pm"
+    },
+    {
+      "station": "Ambler",
+      "sched_tm": "7:59 pm"
+    },
+    {
+      "station": "Penllyn",
+      "sched_tm": "8:02 pm"
+    },
+    {
+      "station": "Gwynedd Valley",
+      "sched_tm": "8:04 pm"
+    },
+    {
+      "station": "North Wales",
+      "sched_tm": "8:08 pm"
+    },
+    {
+      "station": "Pennbrook",
+      "sched_tm": "8:12 pm"
+    },
+    {
+      "station": "Lansdale",
+      "sched_tm": "8:20 pm"
+    },
+    {
+      "station": "9TH Street Lansdale",
+      "sched_tm": "8:22 pm"
+    },
+    {
+      "station": "Fortuna",
+      "sched_tm": "8:24 pm"
+    },
+    {
+      "station": "Colmar",
+      "sched_tm": "8:26 pm"
+    },
+    {
+      "station": "Link Belt",
+      "sched_tm": "8:27 pm"
+    },
+    {
+      "station": "Chalfont",
+      "sched_tm": "8:34 pm"
+    },
+    {
+      "station": "New Britain",
+      "sched_tm": "8:37 pm"
+    },
+    {
+      "station": "Delaware Valley College",
+      "sched_tm": "8:39 pm"
+    },
+    {
+      "station": "Doylestown",
+      "sched_tm": "8:46 pm"
+    }
+  ],
+  "9233": [
+    {
+      "station": "Temple University",
+      "sched_tm": "7:24 pm"
+    },
+    {
+      "station": "Jefferson Station",
+      "sched_tm": "7:30 pm"
+    },
+    {
+      "station": "Suburban Station",
+      "sched_tm": "7:35 pm"
+    },
+    {
+      "station": "Gray 30th Street",
+      "sched_tm": "7:40 pm"
+    },
+    {
+      "station": "Penn Medicine Station",
+      "sched_tm": "7:43 pm"
+    },
+    {
+      "station": "Darby",
+      "sched_tm": "7:50 pm"
+    },
+    {
+      "station": "Curtis Park",
+      "sched_tm": "7:52 pm"
+    },
+    {
+      "station": "Sharon Hill",
+      "sched_tm": "7:54 pm"
+    },
+    {
+      "station": "Folcroft",
+      "sched_tm": "7:56 pm"
+    },
+    {
+      "station": "Glenolden",
+      "sched_tm": "7:58 pm"
+    },
+    {
+      "station": "Norwood",
+      "sched_tm": "8:01 pm"
+    },
+    {
+      "station": "Prospect Park - Moore",
+      "sched_tm": "8:02 pm"
+    },
+    {
+      "station": "Ridley Park",
+      "sched_tm": "8:04 pm"
+    },
+    {
+      "station": "Crum Lynne",
+      "sched_tm": "8:06 pm"
+    },
+    {
+      "station": "Eddystone",
+      "sched_tm": "8:08 pm"
+    },
+    {
+      "station": "Chester TC",
+      "sched_tm": "8:10 pm"
+    },
+    {
+      "station": "Highland Avenue",
+      "sched_tm": "8:13 pm"
+    },
+    {
+      "station": "Marcus Hook",
+      "sched_tm": "8:15 pm"
+    },
+    {
+      "station": "Claymont",
+      "sched_tm": "8:19 pm"
+    },
+    {
+      "station": "Wilmington",
+      "sched_tm": "8:28 pm"
+    }
+  ],
+  "3285": [
+    {
+      "station": "West Trenton",
+      "sched_tm": "6:28 am"
+    },
+    {
+      "station": "Yardley",
+      "sched_tm": "6:32 am"
+    },
+    {
+      "station": "Woodbourne",
+      "sched_tm": "6:38 am"
+    },
+    {
+      "station": "Langhorne",
+      "sched_tm": "6:42 am"
+    },
+    {
+      "station": "Neshaminy",
+      "sched_tm": "6:47 am"
+    },
+    {
+      "station": "Trevose",
+      "sched_tm": "6:50 am"
+    },
+    {
+      "station": "Somerton",
+      "sched_tm": "6:53 am"
+    },
+    {
+      "station": "Forest Hills",
+      "sched_tm": "6:55 am"
+    },
+    {
+      "station": "Philmont",
+      "sched_tm": "6:57 am"
+    },
+    {
+      "station": "Bethayres",
+      "sched_tm": "7:01 am"
+    },
+    {
+      "station": "Meadowbrook",
+      "sched_tm": "7:04 am"
+    },
+    {
+      "station": "Rydal",
+      "sched_tm": "7:07 am"
+    },
+    {
+      "station": "Noble",
+      "sched_tm": "7:09 am"
+    },
+    {
+      "station": "Jenkintown Wyncote",
+      "sched_tm": "7:13 am"
+    },
+    {
+      "station": "Fern Rock T C",
+      "sched_tm": "7:20 am"
+    },
+    {
+      "station": "Temple University",
+      "sched_tm": "7:28 am"
+    },
+    {
+      "station": "Jefferson Station",
+      "sched_tm": "7:34 am"
+    },
+    {
+      "station": "Suburban Station",
+      "sched_tm": "7:39 am"
+    },
+    {
+      "station": "Gray 30th Street",
+      "sched_tm": "7:44 am"
+    },
+    {
+      "station": "Penn Medicine Station",
+      "sched_tm": "7:47 am"
+    },
+    {
+      "station": "Darby",
+      "sched_tm": "7:55 am"
+    },
+    {
+      "station": "Curtis Park",
+      "sched_tm": "7:57 am"
+    },
+    {
+      "station": "Sharon Hill",
+      "sched_tm": "7:59 am"
+    },
+    {
+      "station": "Folcroft",
+      "sched_tm": "8:01 am"
+    },
+    {
+      "station": "Glenolden",
+      "sched_tm": "8:03 am"
+    },
+    {
+      "station": "Norwood",
+      "sched_tm": "8:06 am"
+    },
+    {
+      "station": "Prospect Park - Moore",
+      "sched_tm": "8:08 am"
+    },
+    {
+      "station": "Ridley Park",
+      "sched_tm": "8:10 am"
+    },
+    {
+      "station": "Crum Lynne",
+      "sched_tm": "8:13 am"
+    },
+    {
+      "station": "Eddystone",
+      "sched_tm": "8:15 am"
+    },
+    {
+      "station": "Chester TC",
+      "sched_tm": "8:18 am"
+    },
+    {
+      "station": "Highland Avenue",
+      "sched_tm": "8:22 am"
+    },
+    {
+      "station": "Marcus Hook",
+      "sched_tm": "8:24 am"
+    },
+    {
+      "station": "Claymont",
+      "sched_tm": "8:28 am"
+    },
+    {
+      "station": "Wilmington",
+      "sched_tm": "8:38 am"
+    },
+    {
+      "station": "Churchman's Crossing",
+      "sched_tm": "8:47 am"
+    },
+    {
+      "station": "Newark",
+      "sched_tm": "8:52 am"
+    }
+  ],
+  "445": [
+    {
+      "station": "Warminster",
+      "sched_tm": "2:26 pm"
+    },
+    {
+      "station": "Hatboro",
+      "sched_tm": "2:31 pm"
+    },
+    {
+      "station": "Willow Grove",
+      "sched_tm": "2:36 pm"
+    },
+    {
+      "station": "Crestmont",
+      "sched_tm": "2:39 pm"
+    },
+    {
+      "station": "Roslyn",
+      "sched_tm": "2:42 pm"
+    },
+    {
+      "station": "Ardsley",
+      "sched_tm": "2:47 pm"
+    },
+    {
+      "station": "Glenside",
+      "sched_tm": "2:52 pm"
+    },
+    {
+      "station": "Jenkintown Wyncote",
+      "sched_tm": "2:55 pm"
+    },
+    {
+      "station": "Elkins Park",
+      "sched_tm": "2:57 pm"
+    },
+    {
+      "station": "Melrose Park",
+      "sched_tm": "2:59 pm"
+    },
+    {
+      "station": "Fern Rock T C",
+      "sched_tm": "3:03 pm"
+    },
+    {
+      "station": "Wayne Junction",
+      "sched_tm": "3:07 pm"
+    },
+    {
+      "station": "Temple University",
+      "sched_tm": "3:13 pm"
+    },
+    {
+      "station": "Jefferson Station",
+      "sched_tm": "3:20 pm"
+    },
+    {
+      "station": "Suburban Station",
+      "sched_tm": "3:25 pm"
+    }
+  ],
+  "6311": [
+    {
+      "station": "West Trenton",
+      "sched_tm": "8:06 am"
+    },
+    {
+      "station": "Yardley",
+      "sched_tm": "8:09 am"
+    },
+    {
+      "station": "Woodbourne",
+      "sched_tm": "8:14 am"
+    },
+    {
+      "station": "Langhorne",
+      "sched_tm": "8:18 am"
+    },
+    {
+      "station": "Neshaminy",
+      "sched_tm": "8:22 am"
+    },
+    {
+      "station": "Trevose",
+      "sched_tm": "8:25 am"
+    },
+    {
+      "station": "Somerton",
+      "sched_tm": "8:28 am"
+    },
+    {
+      "station": "Forest Hills",
+      "sched_tm": "8:31 am"
+    },
+    {
+      "station": "Philmont",
+      "sched_tm": "8:33 am"
+    },
+    {
+      "station": "Bethayres",
+      "sched_tm": "8:35 am"
+    },
+    {
+      "station": "Meadowbrook",
+      "sched_tm": "8:37 am"
+    },
+    {
+      "station": "Rydal",
+      "sched_tm": "8:39 am"
+    },
+    {
+      "station": "Noble",
+      "sched_tm": "8:42 am"
+    },
+    {
+      "station": "Jenkintown Wyncote",
+      "sched_tm": "8:47 am"
+    },
+    {
+      "station": "Elkins Park",
+      "sched_tm": "8:49 am"
+    },
+    {
+      "station": "Melrose Park",
+      "sched_tm": "8:51 am"
+    },
+    {
+      "station": "Fern Rock T C",
+      "sched_tm": "8:53 am"
+    },
+    {
+      "station": "Temple University",
+      "sched_tm": "9:03 am"
+    },
+    {
+      "station": "Jefferson Station",
+      "sched_tm": "9:09 am"
+    },
+    {
+      "station": "Suburban Station",
+      "sched_tm": "9:14 am"
+    },
+    {
+      "station": "Gray 30th Street",
+      "sched_tm": "9:18 am"
+    }
+  ]
+}

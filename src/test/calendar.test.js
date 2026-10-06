@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildCalendarMonths, dateStringToUtc, maxCountAcrossMonths } from '../lib/calendar.js';
 
-// Pin "now" to 2026-05-09 13:00 Chicago — comfortably mid-day so anchor-month
+// Pin "now" to 2026-05-09 13:00 Philadelphia — comfortably mid-day so anchor-month
 // resolution doesn't depend on the test environment's local timezone.
 const NOW = Date.UTC(2026, 4, 9, 18, 0, 0);
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -71,12 +71,12 @@ describe('buildCalendarMonths', () => {
 
   it('joins per-day counts from the input by date string', () => {
     const days = [
-      { date: '2026-05-01', train_count: 3, bus_count: 2 },
-      { date: '2026-05-02', train_count: 1, bus_count: 0 },
+      { date: '2026-05-01', metro_count: 3, bus_count: 2 },
+      { date: '2026-05-02', metro_count: 1, bus_count: 0 },
     ];
     const r = buildCalendarMonths(days, { now: NOW, monthsBack: 1 });
     expect(r[0].cells[0].count).toBe(5);
-    expect(r[0].cells[0].trainCount).toBe(3);
+    expect(r[0].cells[0].metroCount).toBe(3);
     expect(r[0].cells[0].busCount).toBe(2);
     expect(r[0].cells[1].count).toBe(1);
     expect(r[0].cells[2].count).toBe(0);

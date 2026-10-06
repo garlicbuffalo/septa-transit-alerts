@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import { TRAIN_LINES } from '../../lib/ctaLines.js';
-import { chicagoDayUTC, formatChicagoDay, hexToRgba } from '../../lib/format.js';
+import { formatBusRoute } from '../../lib/busRoutes.js';
+import { formatPhillyDay, hexToRgba, phillyDayUTC } from '../../lib/format.js';
 import { formatRoutesLabel, incidentLifecycle, legacyKind } from '../../lib/incidents.js';
-import { METRA_LINES } from '../../lib/metraLines.js';
+import { METRO_LINES } from '../../lib/metroLines.js';
+import { RAIL_LINES } from '../../lib/railLines.js';
 import { incidentRoutes } from './incidentText.jsx';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -15,15 +16,15 @@ const BUS_COLOR = '#64748b'; // slate-500 — mirrors Timeline's bus row tint.
 // When the incident affects multiple routes, counts are kept *per route* so
 // the renderer can draw one row per affected line. Collapsing into a single
 // row paints "any of these routes had an incident" with one color, which
-// misrepresents alerts that touch the lines unevenly (e.g. Pink+Green where
-// only Pink had prior days of trouble).
+// misrepresents alerts that touch the lines unevenly (e.g. B1+B2 where
+// only B1 had prior days of trouble).
 function buildEventLineWindow(incident, incidents, numDays = 14, now = Date.now()) {
   const routes = incidentRoutes(incident);
   const kind = legacyKind(incident);
   const startTs = incidentLifecycle(incident).first_seen_ts;
   if (routes.length === 0 || startTs == null) return null;
-  const centerDayUtc = chicagoDayUTC(startTs);
-  const todayUtc = chicagoDayUTC(now);
+  const centerDayUtc = phillyDayUTC(startTs);
+  const todayUtc = phillyDayUTC(now);
   // Center the window on the event day, but never show future days past today
   // — they'd be misleading "no data" cells. If centering would clip a long-
   // ago event's window, the window slides forward to extend further past the
@@ -43,7 +44,7 @@ function buildEventLineWindow(incident, incidents, numDays = 14, now = Date.now(
 
   function bump(ts, incRoutes, incKind) {
     if (incKind !== kind) return;
-    const dayUtc = chicagoDayUTC(ts);
+    const dayUtc = phillyDayUTC(ts);
     const idx = Math.round((dayUtc - startDay) / DAY_MS);
     if (idx < 0 || idx >= numDays) return;
     for (const r of incRoutes) {
@@ -57,14 +58,14 @@ function buildEventLineWindow(incident, incidents, numDays = 14, now = Date.now(
   return { dayUtcs, perRoute, routes, centerDayUtc };
 }
 
-// Color picker for a single route's cell. Train and Metra routes get their
+// Color picker for a single route's cell. Train and Regional Rail routes get their
 // brand color; bus routes share the slate tint Timeline uses for the bus row.
 function routeColor(kind, route) {
-  if (kind === 'train') {
-    const info = TRAIN_LINES[route];
+  if (kind === 'metro') {
+    const info = METRO_LINES[route];
     if (info) return info.color;
-  } else if (kind === 'metra') {
-    const info = METRA_LINES[route];
+  } else if (kind === 'rail') {
+    const info = RAIL_LINES[route];
     if (info) return info.color;
   }
   return BUS_COLOR;
@@ -74,23 +75,23 @@ function routeColor(kind, route) {
 // EventDetail card above already has linked LinePills for navigation; here
 // the pill is purely a legend so the reader can match row to color.
 export function RowLabel({ kind, route }) {
-  // Train and Metra rows get a brand-colored pill. Metra shows the short route
+  // Train and Regional Rail rows get a brand-colored pill. Regional Rail shows the short route
   // code (UP-N) so it fits the narrow gutter; its full name rides on `title`.
-  const info = kind === 'train' ? TRAIN_LINES[route] : kind === 'metra' ? METRA_LINES[route] : null;
+  const info = kind === 'metro' ? METRO_LINES[route] : kind === 'rail' ? RAIL_LINES[route] : null;
   if (info) {
     return (
       <span
         className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
         style={{ backgroundColor: info.color, color: info.textColor }}
-        title={kind === 'metra' ? info.label : undefined}
+        title={kind === 'rail' ? `${info.label} Line` : info.name}
       >
-        {kind === 'metra' ? route.toUpperCase() : info.label}
+        {kind === 'rail' ? info.code : info.label}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap bg-slate-700 text-white">
-      {kind === 'bus' ? `#${route}` : route}
+      {kind === 'bus' ? formatBusRoute(route) : route}
     </span>
   );
 }
@@ -125,14 +126,14 @@ function cellTextColor(hex, opacity, dark) {
 // Day link, scoped to this row's line/route so the destination day page opens
 // filtered to the line in question rather than the whole system. Trains use
 // ?lines=<line>; buses set ?lines=none (drop trains) plus ?routes=<route>;
-// Metra sets ?metra=<line>. Mirrors the canonical query scheme
+// Regional Rail sets ?rail=<line>. Mirrors the canonical query scheme
 // parseUrlState/DayPage read.
 function scopedDayHref(dateStr, kind, route) {
   const query =
     kind === 'bus'
       ? `?lines=none&routes=${encodeURIComponent(route)}`
-      : kind === 'metra'
-        ? `?metra=${encodeURIComponent(route)}`
+      : kind === 'rail'
+        ? `?rail=${encodeURIComponent(route)}`
         : `?lines=${encodeURIComponent(route)}`;
   return `/day/${dateStr}${query}`;
 }
@@ -150,7 +151,7 @@ function TimelineRow({ counts, dayUtcs, centerDayUtc, color, dark, kind, route }
       {dayUtcs.map((dayUtc, i) => {
         const count = counts[i];
         const isPinned = dayUtc === centerDayUtc;
-        const label = `${formatChicagoDay(dayUtc)}: ${count} incident${count === 1 ? '' : 's'}`;
+        const label = `${formatPhillyDay(dayUtc)}: ${count} incident${count === 1 ? '' : 's'}`;
         const opacity = cellOpacity(count);
         const cellClass = `aspect-square rounded-sm flex items-center justify-center text-[11px] font-bold leading-none ${
           isPinned ? 'ring-1 ring-slate-700 dark:ring-slate-200' : ''
@@ -209,9 +210,9 @@ export function MiniTimeline({ incident, incidents, dark }) {
   const firstDay = dayUtcs[0];
   const lastDay = dayUtcs[dayUtcs.length - 1];
   const sameYear = new Date(firstDay).getUTCFullYear() === new Date(lastDay).getUTCFullYear();
-  // dayUtc is a UTC-midnight epoch by construction (chicagoDayUTC builds it
-  // from Chicago Y/M/D), so format it as UTC to read those date components
-  // back. Using timeZone='America/Chicago' would shift it back 5-6 h and
+  // dayUtc is a UTC-midnight epoch by construction (phillyDayUTC builds it
+  // from Philadelphia Y/M/D), so format it as UTC to read those date components
+  // back. Using timeZone='America/New_York' would shift it back 5-6 h and
   // render the previous calendar day.
   const labelFmt = new Intl.DateTimeFormat('en-US', {
     timeZone: 'UTC',

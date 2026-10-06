@@ -1,9 +1,9 @@
-// Display helpers for schedule-anchored single-train Metra cancellations.
+// Display helpers for schedule-anchored single-train Regional Rail cancellations.
 //
-// The cta-insights pipeline ships a top-level `cancellation` object on an incident
-// when a Metra alert annuls exactly one scheduled train (see export-web.js). It's
-// an incident-level fact, not alert metadata — deliberately NOT under the `cta`
-// block, whose name is a CTA-era misnomer for the official-alert slot.
+// The collector publishes `status: { type: 'cancellation', … }` on an incident
+// when SEPTA marks exactly one scheduled train cancelled (collector/lib/
+// railTrains.js). It's an incident-level fact, not alert metadata — deliberately
+// NOT under `official_alert`.
 // It carries the rider-facing label and the train's timetable, computed upstream —
 // so the frontend stays a dumb renderer: no clock math, no "is it past?" logic
 // here. We just read `state` and the scheduled times and present them.
@@ -12,7 +12,7 @@
 //   'upcoming'  — announced, before the train's scheduled departure
 //   'cancelled' — the scheduled departure has passed; terminal
 //
-// Open-ended notices ("no UP-N service due to police activity") carry no
+// Open-ended notices ("no Paoli/Thorndale service due to police activity") carry no
 // cancellation object and keep the ordinary ongoing→resolved status.
 
 import { formatTime } from './format.js';
@@ -28,7 +28,7 @@ export function cancellationInfo(incident, now = Date.now()) {
   const c = incident?.status?.type === 'cancellation' ? incident.status : null;
   if (!c?.state) return null;
   const departureTs = c.scheduled_departure_ts ?? null;
-  // The producer stamps `state` at export time, but between exports the wall
+  // The collector stamps `state` at export time, but between exports the wall
   // clock can cross the scheduled departure (the export only refreshes when the
   // data changes, otherwise on its backstop). When we know the departure time,
   // re-derive upcoming/cancelled from it — the same now-vs-departure check

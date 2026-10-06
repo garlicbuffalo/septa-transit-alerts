@@ -7,18 +7,18 @@ describe('parseUrlState', () => {
       selectedLines: null,
       showBus: true,
       selectedBusRoutes: [],
-      selectedMetraLines: [],
+      selectedRailLines: [],
       dateRange: 7,
       selectedDay: null,
       selectedSignals: [],
-      selectedSources: ['cta', 'bot', 'merged'],
+      selectedSources: ['official', 'bot', 'merged'],
       search: '',
-      selectedAgency: 'all',
+      selectedNetwork: 'all',
     });
   });
 
   it('parses lines list', () => {
-    expect(parseUrlState('?lines=red,blue').selectedLines).toEqual(['red', 'blue']);
+    expect(parseUrlState('?lines=l1,b1').selectedLines).toEqual(['l1', 'b1']);
   });
 
   it('parses lines=none as empty selection', () => {
@@ -26,7 +26,7 @@ describe('parseUrlState', () => {
   });
 
   it('drops unknown line keys silently', () => {
-    expect(parseUrlState('?lines=red,fake,blue').selectedLines).toEqual(['red', 'blue']);
+    expect(parseUrlState('?lines=l1,fake,b1').selectedLines).toEqual(['l1', 'b1']);
   });
 
   it('falls back to default when every line key is invalid', () => {
@@ -38,7 +38,7 @@ describe('parseUrlState', () => {
   });
 
   it('defaults showBus to false when narrowed to a positive train selection', () => {
-    expect(parseUrlState('?lines=red').showBus).toBe(false);
+    expect(parseUrlState('?lines=l1').showBus).toBe(false);
   });
 
   it('defaults showBus to true when lines=none (bus-only view)', () => {
@@ -46,29 +46,24 @@ describe('parseUrlState', () => {
   });
 
   it('honors explicit bus=1 override even when lines is narrowed', () => {
-    expect(parseUrlState('?lines=red&bus=1').showBus).toBe(true);
+    expect(parseUrlState('?lines=l1&bus=1').showBus).toBe(true);
   });
 
   it('parses bus routes', () => {
     expect(parseUrlState('?routes=66,77').selectedBusRoutes).toEqual(['66', '77']);
   });
 
-  it('keeps alphanumeric bus route ids (X9, J14, N5, 53A), drops garbage', () => {
-    expect(parseUrlState('?routes=66,X9,J14,N5,53A,abc,none,77').selectedBusRoutes).toEqual([
-      '66',
-      'X9',
-      'J14',
-      'N5',
-      '53A',
-      '77',
-    ]);
+  it('keeps SEPTA route ids (K, LUCYGO, L1-OWL, 310), drops garbage', () => {
+    expect(
+      parseUrlState('?routes=17,K,LUCYGO,L1-OWL,310,../etc,none,-x,33').selectedBusRoutes,
+    ).toEqual(['17', 'K', 'LUCYGO', 'L1-OWL', '310', '33']);
   });
 
-  it('parses metra lines and drops invalid keys (incl. legacy metra=1)', () => {
-    expect(parseUrlState('?metra=up-n,bnsf').selectedMetraLines).toEqual(['up-n', 'bnsf']);
-    expect(parseUrlState('?metra=UP-N,fake').selectedMetraLines).toEqual(['up-n']);
-    // The old gate param `?metra=1` has no valid line → no narrowing.
-    expect(parseUrlState('?metra=1').selectedMetraLines).toEqual([]);
+  it('parses Regional Rail lines and drops invalid keys', () => {
+    expect(parseUrlState('?rail=nor,pao').selectedRailLines).toEqual(['nor', 'pao']);
+    expect(parseUrlState('?rail=NOR,fake').selectedRailLines).toEqual(['nor']);
+    // A param with no valid line → no narrowing.
+    expect(parseUrlState('?rail=1').selectedRailLines).toEqual([]);
   });
 
   it('parses range=all as null', () => {
@@ -99,12 +94,12 @@ describe('buildSearch', () => {
   it('serializes selected lines (and the implicit bus=0 stays implicit)', () => {
     expect(
       buildSearch({
-        selectedLines: ['red', 'blue'],
+        selectedLines: ['l1', 'b1'],
         showBus: false,
         selectedBusRoutes: [],
         dateRange: 7,
       }),
-    ).toBe('?lines=red%2Cblue');
+    ).toBe('?lines=l1%2Cb1');
   });
 
   it('serializes empty line selection as none', () => {
@@ -132,23 +127,23 @@ describe('buildSearch', () => {
   it('omits bus param when showBus matches the narrowed-train default (false)', () => {
     expect(
       buildSearch({
-        selectedLines: ['red'],
+        selectedLines: ['l1'],
         showBus: false,
         selectedBusRoutes: [],
         dateRange: 7,
       }),
-    ).toBe('?lines=red');
+    ).toBe('?lines=l1');
   });
 
   it('emits bus=1 when user overrides the narrowed-train default', () => {
     expect(
       buildSearch({
-        selectedLines: ['red'],
+        selectedLines: ['l1'],
         showBus: true,
         selectedBusRoutes: [],
         dateRange: 7,
       }),
-    ).toBe('?lines=red&bus=1');
+    ).toBe('?lines=l1&bus=1');
   });
 
   it('serializes bus routes', () => {
@@ -186,16 +181,16 @@ describe('buildSearch', () => {
 
   it('round-trips a complex state', () => {
     const state = {
-      selectedLines: ['red'],
+      selectedLines: ['l1'],
       showBus: false,
       selectedBusRoutes: ['66'],
-      selectedMetraLines: ['up-n', 'bnsf'],
+      selectedRailLines: ['nor', 'pao'],
       dateRange: 30,
       selectedDay: null,
       selectedSignals: [],
-      selectedSources: ['cta', 'bot', 'merged'],
+      selectedSources: ['official', 'bot', 'merged'],
       search: '',
-      selectedAgency: 'all',
+      selectedNetwork: 'all',
     };
     expect(parseUrlState(buildSearch(state))).toEqual(state);
   });
@@ -206,13 +201,13 @@ describe('buildSearch', () => {
       selectedLines: null,
       showBus: true,
       selectedBusRoutes: [],
-      selectedMetraLines: [],
+      selectedRailLines: [],
       dateRange: 7,
       selectedDay: dayUtc,
       selectedSignals: [],
-      selectedSources: ['cta', 'bot', 'merged'],
+      selectedSources: ['official', 'bot', 'merged'],
       search: '',
-      selectedAgency: 'all',
+      selectedNetwork: 'all',
     };
     const search = buildSearch(state);
     expect(search).toBe('?day=2026-05-06');

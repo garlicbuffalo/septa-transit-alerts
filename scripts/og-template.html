@@ -5,30 +5,26 @@
     <title>OG card</title>
     <style>
       :root {
-        --red: #c60c30;
-        --blue: #00a1de;
-        --brn: #62361b;
-        --g: #009b3a;
-        --org: #f9461c;
-        --pink: #e27ea6;
-        --p: #522398;
-        --y: #f9e300;
+        --l1: #0097d6;
+        --b: #f26100;
+        --m1: #5f249f;
+        --t: #5a960a;
+        --g1: #e6c200;
+        --d: #dc2e6b;
+        --rr: #4f758b;
         --bus: #475569;
       }
       * {
         box-sizing: border-box;
       }
-      /* macOS qlmanage scales HTML content by 75/64 (≈1.17×) and forces a
-         square 1200×1200 thumbnail. Sizing the body 1024×1024 with the card
-         1024×538 means it scales up to exactly 1200×1200 in output, with the
-         card centered at output rows 285..915 — which is what sips
-         --cropToHeightWidth 630 1200 extracts. */
+      /* Laid out at 1024×538 and rendered at a 1200/1024 device scale by
+         scripts/render-brand-assets.js, giving a 1200×630 PNG. */
       html,
       body {
         margin: 0;
         padding: 0;
         width: 1024px;
-        height: 1024px;
+        height: 538px;
         overflow: hidden;
         font-family:
           -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -43,11 +39,11 @@
         background:
           linear-gradient(
             90deg,
-            rgba(198, 12, 48, 0.18) 0%,
-            rgba(82, 35, 152, 0.14) 35%,
-            rgba(0, 161, 222, 0.22) 100%
+            rgba(242, 97, 0, 0.16) 0%,
+            rgba(95, 36, 159, 0.12) 35%,
+            rgba(0, 151, 214, 0.22) 100%
           ),
-          radial-gradient(ellipse at top, rgba(0, 161, 222, 0.18) 0%, transparent 70%),
+          radial-gradient(ellipse at top, rgba(0, 151, 214, 0.18) 0%, transparent 70%),
           #f8fafc;
         padding: 38px 56px 28px;
         display: flex;
@@ -150,125 +146,111 @@
 
       <div class="body-row">
         <div class="copy">
-          <h1 class="title">Chicago Transit<br />Alerts</h1>
+          <h1 class="title">SEPTA Transit<br />Alerts</h1>
           <p class="subtitle">
-            A public archive of CTA service alerts and bot-detected disruptions, with a 90-day
-            heatmap of incident frequency.
+            A public archive of SEPTA service alerts and detected disruptions across Metro, buses,
+            and Regional Rail.
           </p>
         </div>
 
         <div class="heatmap">
-          <div class="label">Red</div>
+          <div class="label">L1</div>
           <div class="cell"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--red); opacity: 0.55;"></div>
+          <div class="cell" style="background: var(--l1); opacity: 0.55;"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--red); opacity: 0.95;"></div>
-          <div class="cell" style="background: var(--red); opacity: 0.45;"></div>
+          <div class="cell" style="background: var(--l1); opacity: 0.95;"></div>
+          <div class="cell" style="background: var(--l1); opacity: 0.45;"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--red); opacity: 0.85;"></div>
+          <div class="cell" style="background: var(--l1); opacity: 0.85;"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--red); opacity: 0.7;"></div>
-          <div class="cell" style="background: var(--red); opacity: 0.5;"></div>
-          <div class="cell"></div>
-
-          <div class="label">Blue</div>
-          <div class="cell" style="background: var(--blue); opacity: 0.7;"></div>
-          <div class="cell" style="background: var(--blue); opacity: 0.95;"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--blue); opacity: 0.6;"></div>
-          <div class="cell" style="background: var(--blue); opacity: 0.85;"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--blue); opacity: 0.5;"></div>
-          <div class="cell" style="background: var(--blue); opacity: 0.9;"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--blue); opacity: 0.65;"></div>
-          <div class="cell" style="background: var(--blue); opacity: 0.4;"></div>
-          <div class="cell" style="background: var(--blue); opacity: 0.75;"></div>
-
-          <div class="label">Brown</div>
-          <div class="cell"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--brn); opacity: 0.55;"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--brn); opacity: 0.45;"></div>
-          <div class="cell"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--brn); opacity: 0.6;"></div>
-          <div class="cell"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--brn); opacity: 0.4;"></div>
+          <div class="cell" style="background: var(--l1); opacity: 0.7;"></div>
+          <div class="cell" style="background: var(--l1); opacity: 0.5;"></div>
           <div class="cell"></div>
 
-          <div class="label">Green</div>
+          <div class="label">B lines</div>
+          <div class="cell" style="background: var(--b); opacity: 0.7;"></div>
+          <div class="cell" style="background: var(--b); opacity: 0.95;"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--g); opacity: 0.7;"></div>
+          <div class="cell" style="background: var(--b); opacity: 0.6;"></div>
+          <div class="cell" style="background: var(--b); opacity: 0.85;"></div>
+          <div class="cell"></div>
+          <div class="cell" style="background: var(--b); opacity: 0.5;"></div>
+          <div class="cell" style="background: var(--b); opacity: 0.9;"></div>
+          <div class="cell"></div>
+          <div class="cell" style="background: var(--b); opacity: 0.65;"></div>
+          <div class="cell" style="background: var(--b); opacity: 0.4;"></div>
+          <div class="cell" style="background: var(--b); opacity: 0.75;"></div>
+
+          <div class="label">M1</div>
           <div class="cell"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--g); opacity: 0.55;"></div>
-          <div class="cell" style="background: var(--g); opacity: 0.4;"></div>
+          <div class="cell" style="background: var(--m1); opacity: 0.55;"></div>
+          <div class="cell"></div>
+          <div class="cell" style="background: var(--m1); opacity: 0.45;"></div>
           <div class="cell"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--g); opacity: 0.75;"></div>
+          <div class="cell" style="background: var(--m1); opacity: 0.6;"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--g); opacity: 0.5;"></div>
+          <div class="cell"></div>
+          <div class="cell" style="background: var(--m1); opacity: 0.4;"></div>
           <div class="cell"></div>
 
-          <div class="label">Orange</div>
-          <div class="cell" style="background: var(--org); opacity: 0.6;"></div>
+          <div class="label">Trolley</div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--org); opacity: 0.45;"></div>
-          <div class="cell" style="background: var(--org); opacity: 0.7;"></div>
+          <div class="cell" style="background: var(--t); opacity: 0.7;"></div>
           <div class="cell"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--org); opacity: 0.5;"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--org); opacity: 0.55;"></div>
-          <div class="cell" style="background: var(--org); opacity: 0.4;"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--org); opacity: 0.65;"></div>
-
-          <div class="label">Pink</div>
+          <div class="cell" style="background: var(--t); opacity: 0.55;"></div>
+          <div class="cell" style="background: var(--t); opacity: 0.4;"></div>
           <div class="cell"></div>
           <div class="cell"></div>
+          <div class="cell" style="background: var(--t); opacity: 0.75;"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--pink); opacity: 0.55;"></div>
-          <div class="cell"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--pink); opacity: 0.4;"></div>
-          <div class="cell"></div>
-          <div class="cell"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--pink); opacity: 0.5;"></div>
+          <div class="cell" style="background: var(--t); opacity: 0.5;"></div>
           <div class="cell"></div>
 
-          <div class="label">Purple</div>
+          <div class="label">G1</div>
+          <div class="cell" style="background: var(--g1); opacity: 0.6;"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--p); opacity: 0.5;"></div>
-          <div class="cell"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--p); opacity: 0.6;"></div>
-          <div class="cell"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--p); opacity: 0.45;"></div>
+          <div class="cell" style="background: var(--g1); opacity: 0.45;"></div>
+          <div class="cell" style="background: var(--g1); opacity: 0.7;"></div>
           <div class="cell"></div>
           <div class="cell"></div>
+          <div class="cell" style="background: var(--g1); opacity: 0.5;"></div>
           <div class="cell"></div>
-          <div class="cell" style="background: var(--p); opacity: 0.4;"></div>
+          <div class="cell" style="background: var(--g1); opacity: 0.55;"></div>
+          <div class="cell" style="background: var(--g1); opacity: 0.4;"></div>
+          <div class="cell"></div>
+          <div class="cell" style="background: var(--g1); opacity: 0.65;"></div>
 
-          <div class="label">Yellow</div>
-          <div class="cell"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--y); opacity: 0.5;"></div>
+          <div class="label">D lines</div>
           <div class="cell"></div>
           <div class="cell"></div>
           <div class="cell"></div>
-          <div class="cell"></div>
-          <div class="cell" style="background: var(--y); opacity: 0.55;"></div>
-          <div class="cell"></div>
+          <div class="cell" style="background: var(--d); opacity: 0.55;"></div>
           <div class="cell"></div>
           <div class="cell"></div>
+          <div class="cell" style="background: var(--d); opacity: 0.4;"></div>
           <div class="cell"></div>
+          <div class="cell"></div>
+          <div class="cell"></div>
+          <div class="cell" style="background: var(--d); opacity: 0.5;"></div>
+          <div class="cell"></div>
+
+          <div class="label">Rail</div>
+          <div class="cell"></div>
+          <div class="cell" style="background: var(--rr); opacity: 0.5;"></div>
+          <div class="cell"></div>
+          <div class="cell"></div>
+          <div class="cell" style="background: var(--rr); opacity: 0.6;"></div>
+          <div class="cell"></div>
+          <div class="cell"></div>
+          <div class="cell" style="background: var(--rr); opacity: 0.45;"></div>
+          <div class="cell"></div>
+          <div class="cell"></div>
+          <div class="cell"></div>
+          <div class="cell" style="background: var(--rr); opacity: 0.4;"></div>
 
           <div class="label">Buses</div>
           <div class="cell" style="background: var(--bus); opacity: 0.55;"></div>
@@ -288,9 +270,9 @@
 
       <div class="footer">
         <div class="url">
-          <span class="scheme">https://</span>chicagotransitalerts.app
+          <span class="scheme">https://</span>__SITE_HOST__
         </div>
-        <div class="tag">Unofficial · Not affiliated with the CTA</div>
+        <div class="tag">Unofficial · Not affiliated with SEPTA</div>
       </div>
     </div>
   </body>

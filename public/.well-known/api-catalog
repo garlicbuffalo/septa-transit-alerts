@@ -1,52 +1,57 @@
 {
   "linkset": [
     {
-      "anchor": "https://chicagotransitalerts.app/.well-known/api-catalog",
+      "anchor": "__SITE_ORIGIN__/.well-known/api-catalog",
       "service-doc": [
         {
-          "href": "https://github.com/cailinpitt/chicago-transit-alerts#data-as-an-api",
+          "href": "https://github.com/garlicbuffalo/septa-transit-alerts#data-as-an-api",
           "type": "text/html",
           "title": "Data API documentation"
         }
       ],
       "item": [
         {
-          "href": "https://data.chicagotransitalerts.app/alerts.json",
+          "href": "__SITE_ORIGIN__/data/alerts-recent.json",
           "type": "application/json",
-          "title": "Incidents — full archive of CTA and Metra alerts and bot-detected disruptions"
+          "title": "Incidents — active plus the last 93 days of SEPTA alerts and detected disruptions"
         },
         {
-          "href": "https://data.chicagotransitalerts.app/daily-counts.json",
+          "href": "__SITE_ORIGIN__/data/alerts-index.json",
+          "type": "application/json",
+          "title": "Archive index — monthly shards and per-line files for the full history"
+        },
+        {
+          "href": "__SITE_ORIGIN__/data/daily-counts.json",
           "type": "application/json",
           "title": "Daily incident counts"
         },
         {
-          "href": "https://data.chicagotransitalerts.app/accessibility.json",
+          "href": "__SITE_ORIGIN__/data/accessibility.json",
           "type": "application/json",
-          "title": "Accessibility outages — CTA and Metra elevator, escalator, entrance, and ADA notices"
+          "title": "Accessibility outages — SEPTA Metro and Regional Rail elevator outages"
         },
         {
-          "href": "https://data.chicagotransitalerts.app/alerts.csv",
+          "href": "__SITE_ORIGIN__/data/alerts.csv",
           "type": "text/csv",
           "title": "Incidents — CSV export"
         },
         {
-          "href": "https://chicagotransitalerts.app/data/CHANGELOG.md",
+          "href": "__SITE_ORIGIN__/data/CHANGELOG.md",
           "type": "text/markdown",
           "title": "Data API changelog"
         },
         {
-          "href": "https://chicagotransitalerts.app/feed.xml",
+          "href": "__SITE_ORIGIN__/feed.xml",
           "type": "application/atom+xml",
           "title": "Atom feed — recent incidents (per-line and per-route feeds under /feed/)"
         },
         {
-          "href": "https://chicagotransitalerts.app/feed.json",
+          "href": "__SITE_ORIGIN__/feed.json",
           "type": "application/feed+json",
           "title": "JSON feed — recent incidents"
         },
         {
-          "href": "https://chicagotransitalerts.app/sitemap.xml",
+          "href": "__SITE_ORIGIN__/sitemap.xml",
           "type": "application/xml",
           "title": "Sitemap"
         }

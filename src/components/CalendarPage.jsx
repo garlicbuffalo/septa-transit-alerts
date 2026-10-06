@@ -4,9 +4,10 @@ import { useNow } from '../hooks/useNow.js';
 import { topLevelTrail } from '../lib/breadcrumbs.js';
 import { buildCalendarWeeks } from '../lib/calendar.js';
 import { dataUrl } from '../lib/dataSource.js';
-import { formatChicagoDay } from '../lib/format.js';
+import { formatPhillyDay } from '../lib/format.js';
 import { loadRecent } from '../lib/incidentStore.js';
 import { incidentRecords, SOURCE_TYPES } from '../lib/incidents.js';
+import { SITE_NAME } from '../lib/site.js';
 import { buildSearch, parseUrlState } from '../lib/urlState.js';
 import Breadcrumb from './Breadcrumb.jsx';
 import Filters from './Filters.jsx';
@@ -21,6 +22,18 @@ import Header from './Header.jsx';
 // weekday in every row) hid.
 const WINDOW_DAYS = 364; // 52 weeks
 const WEEKDAY_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', '']; // sparse to keep the row compact
+
+// "2 Metro, 1 bus, 3 Regional Rail" — omitting modes with no incidents.
+function modeBreakdown(cell) {
+  const parts = [
+    [cell.metroCount, 'Metro'],
+    [cell.busCount, 'bus'],
+    [cell.railCount, 'Regional Rail'],
+  ]
+    .filter(([n]) => n > 0)
+    .map(([n, label]) => `${n} ${label}`);
+  return parts.join(', ') || 'no breakdown';
+}
 
 const NO_DATA_STYLE = {
   backgroundImage:
@@ -51,7 +64,7 @@ function CalendarCell({ cell, maxCount }) {
     );
   }
   if (cell.noData) {
-    const label = `${formatChicagoDay(cell.dayUtc)}: no data`;
+    const label = `${formatPhillyDay(cell.dayUtc)}: no data`;
     return (
       <div
         role="img"
@@ -62,11 +75,11 @@ function CalendarCell({ cell, maxCount }) {
       />
     );
   }
-  const dayLabel = formatChicagoDay(cell.dayUtc);
+  const dayLabel = formatPhillyDay(cell.dayUtc);
   const label =
     cell.count === 0
       ? `${dayLabel}: no incidents`
-      : `${dayLabel}: ${cell.count} incident${cell.count === 1 ? '' : 's'} (${cell.trainCount} train, ${cell.busCount} bus)`;
+      : `${dayLabel}: ${cell.count} incident${cell.count === 1 ? '' : 's'} (${modeBreakdown(cell)})`;
   if (cell.count === 0) {
     return (
       <div
@@ -98,7 +111,7 @@ export default function CalendarPage() {
   const [error, setError] = useState(null);
 
   // Calendar respects the same filter chips the homepage exposes so a user
-  // moving from "Red Line" on the homepage to the calendar keeps the lens.
+  // moving from "L1" on the homepage to the calendar keeps the lens.
   // Date-range and pinned-day are intentionally ignored — the 12-month grid
   // is its own time scope. Signal filter is read from the URL for state
   // continuity but doesn't change cell counts (daily-counts.json carries no
@@ -135,9 +148,9 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => {
-    document.title = 'Calendar · Chicago Transit Alerts';
+    document.title = `Calendar · ${SITE_NAME}`;
     return () => {
-      document.title = 'Chicago Transit Alerts';
+      document.title = SITE_NAME;
     };
   }, []);
 

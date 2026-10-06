@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { breadcrumbJsonLd, dayTrail, eventTrail, topLevelTrail } from '../lib/breadcrumbs.js';
-import { chicagoDayUTC } from '../lib/format.js';
+import { phillyDayUTC } from '../lib/format.js';
 
-const SITE = 'https://chicagotransitalerts.app';
+const SITE = 'https://septa-transit-alerts.example';
 
-// 2026-05-14 21:43 UTC = 16:43 America/Chicago (CDT) → Chicago day May 14, 2026.
+// 2026-05-14 21:43 UTC = 16:43 America/New_York (EDT) → Philadelphia day May 14, 2026.
 const TS = Date.UTC(2026, 4, 14, 21, 43);
 
 describe('topLevelTrail', () => {
@@ -33,7 +33,7 @@ describe('eventTrail', () => {
 
 describe('dayTrail', () => {
   it('is Home › Calendar › <day>', () => {
-    const trail = dayTrail(chicagoDayUTC(TS));
+    const trail = dayTrail(phillyDayUTC(TS));
     expect(trail.map((c) => c.label)).toEqual(['Home', 'Calendar', 'May 14, 2026']);
     expect(trail[1].href).toBe('/calendar');
     expect(trail[2].href).toBeUndefined();

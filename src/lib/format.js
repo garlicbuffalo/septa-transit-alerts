@@ -1,21 +1,21 @@
 // Formatting helpers — date/time/duration strings and color conversions.
-// Time formatting is pinned to America/Chicago so the displayed values match
-// what a Chicago rider sees, regardless of where the browser is.
+// Time formatting is pinned to America/New_York so the displayed values match
+// what a Philadelphia rider sees, regardless of where the browser is.
 
-const chicagoDayParts = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/Chicago',
+const phillyDayParts = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
 });
 
-// Returns a stable epoch (UTC midnight) representing the Chicago calendar day
+// Returns a stable epoch (UTC midnight) representing the Philadelphia calendar day
 // that contains `ts`. Used to bucket incidents by calendar day rather than by
 // sliding 24-hour windows from `now`, which would otherwise smear an evening
 // incident across two columns depending on the current wall time.
-export function chicagoDayUTC(ts) {
+export function phillyDayUTC(ts) {
   let y, m, d;
-  for (const p of chicagoDayParts.formatToParts(new Date(ts))) {
+  for (const p of phillyDayParts.formatToParts(new Date(ts))) {
     if (p.type === 'year') y = +p.value;
     else if (p.type === 'month') m = +p.value;
     else if (p.type === 'day') d = +p.value;
@@ -47,7 +47,7 @@ export function formatDuration(ms) {
 
 // Compact "X min" / "X hr" form for stabilization-time deltas. Differs from
 // formatDuration: no `~`, rounds to whole minutes under an hour, and drops
-// stray seconds entirely. Returns null for non-positive deltas — a CTA alert
+// stray seconds entirely. Returns null for non-positive deltas — a SEPTA alert
 // that cleared *after* the bot saw service return shouldn't render a
 // negative "stabilized -3 min after".
 export function formatStabilizationDelta(ms) {
@@ -98,16 +98,16 @@ export function formatDate(ts) {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-    timeZone: 'America/Chicago',
+    timeZone: 'America/New_York',
   });
 }
 
-// Format a value produced by `chicagoDayUTC` (a UTC midnight that *encodes*
-// the Chicago calendar Y/M/D in its components, not a true Chicago wall-clock
-// instant). Formatting one of those with `formatDate` re-applies the Chicago
-// offset and shifts the result back a calendar day; format as UTC instead so
+// Format a value produced by `phillyDayUTC` (a UTC midnight that *encodes*
+// the Philadelphia calendar Y/M/D in its components, not a true Philadelphia
+// wall-clock instant). Formatting one of those with `formatDate` re-applies the
+// Eastern offset and shifts the result back a calendar day; format as UTC instead so
 // the date components round-trip.
-export function formatChicagoDay(dayUtc) {
+export function formatPhillyDay(dayUtc) {
   return new Date(dayUtc).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -116,11 +116,11 @@ export function formatChicagoDay(dayUtc) {
   });
 }
 
-// `YYYY-MM-DD` slug for a value produced by `chicagoDayUTC` — matches the
+// `YYYY-MM-DD` slug for a value produced by `phillyDayUTC` — matches the
 // `/day/:date` route. The components are read back in UTC for the same reason
-// `formatChicagoDay` formats in UTC: `chicagoDayUTC` encodes the Chicago Y/M/D
+// `formatPhillyDay` formats in UTC: `phillyDayUTC` encodes the Philadelphia Y/M/D
 // at UTC midnight, so re-applying an offset would shift the date.
-export function chicagoDayIsoUTC(dayUtc) {
+export function phillyDayIsoUTC(dayUtc) {
   const d = new Date(dayUtc);
   const m = String(d.getUTCMonth() + 1).padStart(2, '0');
   const day = String(d.getUTCDate()).padStart(2, '0');
@@ -143,10 +143,10 @@ const MONTHS_SHORT = [
 ];
 
 // Human label for a Sun–Sat week given its Sunday `weekStartUtc` (a
-// chicagoDayUTC value). Collapses the month when start and end share one
+// phillyDayUTC value). Collapses the month when start and end share one
 // ("May 17–23") and spells both out when they straddle a boundary
-// ("Apr 26 – May 2"). Read in UTC for the same reason as formatChicagoDay:
-// the value encodes the Chicago Y/M/D at UTC midnight.
+// ("Apr 26 – May 2"). Read in UTC for the same reason as formatPhillyDay:
+// the value encodes the Philadelphia Y/M/D at UTC midnight.
 export function formatWeekRange(weekStartUtc, { year = false } = {}) {
   const s = new Date(weekStartUtc);
   const e = new Date(weekStartUtc + 6 * 24 * 60 * 60 * 1000);
@@ -163,7 +163,7 @@ export function formatTime(ts) {
   return new Date(ts).toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'America/Chicago',
+    timeZone: 'America/New_York',
   });
 }
 
@@ -184,31 +184,32 @@ export function formatRelativeTime(ts, now = Date.now()) {
   return `${days}d ago`;
 }
 
-// Render CTA's posted EventEnd ("estimated end") relative to `now`.
+// Render SEPTA's posted alert end ("estimated end") relative to `now`.
 // Returns null when the estimate is already past or within 2 minutes of now —
-// at that point a "CTA expects to end at …" label is misleading rather than
+// at that point a "SEPTA expects to end at …" label is misleading rather than
 // useful, and the alert will either resolve or extend on its own shortly.
 //
-// CTA sometimes posts EventEnd as a date with no time (e.g. "2026-05-25").
+// SEPTA often posts an alert end as a whole day ("through December 19",
+// sent as 23:59).
 // Pass `dateOnly: true` so the helper renders weekday + month/day ("Sun May 25")
-// instead of the time-of-day form — date-only values get parsed to end-of-day
-// upstream, and "11:59 PM" would read as a precision CTA didn't actually post.
+// instead of the time-of-day form — "11:59 PM" would read as a precision
+// SEPTA didn't actually intend.
 //
 // Otherwise: within 2 hours, render as compact relative ("in ~45m" / "in ~1h
-// 20m"); beyond that, render Chicago weekday + time, with the weekday dropped
-// when the estimate falls on the same Chicago calendar day as `now`.
+// 20m"); beyond that, render Philadelphia weekday + time, with the weekday
+// dropped when the estimate falls on the same Philadelphia calendar day as `now`.
 export function formatEstimatedEnd(endTs, nowTs = Date.now(), { dateOnly = false } = {}) {
   if (endTs == null) return null;
   if (dateOnly) {
-    // Compare on the Chicago calendar day to avoid a noon-UTC ts that's the
-    // "next day" in UTC but the current day in CT registering as future.
-    if (chicagoDayUTC(endTs) < chicagoDayUTC(nowTs)) return null;
-    if (chicagoDayUTC(endTs) === chicagoDayUTC(nowTs)) return 'later today';
+    // Compare on the Philadelphia calendar day to avoid a noon-UTC ts that's
+    // the "next day" in UTC but the current day in ET registering as future.
+    if (phillyDayUTC(endTs) < phillyDayUTC(nowTs)) return null;
+    if (phillyDayUTC(endTs) === phillyDayUTC(nowTs)) return 'later today';
     return new Date(endTs).toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
-      timeZone: 'America/Chicago',
+      timeZone: 'America/New_York',
     });
   }
   const deltaMs = endTs - nowTs;
@@ -223,10 +224,10 @@ export function formatEstimatedEnd(endTs, nowTs = Date.now(), { dateOnly = false
     return m > 0 ? `in ~${h}h ${m}m` : `in ~${h}h`;
   }
   const time = formatTime(endTs);
-  if (chicagoDayUTC(endTs) === chicagoDayUTC(nowTs)) return time;
+  if (phillyDayUTC(endTs) === phillyDayUTC(nowTs)) return time;
   const weekday = new Date(endTs).toLocaleDateString('en-US', {
     weekday: 'short',
-    timeZone: 'America/Chicago',
+    timeZone: 'America/New_York',
   });
   return `${weekday} ${time}`;
 }

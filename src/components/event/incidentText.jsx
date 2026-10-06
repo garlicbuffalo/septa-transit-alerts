@@ -1,9 +1,9 @@
 import {
   botSummaryText,
   incidentHeadlineText,
-  isMetraPointSource,
-  metraPointEventTitle,
+  isRailPointSource,
   officialAlert,
+  railPointEventTitle,
   splitObservations,
 } from '../../lib/incidents.js';
 import { displayStationName } from '../../lib/stations.js';
@@ -22,27 +22,30 @@ export function incidentRoutes(incident) {
 export function describeText(incident) {
   if (officialAlert(incident)) return incidentHeadlineText(incident);
   const { primary } = splitObservations(incident);
-  // Metra point event: prefer train-number titles when the exporter supplies the
+  // Regional Rail point event: prefer train-number titles when the exporter supplies the
   // run number; otherwise fall back to the pre-rendered bot sentence.
-  const metraTitle = metraPointEventTitle(incident);
-  if (metraTitle) return metraTitle;
-  if (isMetraPointSource(primary?.detection_source) && primary?.bot_description) {
+  const railTitle = railPointEventTitle(incident);
+  if (railTitle) return railTitle;
+  if (isRailPointSource(primary?.detection_source) && primary?.bot_description) {
     return primary.bot_description;
   }
   if (primary?.from_station && primary?.to_station) {
     const seg = `${displayStationName(primary.from_station)} → ${displayStationName(primary.to_station)}`;
     return primary.direction_label ? `${seg} (${primary.direction_label})` : seg;
   }
+  // No stretch to name (bus routes, route-wide signals): the collector's
+  // sentence ("~38 min between Route 17 buses …") says more than a summary.
+  if (primary?.bot_description) return primary.bot_description;
   return botSummaryText(incident);
 }
 
 export function describe(incident, stationIndex) {
   if (officialAlert(incident)) return incidentHeadlineText(incident);
   const { primary } = splitObservations(incident);
-  // Metra point event: same title policy as describeText.
-  const metraTitle = metraPointEventTitle(incident);
-  if (metraTitle) return metraTitle;
-  if (isMetraPointSource(primary?.detection_source) && primary?.bot_description) {
+  // Regional Rail point event: same title policy as describeText.
+  const railTitle = railPointEventTitle(incident);
+  if (railTitle) return railTitle;
+  if (isRailPointSource(primary?.detection_source) && primary?.bot_description) {
     return primary.bot_description;
   }
   if (primary?.from_station && primary?.to_station) {
@@ -58,5 +61,6 @@ export function describe(incident, stationIndex) {
       </>
     );
   }
+  if (primary?.bot_description) return primary.bot_description;
   return botSummaryText(incident);
 }

@@ -11,30 +11,27 @@
 //   getIncidentById(id) recent first, else resolve the id's shard via the index
 //   loadRange(a, b)     union of the monthly shards overlapping [a, b]
 //
-// gateIncidents is applied here (and only here) so the Metra/CTA split lives in
-// exactly one place, matching how App.jsx framed its old single load boundary.
-//
-// Caching: Cloudflare floors browser-facing max-age at 4h, so the hot files'
-// origin max-age=30 never reaches the browser as 30s. We therefore fetch the
-// changing files (recent/index/per-line/current-month) with `cache: 'no-cache'`
-// — always revalidate, but send the ETag so an unchanged file comes back 304
-// with no body. Only the closed-month archive shards are truly immutable, so
-// those use `cache: 'force-cache'` and are memoized for the session.
+// Caching: data hosts (GitHub Pages, raw.githubusercontent.com, CDNs) hand out
+// browser-facing max-ages of minutes to hours, longer than the collector's
+// cadence. We therefore fetch the changing files (recent/index/per-line/
+// current-month) with `cache: 'no-cache'` — always revalidate, but send the
+// ETag so an unchanged file comes back 304 with no body. Closed-month archive
+// shards are nearly immutable, so those use `cache: 'default'` and are
+// memoized for the session.
 
 import { dataUrl } from './dataSource.js';
 import { findIncidentById } from './incidents.js';
-import { gateIncidents } from './metraGate.js';
 
-// Chicago month key "YYYY-MM" for a timestamp, matching the producer's shard
-// bucketing (export-web.js chicagoMonthKey) so loadMonth and getIncidentById
-// agree on which shard an incident lives in. formatToParts so DST never shifts
+// Philadelphia month key "YYYY-MM" for a timestamp, matching the collector's
+// shard bucketing (collector/lib/time.js easternMonthKey) so loadMonth and
+// getIncidentById agree on which shard an incident lives in. formatToParts so DST never shifts
 // the boundary.
 const monthKeyFmt = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'America/Chicago',
+  timeZone: 'America/New_York',
   year: 'numeric',
   month: '2-digit',
 });
-export function chicagoMonthKey(ts) {
+export function phillyMonthKey(ts) {
   let year = null;
   let month = null;
   for (const p of monthKeyFmt.formatToParts(new Date(ts))) {
@@ -50,10 +47,10 @@ async function fetchJson(file, cache) {
   return res.json();
 }
 
-// Apply the Metra/CTA gate at the load boundary. Returns a fresh array so a
-// caller mutating its result never touches another caller's cached shard.
+// Copy at the load boundary so a caller mutating its result never touches
+// another caller's cached shard.
 function gate(incidents) {
-  return gateIncidents(incidents || []);
+  return [...(incidents || [])];
 }
 
 // --- Recent slice (home, browse, ≤90d analytics) ----------------------------
@@ -82,16 +79,15 @@ export function loadIndex() {
 
 // --- Monthly archive shards --------------------------------------------------
 // A closed month is *almost* immutable: a long-running incident first seen that
-// month but resolving after it ends rewrites that shard's bytes. The producer
-// therefore gives closed months a 1-day TTL (not `immutable`), so `default`
-// caching is correct here — served straight from cache for a day (no network),
-// then revalidated, so a late-resolution rewrite is picked up within ~24h. (Not
+// month but resolving after it ends rewrites that shard's bytes, so `default`
+// caching is correct here — served from cache while the host's max-age holds,
+// then revalidated, so a late-resolution rewrite is picked up. (Not
 // `force-cache`, which would pin the stale copy indefinitely.) The current
-// Chicago month still grows each tick → `no-cache` (always revalidate). Closed
-// months are memoized for the session; the current month never is.
+// Philadelphia month still grows each tick → `no-cache` (always revalidate).
+// Closed months are memoized for the session; the current month never is.
 const monthCache = new Map(); // closed-month key → Promise<Incident[]>
 export function loadMonth(key) {
-  const closed = key < chicagoMonthKey(Date.now());
+  const closed = key < phillyMonthKey(Date.now());
   if (closed && monthCache.has(key)) return monthCache.get(key);
   const promise = fetchJson(`alerts/${key}.json`, closed ? 'default' : 'no-cache')
     .then((payload) => gate(payload.incidents))
@@ -107,7 +103,7 @@ export function loadMonth(key) {
 // Memoized for the session. A line file changes only when that line gets a new
 // incident; a viewing session missing one new incident on the line it's already
 // looking at is acceptable, and avoids refetching the whole all-time file on
-// every interaction. encodeURIComponent matches how the producer names the file.
+// every interaction. encodeURIComponent matches how the collector names the file.
 const lineCache = new Map(); // lineKey → Promise<Incident[]>
 export function loadLine(lineKey) {
   if (lineCache.has(lineKey)) return lineCache.get(lineKey);
@@ -181,7 +177,7 @@ export async function getIncidentWithContext(id) {
 
   const index = await loadIndex();
   const ts = incident?.lifecycle?.first_seen_ts;
-  const monthKey = typeof ts === 'number' && Number.isFinite(ts) ? chicagoMonthKey(ts) : null;
+  const monthKey = typeof ts === 'number' && Number.isFinite(ts) ? phillyMonthKey(ts) : null;
   const adjacentMonths = monthKey ? adjacentMonthKeys(index, monthKey) : [];
 
   const [monthArrays, lineArrays] = await Promise.all([

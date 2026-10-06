@@ -6,13 +6,13 @@ import { incident } from './v2TestHelpers.js';
 const NOW = 1_700_000_000_000;
 const MIN = 60_000;
 
-// Nested incident shape with a CTA block — ActiveCard shows `cta.headline`
+// Nested incident shape with a SEPTA block — ActiveCard shows `cta.headline`
 // directly, so the headline doubles as a stable text handle in assertions.
 const activeInc = (over = {}) =>
   incident({
     id: 'a1',
-    kind: 'train',
-    routes: ['red'],
+    kind: 'metro',
+    routes: ['l1'],
     active: true,
     first_seen_ts: NOW - 20 * MIN,
     resolved_ts: null,
@@ -46,25 +46,25 @@ describe('ActiveAlerts', () => {
     render(
       <ActiveAlerts
         incidents={[
-          // Live disruption (CTA train).
+          // Live disruption (SEPTA train).
           activeInc({
             id: 'd1',
             cta: { headline: 'Red Line gap', post_url: 'https://bsky.app/profile/x/post/d1' },
           }),
-          // Routine Metra delay → Delays.
+          // Routine Regional Rail delay → Delays.
           activeInc({
             id: 'dl1',
-            kind: 'metra',
-            routes: ['bnsf'],
-            metra_status: { source: 'delay' },
+            kind: 'rail',
+            routes: ['pao'],
+            rail_status: { source: 'delay' },
             cta: { headline: 'BNSF 1282 delayed', post_url: 'https://bsky.app/profile/x/post/dl1' },
           }),
           // Planned track construction → Planned & scheduled.
           activeInc({
             id: 'p1',
-            kind: 'metra',
-            routes: ['up-n'],
-            metra_status: { source: 'planned-delay' },
+            kind: 'rail',
+            routes: ['nor'],
+            rail_status: { source: 'planned-delay' },
             cta: {
               headline: 'Track Construction Sat Jun 13',
               post_url: 'https://bsky.app/profile/x/post/p1',
