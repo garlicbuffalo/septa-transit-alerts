@@ -57,12 +57,19 @@ export function officialIncident({
  */
 export function fakeLiveClient() {
   const posts = [];
+  const reposts = [];
   let n = 0;
   const byUri = new Map();
   return {
     dryRun: false,
     posts,
+    reposts,
     hasAccount: () => true,
+    async repost(account, subject) {
+      const uri = `at://did:plc:${account}/app.bsky.feed.repost/r${++n}`;
+      reposts.push({ account, uri, subject });
+      return { uri, cid: `c${n}` };
+    },
     async post(account, opts) {
       const uri = `at://did:plc:${account}/app.bsky.feed.post/p${++n}`;
       const rec = { account, uri, cid: `c${n}`, opts };

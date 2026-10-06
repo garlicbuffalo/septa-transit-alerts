@@ -7,7 +7,7 @@ The always-on half of the project. It runs on a small server and:
 
   | Account | Posts |
   |---|---|
-  | `alerts` | SEPTA's significant alerts, with a map when the alert names a stretch of line, and a threaded ✅ reply when SEPTA clears them |
+  | `alerts` (titled "insights") | SEPTA's significant alerts, with a map when the alert names a stretch of line, and a threaded ✅ reply when SEPTA clears them; a daily and a weekly system digest; rough-hour callouts; reposts of the other accounts' standout posts |
   | `metro` | SEPTA Metro gaps, bunching, stuck vehicles, and silent routes, each with a map; an hourly roundup of routes with vehicles missing from the tracker; cancelled-trip roundups; timelapse videos; speed maps; weekly and monthly bunching and gap recaps |
   | `bus` | The same for buses, plus clusters of several routes' buses stopped together |
   | `rail` | An hourly roundup of Regional Rail cancellations and 15+ min delays; speed maps; weekly and monthly on-time recaps with a chart by line |
@@ -68,6 +68,7 @@ You need:
 | Record and post the system timelapses now | `sudo septa-bots snapshot` (15 minutes; `snapshot 3` for 3) |
 | Post a speed map now | `sudo septa-bots speedmap bus` (or `metro`, `rail`) |
 | Post a recap now | `sudo septa-bots recap rail week` (`bus`, `metro`, `rail`; `week` or `month`) |
+| Post the insights digest now | `sudo septa-bots digest day` (or `week`) |
 | Turn videos off | set `VIDEOS=0`, restart |
 | Stop posting at once | set `BOT_MODE=dry-run`, restart |
 | Hand collecting back to GitHub Actions | set `PUBLISH=0`, restart, then run *Actions → Collect SEPTA data → Run workflow* (or wait 20+ minutes for its schedule) |
@@ -105,6 +106,7 @@ features/timelapse.js   timelapse recordings: start, sample, render, post
 features/speedmaps.js   past-hour speeds binned along a route, round-robin
 features/recaps.js      weekly and monthly bunching hotspots and gap charts
 features/cancellations.js  twice-daily cancelled-trip roundups
+features/insights.js    the insights account: reposts, rough hours, daily and weekly digests
 map/               Mapbox basemap + SVG overlay rendering (projection, drawing, line, route,
                    speed and hotspot maps, bar charts)
 video/             timelapses: vehicle tracks, scenes, frame rendering, ffmpeg encoding
@@ -135,6 +137,17 @@ Each route gets at most one post per kind per hour, and a few per day: 3 gaps, 3
 **Recaps.** Sunday mornings (the past week) and on the 1st (the past month), the bus and metro accounts post a map of the places vehicles bunched most often, with bubbles sized by count, and a reply charting the routes with the most long gaps. They count every bunching and gap detection the bot saw, posted or not.
 
 **Regional Rail** (rail account). At 14 past each hour, the bot posts a roundup of the trains SEPTA cancelled and the trains running 15+ minutes late that the collector picked up in the hour before, worst delays first, threaded when it runs long. It's silent when there were none, and each train's incident on the site links to the roundup. Every Sunday (the past week) and on the 1st (the past month), a recap gives the share of trains on time (under 15 minutes late and not cancelled), the three least reliable lines, cancellations, and the worst delay, with a bar chart of every line. The recaps count every train on SEPTA's TrainView as the server polls it, not just the ones that were posted.
+
+**Insights** (alerts account, titled "insights" on Bluesky). Besides SEPTA's alerts, the account posts the system-wide picture:
+
+| Post | When |
+|---|---|
+| Reposts | The other accounts' standout posts: weekly and monthly recaps, cross-route clusters, detections that are a route's worst in 30 days, a route's slowest speed map in 14 days, and the 5 PM system timelapses. One per tick, at most 3 an hour and 10 a day; a post not reposted within 3 hours is let go. Nothing from before the feature first ran is reposted. |
+| Rough hour | 10 past the hour, when the hour that just ended brought at least 12 new disruptions across SEPTA (unplanned alerts, gaps, bunching, stuck or missing vehicles, late or cancelled trains), at least 1.5× the usual for that hour, and more than at that hour on any comparable day (weekday, Saturday, or Sunday) in the past 4 weeks. Needs 8 comparable weekdays (3 Saturdays or Sundays) of history; at most one every 3 hours and 2 a day. |
+| Daily digest | 9:30 PM: the day's unplanned SEPTA alerts, cancelled bus and Metro trips, long gaps and bunching, Regional Rail's on-time share, elevators out, and the hardest-hit routes, linking to the site's day page. A 📈 line names what stood out against the past 30 days ("Most cancelled trips in 30 days, 3× a usual weekday"), or 📉 a calmer day than usual. |
+| Weekly digest | Sunday at 11 AM: the same for the Sunday–Saturday week just ended, against the 8 weeks before, linking to the site's week page. |
+
+Each feature marks its standout posts (`highlight` in the posts table) and the insights account reposts them. The digests and rough hours count from the site's archive, the same incidents the site shows, so their comparisons work from the archive's first day: an alert counts when the account would post it and it isn't planned work, and an earlier day or week counts only once the source behind a figure was running and the collector recorded something every day of it.
 
 **Which alerts post:**
 

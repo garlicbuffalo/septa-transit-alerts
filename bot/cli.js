@@ -10,6 +10,7 @@
 //                                  snapshots now (default 15 minutes)
 //   node bot/cli.js speedmap <account>      post a speed map now (bus, metro, rail)
 //   node bot/cli.js recap <account> <week|month>  post a recap now
+//   node bot/cli.js digest <day|week>       post the insights account's digest now
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createBlueskyClient } from './lib/bluesky.js';
@@ -143,10 +144,12 @@ else if (command === 'speedmap' && ACCOUNT_NAMES.includes(args[0]))
   await runOnce((p) => p.speedMap(args[0]));
 else if (command === 'recap' && ACCOUNT_NAMES.includes(args[0]) && /^(week|month)$/.test(args[1]))
   await runOnce((p) => (args[0] === 'rail' ? p.railRecap(args[1]) : p.recap(args[0], args[1])));
+else if (command === 'digest' && /^(day|week)$/.test(args[0]))
+  await runOnce((p) => p.digest(args[0]));
 else {
   log(
     'usage: node bot/cli.js check | once | map <incident-id> | snapshot [minutes] | ' +
-      'speedmap <bus|metro|rail> | recap <bus|metro|rail> <week|month>',
+      'speedmap <bus|metro|rail> | recap <bus|metro|rail> <week|month> | digest <day|week>',
   );
   process.exit(2);
 }

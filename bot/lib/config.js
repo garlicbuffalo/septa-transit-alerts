@@ -5,9 +5,14 @@
 // what it would post, but never posts or pushes.
 import { join, resolve } from 'node:path';
 
-/** The four Bluesky accounts and what each posts. */
+/**
+ * The four Bluesky accounts and what each posts. The alerts account is titled
+ * "insights" on Bluesky; its key (and the BLUESKY_ALERTS_* settings) stay.
+ */
 export const ACCOUNTS = {
-  alerts: 'SEPTA’s official alerts, with a ✅ reply when they clear',
+  alerts:
+    'Insights: SEPTA’s official alerts with a ✅ reply when they clear, system-wide digests ' +
+    'and rough-hour callouts, and reposts of the other accounts’ standout posts',
   metro: 'SEPTA Metro detections (subway, trolleys, M1)',
   bus: 'Bus detections',
   rail: 'Regional Rail delays, cancellations, and recaps',

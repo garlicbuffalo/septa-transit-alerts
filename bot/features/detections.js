@@ -22,6 +22,7 @@ import {
   formatCallouts,
   markPosted,
   postedSince,
+  RECORD_PHRASE,
   recordEvent,
   startOfEasternDay,
 } from './history.js';
@@ -384,16 +385,15 @@ async function postNew({
   }
 
   const label = routeShortLabel(inc.mode, route);
-  const calloutLine = formatCallouts(
-    callouts(db, {
-      source: det.source,
-      route,
-      label,
-      ts: now,
-      score,
-      scoreOf: (r) => scoreOfEvent(det.source, r),
-    }),
-  );
+  const found = callouts(db, {
+    source: det.source,
+    route,
+    label,
+    ts: now,
+    score,
+    scoreOf: (r) => scoreOfEvent(det.source, r),
+  });
+  const calloutLine = formatCallouts(found);
   const { text, facets, alt, plan, focus } = composeDetection({
     incident: inc,
     det,
@@ -415,6 +415,8 @@ async function postNew({
     subject,
     text,
     facets,
+    // The worst on this route in 30 days, even if the callout didn't fit.
+    highlight: found.includes(RECORD_PHRASE[det.source]) ? 'record' : null,
     ...(image
       ? { image }
       : {

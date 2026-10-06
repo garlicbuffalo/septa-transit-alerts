@@ -223,6 +223,7 @@ export async function postCrossBunching({
     subject,
     text,
     facets,
+    highlight: 'cluster',
     ...(image && { image }),
   });
   markPosted(db, subject, now);
