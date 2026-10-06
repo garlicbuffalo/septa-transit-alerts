@@ -13,15 +13,17 @@
 // service polls it (rail_trains), so they don't depend on what got posted.
 import { railKeyForTrainViewLine } from '../../collector/lib/network.js';
 import { formatClock } from '../../collector/lib/railTrains.js';
-import { easternParts, serviceDateKey } from '../../collector/lib/time.js';
+import { serviceDateKey } from '../../collector/lib/time.js';
 import { RAIL_LINES } from '../../src/lib/railLines.js';
 import { SITE_ORIGIN } from '../../src/lib/site.js';
-import { addDays, clockRange, dateRangeLabel, dayLabel, monthLabel } from '../lib/clock.js';
+import { clockRange, dayLabel, recapWindow } from '../lib/clock.js';
 import { getMeta, setMeta } from '../lib/db.js';
 import { linkFacets } from '../lib/text.js';
 import { renderBarChart } from '../map/chart.js';
 import { subjectOf } from './detections.js';
 import { buildRollupThread } from './ghosts.js';
+
+export { recapWindow };
 
 const HOUR_MS = 60 * 60 * 1000;
 export const RAIL_ROLLUP_MINUTE = 14;
@@ -269,20 +271,6 @@ export function composeRailRecap(stats, { label }) {
   };
   const alt = `Bar chart of the share of trains on time on each Regional Rail line, ${label}, least reliable first: ${stats.lines.map((l) => `${lineLabel(l.line)} ${pct0(l.pct)}`).join(', ')}.`;
   return { text, chart, alt };
-}
-
-/** The window a recap covers, ending the day before `now`'s service day. */
-export function recapWindow(period, now) {
-  const today = serviceDateKey(now);
-  if (period === 'month') {
-    const p = easternParts(now);
-    const firstThis = `${p.year}-${String(p.month).padStart(2, '0')}-01`;
-    const toKey = addDays(firstThis, -1);
-    return { fromKey: `${toKey.slice(0, 7)}-01`, toKey, label: monthLabel(toKey) };
-  }
-  const toKey = addDays(today, -1);
-  const fromKey = addDays(today, -7);
-  return { fromKey, toKey, label: dateRangeLabel(fromKey, toKey) };
 }
 
 /** Post the weekly or monthly recap (once per window). */

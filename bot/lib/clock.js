@@ -1,4 +1,5 @@
 // Philadelphia clock times and date ranges for post text and images.
+import { easternParts, easternToEpoch, serviceDateKey } from '../../collector/lib/time.js';
 
 const CLOCK = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
@@ -45,4 +46,27 @@ export function dateRangeLabel(fromKey, toKey) {
 /** "September 2026" for a date key in that month. */
 export function monthLabel(key) {
   return MONTH.format(keyDate(key));
+}
+
+/**
+ * The days a weekly or monthly recap covers, as date keys: the 7 days before
+ * `now`'s service day, or the previous calendar month.
+ */
+export function recapWindow(period, now) {
+  const today = serviceDateKey(now);
+  if (period === 'month') {
+    const p = easternParts(now);
+    const firstThis = `${p.year}-${String(p.month).padStart(2, '0')}-01`;
+    const toKey = addDays(firstThis, -1);
+    return { fromKey: `${toKey.slice(0, 7)}-01`, toKey, label: monthLabel(toKey) };
+  }
+  const toKey = addDays(today, -1);
+  const fromKey = addDays(today, -7);
+  return { fromKey, toKey, label: dateRangeLabel(fromKey, toKey) };
+}
+
+/** Midnight in Philadelphia at the start of a date key. */
+export function keyStart(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return easternToEpoch(y, m, d);
 }

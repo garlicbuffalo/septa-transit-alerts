@@ -34,6 +34,28 @@ scheduler.every('collect', config.intervals.collectMs, () => pipeline.collectTic
 scheduler.every('sample', 15_000, () => pipeline.sampleCaptures());
 scheduler.every('render', 30_000, () => pipeline.renderCaptures(), { delayMs: 20_000 });
 scheduler.cron('snapshot', '0 8,11,14,17,20 * * *', () => pipeline.startSnapshots());
+// Speed maps: every two hours by day, staggered across the accounts.
+for (const [account, spec] of [
+  ['bus', '35 7-21/2 * * *'],
+  ['metro', '50 8-20/2 * * *'],
+  ['rail', '20 7-21/2 * * *'],
+]) {
+  scheduler.cron(`speedmap-${account}`, spec, async () =>
+    log(`speedmap ${account}: ${JSON.stringify(await pipeline.speedMap(account))}`),
+  );
+}
+// Recaps: Sunday mornings (the past week) and the 1st (the past month).
+for (const [account, week, month] of [
+  ['bus', '20 10 * * 0', '30 10 1 * *'],
+  ['metro', '25 10 * * 0', '35 10 1 * *'],
+]) {
+  scheduler.cron(`recap-${account}-week`, week, async () =>
+    log(`recap ${account}: ${JSON.stringify(await pipeline.recap(account, 'week'))}`),
+  );
+  scheduler.cron(`recap-${account}-month`, month, async () =>
+    log(`recap ${account}: ${JSON.stringify(await pipeline.recap(account, 'month'))}`),
+  );
+}
 scheduler.cron('rail-recap-week', '40 10 * * 0', async () =>
   log(`rail recap: ${JSON.stringify(await pipeline.railRecap('week'))}`),
 );

@@ -138,6 +138,20 @@ const MIGRATIONS = [
     PRIMARY KEY (service_date, train_no)
   ) WITHOUT ROWID;
   `,
+  `
+  -- Every speed map posted: which route each account mapped last (they take
+  -- turns), and the averages behind "slowest reported in 14 days".
+  CREATE TABLE speedmap_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account TEXT NOT NULL,
+    route TEXT NOT NULL,
+    direction TEXT,
+    ts INTEGER NOT NULL,
+    avg_mph REAL NOT NULL,
+    coverage REAL
+  );
+  CREATE INDEX speedmap_runs_route ON speedmap_runs (account, route, ts);
+  `,
 ];
 
 /**

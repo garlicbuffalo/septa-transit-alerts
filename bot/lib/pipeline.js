@@ -9,7 +9,9 @@
 //                routes it follows (or the whole feed, for a snapshot)
 //   render       every 30 seconds: render a finished timelapse and post it
 //   snapshot     5 times a day: start the bus and Metro system snapshots
-//   rail recap   Sundays and the 1st: the Regional Rail on-time recap
+//   recaps       Sundays and the 1st: bunching hotspots and gaps (bus,
+//                metro), the Regional Rail on-time recap
+//   speed maps   every 2 hours by day: one route's speeds per account
 //   housekeeping hourly: prune old observations and dry-run assets
 //   backup       nightly: a consistent copy of the database
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
@@ -18,10 +20,13 @@ import { collect } from '../../collector/collect.js';
 import { createSources } from '../../collector/lib/sources.js';
 import { normalizeTransitView } from '../../collector/lib/vehicles.js';
 import { linkAlertPosts, postAlerts } from '../features/alerts.js';
+import { maybePostCancellationRoundups } from '../features/cancellations.js';
 import { postCrossBunching } from '../features/crossBunching.js';
 import { linkDetectionPosts, postDetections } from '../features/detections.js';
 import { maybePostGhostRollups } from '../features/ghosts.js';
 import { maybePostRailRollup, postRailRecap, recordTrains } from '../features/rail.js';
+import { postRecap } from '../features/recaps.js';
+import { postSpeedMap } from '../features/speedmaps.js';
 import {
   renderDueCapture,
   sampleCaptures,
@@ -126,6 +131,16 @@ export function createPipeline({
       return startSnapshots(db, { now: now(), hasAccount: poster.client.hasAccount, ...opts });
     },
 
+    /** Post the bus or metro account's weekly or monthly recap. */
+    recap(account, period) {
+      return postRecap({ db, poster, basemap, account, period, now: now(), log });
+    },
+
+    /** Map and post one route's past-hour speeds for an account. */
+    speedMap(account) {
+      return postSpeedMap({ db, poster, shapes, basemap, account, now: now(), log });
+    },
+
     /** Post the weekly or monthly Regional Rail recap. */
     railRecap(period) {
       return postRailRecap({ db, poster, now: now(), period, log });
@@ -212,6 +227,9 @@ export function createPipeline({
           const rail = await step('rail', () =>
             maybePostRailRollup({ incidents, poster, db, now: tickNow, log }),
           );
+          const cancellations = await step('cancellations', () =>
+            maybePostCancellationRoundups({ incidents, poster, db, now: tickNow, log }),
+          );
           const crossRoute = await step('cross-bunching', () =>
             postCrossBunching({
               vehicles: vehicleList,
@@ -226,7 +244,7 @@ export function createPipeline({
             }),
           );
           const linked = linkAlertPosts(incidents, poster) + linkDetectionPosts(incidents, poster);
-          return { alerts, detections, ghosts, rail, crossRoute, linked };
+          return { alerts, detections, ghosts, rail, cancellations, crossRoute, linked };
         },
       });
       let published = null;
@@ -253,6 +271,9 @@ export function createPipeline({
             ? `, ghost rollup ${summary.hook.ghosts.routes} routes`
             : '') +
           (summary.hook?.rail?.posts ? `, rail roundup ${summary.hook.rail.trains} trains` : '') +
+          (summary.hook?.cancellations?.posts
+            ? `, cancelled-trip roundup ${summary.hook.cancellations.routes} routes`
+            : '') +
           (summary.hook?.crossRoute?.posted ? ', cross-route cluster posted' : '') +
           (published?.pushed ? ', pushed' : '') +
           (published?.deployed ? ', deploy triggered' : '') +

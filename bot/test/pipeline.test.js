@@ -186,10 +186,18 @@ describe('pipeline', () => {
     const { ok, summary } = await pipeline.collectTick();
     expect(ok).toBe(true);
     expect(summary.hook.alerts.posted).toBeGreaterThan(0);
-    expect(client.posts.every((p) => p.account === 'alerts')).toBe(true);
+    expect(client.posts.filter((p) => p.account === 'alerts')).toHaveLength(
+      summary.hook.alerts.posted,
+    );
+    // The fixtures' trip feed cancels bus trips and it's past 2:45 PM: one
+    // cancelled-trip roundup; nothing else on the other accounts yet.
+    expect(summary.hook.cancellations).toMatchObject({ posts: 1 });
+    expect(client.posts.filter((p) => p.account !== 'alerts')).toHaveLength(1);
     const recent = JSON.parse(readFileSync(join(config.dataDir, 'alerts-recent.json'), 'utf8'));
     const linked = recent.incidents.filter((i) => i.official_alert?.post_url);
-    expect(linked.length).toBe(summary.hook.linked);
+    const roundup = recent.incidents.filter((i) => i.detections?.some((d) => d.post_url));
+    expect(roundup.length).toBeGreaterThan(0);
+    expect(linked.length + roundup.length).toBe(summary.hook.linked);
     expect(linked[0].official_alert.post_url).toMatch(
       /^https:\/\/bsky\.app\/profile\/did:plc:alerts\/post\//,
     );
