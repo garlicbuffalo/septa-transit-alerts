@@ -16,3 +16,6 @@ public/data/*
 /data-branch/
 # The collector's GTFS schedule cache (`npm run collect`).
 /.collector-cache/
+
+# Local secrets (Bluesky app passwords). Never commit.
+.env
