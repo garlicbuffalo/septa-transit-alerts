@@ -33,51 +33,54 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <meta name="apple-mobile-web-app-title" content="Chicago Transit Alerts" />
+    <meta name="apple-mobile-web-app-title" content="SEPTA Transit Alerts" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>Chicago Transit Alerts</title>
-    <meta name="description" content="Major CTA & Metra alerts and service observations." />
+    <title>SEPTA Transit Alerts</title>
+    <meta
+      name="description"
+      content="SEPTA Metro, bus, and Regional Rail service alerts and disruptions."
+    />
     <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://chicagotransitalerts.app/" />
+    <link rel="canonical" href="__SITE_ORIGIN__/" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Chicago Transit Alerts" />
-    <meta property="og:title" content="Chicago Transit Alerts" />
+    <meta property="og:site_name" content="SEPTA Transit Alerts" />
+    <meta property="og:title" content="SEPTA Transit Alerts" />
     <meta
       property="og:description"
-      content="A public archive of CTA and Metra service alerts and bot-detected disruptions, with a 90-day heatmap of incident frequency."
+      content="A public archive of SEPTA service alerts and detected disruptions across SEPTA Metro, buses, and Regional Rail, with a 90-day heatmap of incident frequency."
     />
-    <meta property="og:url" content="https://chicagotransitalerts.app/" />
-    <meta property="og:image" content="https://chicagotransitalerts.app/og-image.png" />
+    <meta property="og:url" content="__SITE_ORIGIN__/" />
+    <meta property="og:image" content="__SITE_ORIGIN__/og-image.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="Chicago Transit Alerts — a public archive of CTA and Metra service alerts and bot-detected disruptions, with a 90-day heatmap."
+      content="SEPTA Transit Alerts — a public archive of SEPTA service alerts and disruptions, with a 90-day heatmap."
     />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Chicago Transit Alerts" />
+    <meta name="twitter:title" content="SEPTA Transit Alerts" />
     <meta
       name="twitter:description"
-      content="A public archive of CTA and Metra service alerts and bot-detected disruptions, with a 90-day heatmap of incident frequency."
+      content="A public archive of SEPTA service alerts and detected disruptions across SEPTA Metro, buses, and Regional Rail, with a 90-day heatmap of incident frequency."
     />
-    <meta name="twitter:image" content="https://chicagotransitalerts.app/og-image.png" />
+    <meta name="twitter:image" content="__SITE_ORIGIN__/og-image.png" />
     <meta
       name="twitter:image:alt"
-      content="Chicago Transit Alerts — a public archive of CTA and Metra service alerts and bot-detected disruptions, with a 90-day heatmap."
+      content="SEPTA Transit Alerts — a public archive of SEPTA service alerts and disruptions, with a 90-day heatmap."
     />
     <link
       rel="alternate"
       type="application/atom+xml"
-      title="Chicago Transit Alerts"
+      title="SEPTA Transit Alerts"
       href="/feed.xml"
     />
     <link
       rel="alternate"
       type="application/feed+json"
-      title="Chicago Transit Alerts"
+      title="SEPTA Transit Alerts"
       href="/feed.json"
     />
     <script type="application/ld+json">
@@ -86,18 +89,18 @@
         "@graph": [
           {
             "@type": "WebSite",
-            "@id": "https://chicagotransitalerts.app/#website",
-            "url": "https://chicagotransitalerts.app/",
-            "name": "Chicago Transit Alerts",
-            "description": "A public archive of CTA and Metra service alerts and bot-detected disruptions, with a 90-day heatmap of incident frequency.",
+            "@id": "__SITE_ORIGIN__/#website",
+            "url": "__SITE_ORIGIN__/",
+            "name": "SEPTA Transit Alerts",
+            "description": "A public archive of SEPTA service alerts and detected disruptions across SEPTA Metro, buses, and Regional Rail, with a 90-day heatmap of incident frequency.",
             "inLanguage": "en-US",
-            "publisher": { "@id": "https://chicagotransitalerts.app/#org" }
+            "publisher": { "@id": "__SITE_ORIGIN__/#org" }
           },
           {
             "@type": "Organization",
-            "@id": "https://chicagotransitalerts.app/#org",
-            "name": "Chicago Transit Alerts (unofficial)",
-            "url": "https://chicagotransitalerts.app/"
+            "@id": "__SITE_ORIGIN__/#org",
+            "name": "SEPTA Transit Alerts (unofficial)",
+            "url": "__SITE_ORIGIN__/"
           }
         ]
       }
@@ -107,18 +110,6 @@
     <a href="#main" class="skip-link">Skip to main content</a>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <!-- Cloudflare Web Analytics — cookieless, privacy-first page-view counts.
-         Loaded as a manual beacon (not Cloudflare's automatic injection)
-         because the site is served by GitHub Pages and its DNS records are
-         DNS-only / grey-cloud, so traffic isn't proxied through Cloudflare.
-         The token is public by design (it ships in page source on every CF
-         Analytics site). Disclosed on /privacy. Replace the placeholder with
-         the token from Cloudflare dashboard → Web Analytics → add a site. -->
-    <script
-      defer
-      src="https://static.cloudflareinsights.com/beacon.min.js"
-      data-cf-beacon='{"token": "19c543b1fee842128be4be2916903e6c"}'
-    ></script>
     <!-- Speculation Rules: pages use full-page navigation (no client router),
          so prefetching same-origin links on hover makes clicks much faster,
          and prerendering the hub pages makes them feel instant. /data/* (the

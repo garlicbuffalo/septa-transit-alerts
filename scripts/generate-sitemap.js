@@ -9,18 +9,15 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listWeeks } from '../src/lib/aggregate.js';
-import { TRAIN_LINE_ORDER } from '../src/lib/ctaLines.js';
-import { chicagoDayIsoUTC, chicagoDayUTC } from '../src/lib/format.js';
-import {
-  groupIncidentRecords,
-  incidentRecords,
-  legacyKind,
-  postUrlRkey,
-} from '../src/lib/incidents.js';
-import { gateIncidents } from '../src/lib/metraGate.js';
-import { METRA_LINE_ORDER } from '../src/lib/metraLines.js';
-import { buildMetraStationIndex } from '../src/lib/metraStations.js';
+import { compareBusRoutes } from '../src/lib/busRoutes.js';
+import { phillyDayIsoUTC, phillyDayUTC } from '../src/lib/format.js';
+import { groupIncidentRecords, incidentRecords } from '../src/lib/incidents.js';
+import { METRO_LINE_ORDER } from '../src/lib/metroLines.js';
+import { RAIL_LINE_ORDER } from '../src/lib/railLines.js';
+import { buildRailStationIndex } from '../src/lib/railStations.js';
+import { SITE_ORIGIN } from '../src/lib/site.js';
 import { buildStationIndex } from '../src/lib/stations.js';
+import { recentIncidents } from './eventScope.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -28,7 +25,7 @@ const DIST = resolve(ROOT, 'dist');
 const DATA = resolve(DIST, 'data', 'alerts.json');
 const OUT = resolve(DIST, 'sitemap.xml');
 
-const SITE = 'https://chicagotransitalerts.app';
+const SITE = SITE_ORIGIN;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_DAYS = 90;
 
@@ -57,14 +54,6 @@ function main() {
     return;
   }
   const raw = JSON.parse(readFileSync(DATA, 'utf8'));
-  // The CTA payload below has Metra stripped (gateIncidents is CTA-only in Node)
-  // so the CTA station/event/day loops stay CTA-scoped. Metra event + station
-  // pages now get prerendered OG cards, so they're added separately from
-  // `metraFlat` (the un-gated Metra incidents) further down. Metra roster pages
-  // (line pages + the system dashboard) are listed via the static blocks.
-  const allIncidents = raw.incidents || [];
-  const metraFlat = incidentRecords(allIncidents.filter((inc) => legacyKind(inc) === 'metra'));
-  raw.incidents = gateIncidents(allIncidents);
   const payload = { ...raw, ...incidentRecords(raw.incidents || []) };
   const generatedAt = payload.generated_at ?? Date.now();
   const generatedIso = isoDate(generatedAt);
@@ -80,9 +69,9 @@ function main() {
   entries.push(urlEntry(`${SITE}/stats`, generatedIso, 'daily', 0.7));
   entries.push(urlEntry(`${SITE}/compare`, generatedIso, 'monthly', 0.5));
   entries.push(urlEntry(`${SITE}/accessibility`, generatedIso, 'daily', 0.7));
-  entries.push(urlEntry(`${SITE}/system/trains`, generatedIso, 'daily', 0.7));
+  entries.push(urlEntry(`${SITE}/system/metro`, generatedIso, 'daily', 0.7));
   entries.push(urlEntry(`${SITE}/system/buses`, generatedIso, 'daily', 0.7));
-  entries.push(urlEntry(`${SITE}/system/metra`, generatedIso, 'daily', 0.7));
+  entries.push(urlEntry(`${SITE}/system/rail`, generatedIso, 'daily', 0.7));
 
   // A–Z directory index pages — full station/route rosters. Static content
   // (the roster rarely changes), but they're the canonical entry points into
@@ -96,14 +85,14 @@ function main() {
   entries.push(urlEntry(`${SITE}/subscribe`, generatedIso, 'monthly', 0.3));
   entries.push(urlEntry(`${SITE}/privacy`, generatedIso, 'yearly', 0.2));
 
-  // Train lines — stable set of 8.
-  for (const line of TRAIN_LINE_ORDER) {
+  // SEPTA Metro lines — stable set of 13.
+  for (const line of METRO_LINE_ORDER) {
     entries.push(urlEntry(`${SITE}/line/${line}`, generatedIso, 'daily', 0.7));
   }
 
-  // Metra lines — stable set of 11 (roster pages, prerendered as static stubs).
-  for (const line of METRA_LINE_ORDER) {
-    entries.push(urlEntry(`${SITE}/metra/line/${line}`, generatedIso, 'daily', 0.7));
+  // Regional Rail lines — stable set of 13 (roster pages, prerendered as static stubs).
+  for (const line of RAIL_LINE_ORDER) {
+    entries.push(urlEntry(`${SITE}/rail/line/${line}`, generatedIso, 'daily', 0.7));
   }
 
   // Bus routes with at least one incident in the rolling window. Same scope
@@ -116,7 +105,7 @@ function main() {
     if (a.kind !== 'bus' || a.first_seen_ts < cutoff) continue;
     for (const r of a.routes || []) busRoutes.add(r);
   }
-  for (const route of [...busRoutes].sort()) {
+  for (const route of [...busRoutes].map(String).sort(compareBusRoutes)) {
     entries.push(urlEntry(`${SITE}/route/${route}`, generatedIso, 'weekly', 0.5));
   }
 
@@ -133,29 +122,29 @@ function main() {
     entries.push(urlEntry(`${SITE}/station/${slug}`, generatedIso, 'weekly', 0.5));
   }
 
-  // Metra stations — same ≥1-incident gating, under the /metra/station/ namespace.
-  const metraStations = buildMetraStationIndex(
-    metraFlat.officialRecords ?? [],
-    metraFlat.detectionRecords ?? [],
+  // Regional Rail stations — same ≥1-incident gating, under /rail/station/.
+  const railStations = buildRailStationIndex(
+    payload.officialRecords ?? [],
+    payload.detectionRecords ?? [],
     {
       now: generatedAt,
       windowDays: WINDOW_DAYS,
     },
   );
-  for (const slug of [...metraStations.keys()].sort()) {
-    entries.push(urlEntry(`${SITE}/metra/station/${slug}`, generatedIso, 'weekly', 0.5));
+  for (const slug of [...railStations.keys()].sort()) {
+    entries.push(urlEntry(`${SITE}/rail/station/${slug}`, generatedIso, 'weekly', 0.5));
   }
 
-  // Day pages — every Chicago calendar day in the last 30 days that had at
+  // Day pages — every Philadelphia calendar day in the last 30 days that had at
   // least one incident. Same gating as prerender-pages.js so the sitemap and
   // OG cards agree.
   const DAY_WINDOW_DAYS = 30;
-  const todayUtc = chicagoDayUTC(generatedAt);
+  const todayUtc = phillyDayUTC(generatedAt);
   const dayCutoff = todayUtc - (DAY_WINDOW_DAYS - 1) * DAY_MS;
   const daysWithIncidents = new Set();
   function offerDay(ts) {
     if (ts == null) return;
-    const d = chicagoDayUTC(ts);
+    const d = phillyDayUTC(ts);
     if (d >= dayCutoff && d <= todayUtc) daysWithIncidents.add(d);
   }
   const {
@@ -184,7 +173,7 @@ function main() {
       const lastmod = isCurrent ? generatedIso : isoDate(weekStartUtc + 7 * DAY_MS);
       entries.push(
         urlEntry(
-          `${SITE}/week/${chicagoDayIsoUTC(weekStartUtc)}`,
+          `${SITE}/week/${phillyDayIsoUTC(weekStartUtc)}`,
           lastmod,
           isCurrent ? 'daily' : 'weekly',
           isCurrent ? 0.6 : 0.4,
@@ -193,49 +182,16 @@ function main() {
     }
   }
 
-  // Per-event pages. lastmod uses resolved_ts when available, else the
-  // start time — same semantic as the Atom feed. Crawlers use lastmod to
-  // decide whether to revisit, and resolved events don't keep changing.
-  const { merged, standaloneAlerts, standaloneObs } = groupIncidentRecords(
-    payload.officialRecords ?? [],
-    payload.detectionRecords ?? [],
-  );
+  // Per-event pages — the same set prerender-events.js stubs (active incidents
+  // plus everything first seen in its window). lastmod uses resolved_ts when
+  // available, else the start time — same semantic as the Atom feed. Crawlers
+  // use lastmod to decide whether to revisit, and resolved events don't change.
   const eventEntries = [];
-  function pushEvent(rkey, lastTs) {
-    if (!rkey) return;
+  for (const inc of recentIncidents(raw.incidents || [], generatedAt)) {
+    const lastTs = inc.lifecycle?.resolved_ts ?? inc.lifecycle?.first_seen_ts ?? generatedAt;
     eventEntries.push(
-      urlEntry(`${SITE}/event/${rkey}`, isoDate(lastTs ?? generatedAt), 'monthly', 0.4),
+      urlEntry(`${SITE}/event/${encodeURIComponent(inc.id)}`, isoDate(lastTs), 'monthly', 0.4),
     );
-  }
-  for (const m of merged) {
-    pushEvent(
-      postUrlRkey(m.post_url) ?? postUrlRkey(m.obs_post_url),
-      m.resolved_ts ?? m.first_seen_ts,
-    );
-  }
-  for (const a of standaloneAlerts) {
-    pushEvent(postUrlRkey(a.post_url), a.resolved_ts ?? a.first_seen_ts);
-  }
-  for (const o of standaloneObs) {
-    pushEvent(postUrlRkey(o.post_url), o.resolved_ts ?? o.ts);
-  }
-  // Metra events — same posted-only rule (prerender-events keys off the post
-  // rkey), so only Metra incidents with a Bluesky post get a sitemap URL.
-  const metraMerge = groupIncidentRecords(
-    metraFlat.officialRecords ?? [],
-    metraFlat.detectionRecords ?? [],
-  );
-  for (const m of metraMerge.merged) {
-    pushEvent(
-      postUrlRkey(m.post_url) ?? postUrlRkey(m.obs_post_url),
-      m.resolved_ts ?? m.first_seen_ts,
-    );
-  }
-  for (const a of metraMerge.standaloneAlerts) {
-    pushEvent(postUrlRkey(a.post_url), a.resolved_ts ?? a.first_seen_ts);
-  }
-  for (const o of metraMerge.standaloneObs) {
-    pushEvent(postUrlRkey(o.post_url), o.resolved_ts ?? o.ts);
   }
   entries.push(...eventEntries);
 

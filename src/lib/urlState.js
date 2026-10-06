@@ -1,6 +1,6 @@
-import { normalizeTrainLine, TRAIN_LINE_ORDER } from './ctaLines.js';
-import { SIGNAL_TYPES, SOURCE_TYPES } from './incidents.js';
-import { METRA_LINE_ORDER, normalizeMetraLine } from './metraLines.js';
+import { NETWORKS, SIGNAL_TYPES, SOURCE_TYPES } from './incidents.js';
+import { METRO_LINE_ORDER, normalizeMetroLine } from './metroLines.js';
+import { normalizeRailLine, RAIL_LINE_ORDER } from './railLines.js';
 
 // Source filter uses "selected = shown" semantics: an empty URL/state means
 // "everything is shown", which we represent internally as all SOURCE_TYPES
@@ -10,13 +10,13 @@ import { METRA_LINE_ORDER, normalizeMetraLine } from './metraLines.js';
 const DEFAULT_SOURCES = [...SOURCE_TYPES];
 
 const VALID_RANGES = new Set([7, 30, 60, 90]);
-const TRAIN_LINE_SET = new Set(TRAIN_LINE_ORDER);
-const METRA_LINE_SET = new Set(METRA_LINE_ORDER);
+const METRO_LINE_SET = new Set(METRO_LINE_ORDER);
+const RAIL_LINE_SET = new Set(RAIL_LINE_ORDER);
 const SIGNAL_SET = new Set(SIGNAL_TYPES);
 const SOURCE_SET = new Set(SOURCE_TYPES);
 const DAY_PARAM_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-// Format a UTC epoch (Chicago day midnight) as a YYYY-MM-DD string. Cleaner in
+// Format a UTC epoch (Philadelphia day midnight) as a YYYY-MM-DD string. Cleaner in
 // URLs than an epoch, and the round-trip is unambiguous because the value is
 // always a UTC midnight.
 function dayUtcToString(dayUtc) {
@@ -47,8 +47,8 @@ function dayStringToUtc(s) {
 export { dayStringToUtc, dayUtcToString };
 
 // Bus visibility defaults to hidden when the user has narrowed to a specific
-// set of train lines — otherwise a "Red Line view" link surfaces unrelated
-// bus disruptions on the other side of the city. Returns true when the
+// set of Metro lines — otherwise an "L1 view" link surfaces unrelated bus
+// disruptions on the other side of the city. Returns true when the
 // default should be "show buses".
 function defaultShowBus(selectedLines) {
   return !(selectedLines !== null && selectedLines.length > 0);
@@ -61,32 +61,31 @@ export { defaultShowBus };
 // selections — that's worth carrying across visits. dateRange and the
 // pinned day are deliberately excluded: a stale "30d" choice from last
 // month feels more confusing than helpful.
-const STORAGE_KEY = 'chicago-transit-alerts:filters';
-const LEGACY_STORAGE_KEY = 'cta-alert-history:filters';
+const STORAGE_KEY = 'septa-transit-alerts:filters';
 const STICKY_KEYS = [
   'selectedLines',
   'showBus',
   'selectedBusRoutes',
-  'selectedMetraLines',
+  'selectedRailLines',
   'selectedSignals',
   'selectedSources',
-  // Page-level agency scope ('all' | 'cta' | 'metra'). Persisted so a returning
-  // visitor stays scoped to the agency they care about. Not mirrored to the URL.
-  'selectedAgency',
+  // Page-level network scope ('all' | 'transit' | 'rail'). Persisted so a
+  // returning visitor stays scoped to the network they ride. Not mirrored to
+  // the URL.
+  'selectedNetwork',
 ];
+
+const NETWORK_SCOPES = new Set(['all', ...NETWORKS]);
 
 export function readStoredFilters() {
   try {
-    let raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (!legacy) return null;
-      window.localStorage.setItem(STORAGE_KEY, legacy);
-      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-      raw = legacy;
-    }
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed == null || typeof parsed !== 'object') return null;
+    if (parsed.selectedNetwork != null && !NETWORK_SCOPES.has(parsed.selectedNetwork)) {
+      delete parsed.selectedNetwork;
+    }
     return parsed;
   } catch {
     return null;
@@ -115,30 +114,29 @@ export function parseUrlState(search = window.location.search) {
     selectedLines: null,
     showBus: true,
     selectedBusRoutes: [],
-    selectedMetraLines: [],
+    selectedRailLines: [],
     dateRange: 7,
     selectedDay: null,
     selectedSignals: [],
     selectedSources: [...DEFAULT_SOURCES],
     search: '',
-    selectedAgency: 'all',
+    selectedNetwork: 'all',
   };
 
   const linesParam = params.get('lines');
   if (linesParam === 'none') {
     out.selectedLines = [];
   } else if (linesParam) {
-    // Normalize CTA short codes to full names so old shareable URLs
-    // (?lines=org,p) keep working after the rename.
+    // Normalize SEPTA's uppercase codes (?lines=L1,B1) to the lowercase keys.
     const valid = linesParam
       .split(',')
-      .map((s) => normalizeTrainLine(s.trim()))
-      .filter((s) => TRAIN_LINE_SET.has(s));
+      .map((s) => normalizeMetroLine(s.trim()))
+      .filter((s) => METRO_LINE_SET.has(s));
     if (valid.length > 0) out.selectedLines = valid;
   }
 
   // Bus visibility: explicit param wins; otherwise contextual default based
-  // on whether train lines are narrowed.
+  // on whether Metro lines are narrowed.
   const busParam = params.get('bus');
   if (busParam === '0') out.showBus = false;
   else if (busParam === '1') out.showBus = true;
@@ -149,23 +147,20 @@ export function parseUrlState(search = window.location.search) {
     out.selectedBusRoutes = routesParam
       .split(',')
       .map((s) => s.trim())
-      // CTA route ids aren't always plain numbers — express/owl/named routes
-      // carry letters (X9, J14, N5, 53A, 55N). Accept any token with at least
-      // one digit and only alphanumerics; that admits every real route while
-      // still dropping garbage like "abc" or "none". Non-existent ids simply
-      // match no incident downstream, so the filter is harmless either way.
-      .filter((s) => /^[A-Za-z]*\d+[A-Za-z]*$/.test(s));
+      // SEPTA route ids aren't always numbers — lettered and hyphenated routes
+      // exist (K, LUCYGO, 47M, L1-OWL, T-Bus). Accept short alphanumeric/
+      // hyphen tokens; non-existent ids simply match no incident downstream,
+      // so the filter is harmless either way.
+      .filter((s) => /^[A-Za-z0-9][A-Za-z0-9-]{0,11}$/.test(s) && s !== 'none');
   }
 
-  // Metra line selection: `?metra=up-n,bnsf`. Empty/invalid → no narrowing.
-  // (A legacy `?metra=1` from the old gate param normalizes to no valid lines,
-  // so it harmlessly leaves Metra unfiltered.)
-  const metraParam = params.get('metra');
-  if (metraParam) {
-    out.selectedMetraLines = metraParam
+  // Regional Rail line selection: `?rail=pao,wtr`. Empty/invalid → no narrowing.
+  const railParam = params.get('rail');
+  if (railParam) {
+    out.selectedRailLines = railParam
       .split(',')
-      .map((s) => normalizeMetraLine(s.trim()))
-      .filter((s) => METRA_LINE_SET.has(s));
+      .map((s) => normalizeRailLine(s.trim()))
+      .filter((s) => RAIL_LINE_SET.has(s));
   }
 
   const rangeParam = params.get('range');
@@ -217,7 +212,7 @@ export function buildSearch({
   selectedLines,
   showBus,
   selectedBusRoutes,
-  selectedMetraLines,
+  selectedRailLines,
   dateRange,
   selectedDay,
   selectedSignals,
@@ -237,8 +232,8 @@ export function buildSearch({
   if (selectedBusRoutes && selectedBusRoutes.length > 0) {
     params.set('routes', selectedBusRoutes.join(','));
   }
-  if (selectedMetraLines && selectedMetraLines.length > 0) {
-    params.set('metra', selectedMetraLines.join(','));
+  if (selectedRailLines && selectedRailLines.length > 0) {
+    params.set('rail', selectedRailLines.join(','));
   }
   // Day-pin overrides the range filter visually, but we serialize both so the
   // chip can fall back to the prior range when cleared.

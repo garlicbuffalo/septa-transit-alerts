@@ -1,17 +1,17 @@
 import { useMemo } from 'react';
-import { TRAIN_LINES } from '../lib/ctaLines.js';
 import { hexToRgba } from '../lib/format.js';
 import { buildMultiLineMap, sliceTrackBetween } from '../lib/lineMap.js';
+import { METRO_LINES } from '../lib/metroLines.js';
 import { displayStationName } from '../lib/stations.js';
 import { MapScroller, normalize } from './EventMap.jsx';
 
 // Combined event map for an incident touching more than one train line — a
-// Loop-wide alert that merged several pulse-cold detections, say. Every
+// tunnel-wide alert that merged several detections, say. Every
 // affected line is drawn faint in its brand color, each observation's stretch
 // is highlighted bold on its OWN line, and the involved stations render as
 // bold dots. Distinct from EventMap (single line) and LineMap (90-day heat).
 //
-// No text labels: a Loop event can involve ~9 stations spread across the
+// No text labels: a Center City event can involve ~9 stations spread across the
 // system, and floating labels for all of them collide unreadably on a phone.
 // The dots carry hover <title>s and the aggregated station chips above the map
 // already spell out every name, so the labels would be redundant noise.
@@ -152,13 +152,13 @@ export default function MultiLineEventMap({
 
   // When the highlighted stretches come from bot detections (any segment owns a
   // specific line), the bold sections are where the bot saw trains stop — which
-  // can spread well beyond the CTA's reported epicenter as the disruption
+  // can spread well beyond SEPTA's reported epicenter as the disruption
   // cascades to the branches. "Where this happened" overstates that, so label it
-  // as bot-observed impact. A pure multi-line CTA alert (only line-agnostic
+  // as bot-observed impact. A pure multi-line SEPTA alert (only line-agnostic
   // segments) keeps the plain framing, since that IS the reported location.
   const hasBotSegments = (segments || []).some((s) => s.line);
   // When the stretch was fanned across shared trackage, the bold sections on
-  // the sibling line(s) are inferred from the CTA's line scope + the roster,
+  // the sibling line(s) are inferred from SEPTA's line scope + the roster,
   // not a separate bot detection — so don't credit the bot for all of them.
   const heading = sharedTrackage
     ? 'Affected stretches'
@@ -168,7 +168,7 @@ export default function MultiLineEventMap({
         ? 'Where this is happening'
         : 'Where this happened';
   const note = sharedTrackage
-    ? 'The bot saw trains stop on one line; the same stretch runs on the other line(s) over shared track, which the CTA alert confirms are affected too.'
+    ? 'The bot saw trains stop on one line; the same stretch runs on the other line(s) over shared track, which the SEPTA alert confirms are affected too.'
     : 'Stretches where the bot saw trains stop, which can spread across the affected lines as the disruption cascades beyond where it started.';
 
   return (
@@ -186,7 +186,7 @@ export default function MultiLineEventMap({
             is how a reader maps color → line. */}
         <div className="flex flex-wrap gap-1.5 mb-3">
           {map.tracksByLine.map((t) => {
-            const info = TRAIN_LINES[t.key];
+            const info = METRO_LINES[t.key];
             return (
               <span
                 key={t.key}
@@ -208,10 +208,10 @@ export default function MultiLineEventMap({
               viewBox={`0 0 ${map.width} ${map.height}`}
               preserveAspectRatio="xMidYMid meet"
               role="img"
-              aria-label={`Affected stretches across ${map.tracksByLine.length} train lines`}
+              aria-label={`Affected stretches across ${map.tracksByLine.length} Metro lines`}
               className="block w-full h-auto overflow-hidden"
             >
-              <title>{`Affected stretches across ${map.tracksByLine.length} train lines`}</title>
+              <title>{`Affected stretches across ${map.tracksByLine.length} Metro lines`}</title>
               {/* Faint full tracks, one set per affected line in its color. */}
               {map.tracksByLine.flatMap((t) =>
                 t.tracks

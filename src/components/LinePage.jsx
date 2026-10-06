@@ -7,7 +7,7 @@ import {
   computeDisruptionMinutes,
   computeDurationHistogram,
   computeLineReliability,
-  computeMetraCancellationDelayStats,
+  computeRailCancellationDelayStats,
   computeRecentBurst,
   computeSegmentRecurrence,
   computeSummaryStats,
@@ -18,13 +18,12 @@ import {
 import { topLevelTrail } from '../lib/breadcrumbs.js';
 import { BUS_ROUTE_NAMES, formatBusRoute } from '../lib/busRoutes.js';
 import { cancellationInfo } from '../lib/cancellation.js';
-import { normalizeTrainLine, TRAIN_LINES } from '../lib/ctaLines.js';
 import {
-  formatChicagoDay,
   formatDate,
   formatDuration,
   formatGap,
   formatMinutesAsHours,
+  formatPhillyDay,
 } from '../lib/format.js';
 import { loadIndex, loadLine } from '../lib/incidentStore.js';
 import {
@@ -33,8 +32,10 @@ import {
   legacyKind,
   searchFilterIncidents,
 } from '../lib/incidents.js';
-import { metraLineInfo, normalizeMetraLine } from '../lib/metraLines.js';
-import { buildMetraStationIndex } from '../lib/metraStations.js';
+import { METRO_LINES, metroLineFullName, normalizeMetroLine } from '../lib/metroLines.js';
+import { normalizeRailLine, railLineFullName, railLineInfo } from '../lib/railLines.js';
+import { buildRailStationIndex } from '../lib/railStations.js';
+import { SITE_NAME } from '../lib/site.js';
 import { buildStationIndex } from '../lib/stations.js';
 import ActiveAlerts from './ActiveAlerts.jsx';
 import Breadcrumb from './Breadcrumb.jsx';
@@ -45,9 +46,9 @@ import HourOfWeekHeatmap from './HourOfWeekHeatmap.jsx';
 import IncidentList from './IncidentList.jsx';
 import LineMap from './LineMap.jsx';
 import { LONG_RUNNING_THRESHOLD_MS } from './LongRunningBanner.jsx';
-import MetraCancellationDelayStats from './MetraCancellationDelayStats.jsx';
-import MetraUpcomingCancellations from './MetraUpcomingCancellations.jsx';
 import NotFoundPage from './NotFoundPage.jsx';
+import RailCancellationDelayStats from './RailCancellationDelayStats.jsx';
+import RailUpcomingCancellations from './RailUpcomingCancellations.jsx';
 import { SignalBreakdownSingleRoute } from './SignalBreakdown.jsx';
 import Timeline from './Timeline.jsx';
 import TrendSparkline from './TrendSparkline.jsx';
@@ -233,27 +234,27 @@ export default function LinePage({ kind, lineId }) {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
 
-  // Validate the id: for trains it must be a known TRAIN_LINES key (after
-  // normalizing CTA short codes — `/line/org` resolves to 'orange'); for
-  // buses it must appear in BUS_ROUTE_NAMES (which is comprehensive). An
+  // Validate the id: for Metro it must be a known METRO_LINES key (after
+  // lowercasing — `/line/L1` resolves to 'l1'); for Regional Rail a RAIL_LINES
+  // key; for buses it must appear in BUS_ROUTE_NAMES (which is comprehensive). An
   // unknown id renders the not-found card without trying to fetch.
-  const isTrain = kind === 'train';
-  const isMetra = kind === 'metra';
-  const normalizedLineId = isTrain
-    ? normalizeTrainLine(lineId)
-    : isMetra
-      ? normalizeMetraLine(lineId)
+  const isMetro = kind === 'metro';
+  const isRail = kind === 'rail';
+  const normalizedLineId = isMetro
+    ? normalizeMetroLine(lineId)
+    : isRail
+      ? normalizeRailLine(lineId)
       : lineId;
-  const trainInfo = isTrain ? TRAIN_LINES[normalizedLineId] : null;
-  const metraInfo = isMetra ? metraLineInfo(lineId) : null;
-  const busName = !isTrain && !isMetra ? BUS_ROUTE_NAMES[lineId] : null;
-  const isKnown = isTrain ? !!trainInfo : isMetra ? !!metraInfo : !!busName;
-  // Use the normalized id for all internal lookups so a `/line/org` URL matches
-  // data tagged 'orange', and `/metra/line/up-w` matches data tagged 'up-w'.
-  const effectiveLineId = isTrain || isMetra ? normalizedLineId : lineId;
-  // Lines treated as rail for display copy ("this line" vs "this route") and for
-  // skipping the bus-route-style chrome.
-  const isRail = isTrain || isMetra;
+  const metroInfo = isMetro ? METRO_LINES[normalizedLineId] : null;
+  const railInfo = isRail ? railLineInfo(lineId) : null;
+  const busName = !isMetro && !isRail ? BUS_ROUTE_NAMES[lineId] : null;
+  const isKnown = isMetro ? !!metroInfo : isRail ? !!railInfo : !!busName;
+  // Use the normalized id for all internal lookups so a `/line/L1` URL matches
+  // data tagged 'l1', and `/rail/line/PAO` matches data tagged 'pao'.
+  const effectiveLineId = isMetro || isRail ? normalizedLineId : lineId;
+  // Metro and Regional Rail are "lines" (vs bus "routes") for display copy and
+  // for the station-based chrome (line map, accessibility outages).
+  const isLine = isMetro || isRail;
 
   useEffect(() => {
     // Load this line's all-time history from its bounded per-line file (every
@@ -333,19 +334,19 @@ export default function LinePage({ kind, lineId }) {
   }, [activeIncidents, now]);
 
   // Title + tab title — built from the human label, not the key. The bus
-  // chip uses the bare route number ("#147") so it stays compact and
-  // parallel with the train pill ("Red Line"); the route name is rendered
-  // separately to the right rather than crammed inside the pill.
-  const heading = isTrain
-    ? `${trainInfo?.label ?? lineId} Line`
-    : isMetra
-      ? (metraInfo?.label ?? lineId)
-      : `#${lineId}`;
-  // The tab title uses the longer formatBusRoute form so a pinned tab is
-  // unambiguous in the OS tab strip ("#147 Outer DuSable Lake Shore Exp.").
-  const tabHeading = isRail ? heading : busName ? formatBusRoute(lineId) : lineId;
+  // chip uses the short "Route 17" form so it stays compact; SEPTA's
+  // terminal-to-terminal route name is rendered separately to the right rather
+  // than crammed inside the pill.
+  const heading = isMetro
+    ? metroLineFullName(normalizedLineId)
+    : isRail
+      ? railLineFullName(normalizedLineId)
+      : formatBusRoute(lineId);
+  // The tab title adds the route name for buses so a pinned tab is unambiguous
+  // in the OS tab strip ("Route 17 · Front-Mkt to 20-Johnston").
+  const tabHeading = isLine ? heading : busName ? `${heading} · ${busName}` : heading;
   useEffect(() => {
-    const base = 'Chicago Transit Alerts';
+    const base = SITE_NAME;
     if (!isKnown) {
       document.title = `${base}`;
       return;
@@ -398,7 +399,7 @@ export default function LinePage({ kind, lineId }) {
 
   // Flurry detector: count recent incident starts and compare to the line's
   // own 30-day baseline. Gating combines an absolute floor (>=3 in window —
-  // a Red Line "flurry" of one incident isn't a flurry) and a relative
+  // a L1 "flurry" of one incident isn't a flurry) and a relative
   // threshold (>=2.5× baseline) so a chronically-busy line doesn't show the
   // chip during normal-for-it activity.
   const burst = useMemo(() => {
@@ -417,18 +418,18 @@ export default function LinePage({ kind, lineId }) {
     return computeDayOfWeekCounts(lineAlerts, lineObservations, { now, windowDays: 91 });
   }, [data, lineAlerts, lineObservations, now]);
 
-  // Cancellation + delay analytics for this Metra line — counts (consistent
+  // Cancellation + delay analytics for this Regional Rail line — counts (consistent
   // with the rest of the site), per-week rates, recency, the originating-
   // terminal breakdown, and time-of-day. Drives the dedicated section below;
-  // Metra only.
-  const metraCancelDelay = useMemo(() => {
-    if (!data || !isMetra) return null;
-    return computeMetraCancellationDelayStats(lineIncidents, {
+  // Regional Rail only.
+  const railCancelDelay = useMemo(() => {
+    if (!data || !isRail) return null;
+    return computeRailCancellationDelayStats(lineIncidents, {
       now,
       windowDays: 90,
       lineFilter: effectiveLineId,
     });
-  }, [data, isMetra, lineIncidents, now, effectiveLineId]);
+  }, [data, isRail, lineIncidents, now, effectiveLineId]);
 
   // Worst single day for this line/route in the 90d window. Surfaced as a
   // single-line callout linking to the day-permalink — gives a quick "this
@@ -442,14 +443,14 @@ export default function LinePage({ kind, lineId }) {
   // far more stops and route variation than the helper's bucketing handles
   // cleanly. Empty array on bus pages.
   const segments = useMemo(() => {
-    if (!flat || !isTrain) return [];
+    if (!flat || !isMetro) return [];
     return computeSegmentRecurrence(flat.detectionRecords, {
       now,
       windowDays: 90,
       lineFilter: effectiveLineId,
       limit: 5,
     });
-  }, [flat, isTrain, effectiveLineId, now]);
+  }, [flat, isMetro, effectiveLineId, now]);
 
   // YoY for this line specifically. Gated on data_start_ts covering the
   // prior window — for a young dataset this just renders nothing rather
@@ -465,26 +466,26 @@ export default function LinePage({ kind, lineId }) {
 
   // Station index over this line's incidents (its all-time per-line file), so
   // station counts reflect this line's activity. A station shared with other
-  // lines (Howard on Red + Yellow; Damen on Blue + Brown) still links to the
+  // lines (15th St/City Hall on L1, B1, and the T trolleys) still links to the
   // cross-line station page, which loads its own data.
   const stationIndex = useMemo(() => {
     if (!flat) return null;
-    return isMetra
-      ? buildMetraStationIndex(flat.officialRecords, flat.detectionRecords, { now, windowDays: 90 })
+    return isRail
+      ? buildRailStationIndex(flat.officialRecords, flat.detectionRecords, { now, windowDays: 90 })
       : buildStationIndex(flat.officialRecords, flat.detectionRecords, { now, windowDays: 90 });
-  }, [flat, now, isMetra]);
+  }, [flat, now, isRail]);
 
   const lineOutages = useMemo(
     () =>
-      isRail
+      isLine
         ? outagesForLine(accessibilityData?.outages || [], {
-            agency: isMetra ? 'metra' : 'cta',
+            kind: isRail ? 'rail' : 'metro',
             line: effectiveLineId,
             now,
             limit: 8,
           })
         : [],
-    [accessibilityData, isRail, isMetra, effectiveLineId, now],
+    [accessibilityData, isLine, isRail, effectiveLineId, now],
   );
 
   // Search-only narrowing for the IncidentList. The line is already locked
@@ -507,10 +508,10 @@ export default function LinePage({ kind, lineId }) {
     return <NotFoundPage />;
   }
 
-  // Color used for the heading pill + accents. Trains use their CTA brand
+  // Color used for the heading pill + accents. Lines use their SEPTA brand
   // color; buses fall back to slate to match the bus rows in the timeline.
-  const headingBg = isTrain ? trainInfo.color : isMetra ? metraInfo.color : '#64748b';
-  const headingText = isTrain ? trainInfo.textColor : isMetra ? metraInfo.textColor : '#fff';
+  const headingBg = isMetro ? metroInfo.color : isRail ? railInfo.color : '#64748b';
+  const headingText = isMetro ? metroInfo.textColor : isRail ? railInfo.textColor : '#fff';
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-gh-canvas flex flex-col">
@@ -534,14 +535,15 @@ export default function LinePage({ kind, lineId }) {
             >
               {heading}
             </span>
-            {!isRail && busName && (
+            {!isLine && busName && (
               <span className="text-sm text-slate-500 dark:text-slate-400">{busName}</span>
             )}
             {/* Per-line/route Atom feed — subscribe to just this line/route. A
-                feed exists for every CTA line, roster bus route, and Metra line.
-                Metra feeds live under the /feed/metra/line/ namespace. */}
+                feed exists for every Metro line, bus route, and Regional Rail
+                line. Regional Rail feeds live under the /feed/rail/line/
+                namespace. */}
             <a
-              href={`/feed/${isTrain ? 'line' : isMetra ? 'metra/line' : 'route'}/${effectiveLineId}.xml`}
+              href={`/feed/${isMetro ? 'line' : isRail ? 'rail/line' : 'route'}/${effectiveLineId}.xml`}
               className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400 hover:underline"
               title={`Subscribe to ${heading} alerts via RSS/Atom`}
             >
@@ -559,7 +561,7 @@ export default function LinePage({ kind, lineId }) {
 
         {data && (
           <>
-            {isMetra && <MetraUpcomingCancellations incidents={lineIncidents} now={now} />}
+            {isRail && <RailUpcomingCancellations incidents={lineIncidents} now={now} />}
 
             {(recentActive.length > 0 || longRunningActive.length > 0) && (
               <ActiveAlerts
@@ -579,7 +581,7 @@ export default function LinePage({ kind, lineId }) {
                 <strong>{burst.recentCount}</strong> incident
                 {burst.recentCount === 1 ? '' : 's'} in the last {burst.windowHours} hours —{' '}
                 <strong>{burst.ratio.toFixed(1)}×</strong> the typical rate for this{' '}
-                {isRail ? 'line' : 'route'}.
+                {isLine ? 'line' : 'route'}.
               </div>
             )}
 
@@ -587,7 +589,7 @@ export default function LinePage({ kind, lineId }) {
               (summary.weeklyCount > 0 ||
                 (reliability?.currentStreakDays ?? 0) > 0 ||
                 (disruption?.disruptedMinutes ?? 0) > 0 ||
-                (metraCancelDelay?.total ?? 0) > 0) && (
+                (railCancelDelay?.total ?? 0) > 0) && (
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 px-1">
                   <div className="flex-1 min-w-0 space-y-2">
                     {(() => {
@@ -600,7 +602,7 @@ export default function LinePage({ kind, lineId }) {
                             ? '<0.1%'
                             : `${(disruption.ratio * 100).toFixed(disruption.ratio < 0.01 ? 2 : 1)}%`
                           : null;
-                      // Metra cancellation/delay counts moved to their own
+                      // Regional Rail cancellation/delay counts moved to their own
                       // dedicated section below (rates, recency, breakdowns), so
                       // they're no longer duplicated as summary cells here.
                       const cells = [{ v: String(summary.weeklyCount), l: 'in last 7 days' }];
@@ -677,7 +679,7 @@ export default function LinePage({ kind, lineId }) {
                           href={`/day/${new Date(worstDay.dayUtc).toISOString().slice(0, 10)}`}
                           className="text-blue-500 hover:text-blue-400 hover:underline"
                         >
-                          <strong>{formatChicagoDay(worstDay.dayUtc)}</strong>
+                          <strong>{formatPhillyDay(worstDay.dayUtc)}</strong>
                         </a>{' '}
                         ({worstDay.count} incident{worstDay.count === 1 ? '' : 's'})
                       </p>
@@ -687,19 +689,19 @@ export default function LinePage({ kind, lineId }) {
                 </div>
               )}
 
-            {isMetra && <MetraCancellationDelayStats stats={metraCancelDelay} />}
+            {isRail && <RailCancellationDelayStats stats={railCancelDelay} />}
 
-            {/* Geographic station heatmap — rail only (CTA L + Metra), which
-                have line/station geometry. Hidden on bus pages. */}
-            {isRail && (
+            {/* Geographic station heatmap — lines only (SEPTA Metro + Regional
+                Rail), which have line/station geometry. Hidden on bus pages. */}
+            {isLine && (
               <LineMap
-                kind={isMetra ? 'metra' : 'train'}
+                kind={isRail ? 'rail' : 'metro'}
                 lineKey={effectiveLineId}
                 stationIndex={stationIndex}
               />
             )}
 
-            {isRail && <AccessibilityOutagesSection outages={lineOutages} />}
+            {isLine && <AccessibilityOutagesSection outages={lineOutages} />}
 
             {/* Retrospective pattern charts, collapsed by default so the line
                 page opens on this line's live status + headline stats + station
@@ -740,20 +742,21 @@ export default function LinePage({ kind, lineId }) {
 
                 <DurationHistogram histogram={durationHistogram} />
 
-                {/* The 90-day per-line grid is the CTA timeline; it has no Metra
-                    rows, so it's skipped on Metra line pages. */}
-                {!isMetra && (
+                {/* The 90-day per-line grid here is the Metro/bus timeline; it
+                    has no Regional Rail rows, so it's skipped on Regional Rail
+                    line pages. */}
+                {!isRail && (
                   <Timeline
                     alerts={lineAlerts}
                     observations={lineObservations}
-                    selectedLines={isTrain ? [effectiveLineId] : []}
+                    selectedLines={isMetro ? [effectiveLineId] : []}
                     numDays={90}
                     selectedRangeDays={null}
                     dataStartTs={data.data_start_ts ?? null}
                     now={now}
                     onLineClick={() => {}}
-                    showBus={!isTrain}
-                    selectedBusRoutes={!isTrain ? [lineId] : []}
+                    showBus={!isMetro}
+                    selectedBusRoutes={!isMetro ? [lineId] : []}
                     onBusRouteClick={() => {}}
                   />
                 )}
@@ -762,10 +765,10 @@ export default function LinePage({ kind, lineId }) {
 
                 <HourOfWeekHeatmap alerts={lineAlerts} observations={lineObservations} />
 
-                {!isTrain && (
+                {!isMetro && (
                   <SignalBreakdownSingleRoute
                     observations={lineObservations}
-                    label={isMetra ? (metraInfo?.label ?? lineId) : `#${lineId}`}
+                    label={isRail ? railLineFullName(effectiveLineId) : formatBusRoute(lineId)}
                     labelColor={headingBg}
                   />
                 )}

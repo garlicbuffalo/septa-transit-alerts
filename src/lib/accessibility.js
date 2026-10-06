@@ -1,17 +1,28 @@
-import { normalizeTrainLine } from './ctaLines.js';
 import { dataUrl } from './dataSource.js';
-import { normalizeMetraLine } from './metraLines.js';
+import { normalizeMetroLine } from './metroLines.js';
+import { normalizeRailLine } from './railLines.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
+
+// Elevator outages are published per station, on one of the two station
+// networks: SEPTA Metro ('metro') or Regional Rail ('rail'). The wire record
+// carries the network as `mode` ('metro' | 'regional_rail'); views key on the
+// short kind, which also picks the station URL namespace.
+export const OUTAGE_KINDS = ['metro', 'rail'];
+
+/** 'metro' | 'rail' for an outage record. */
+export function outageKind(outage) {
+  return outage?.mode === 'regional_rail' ? 'rail' : 'metro';
+}
 
 export async function fetchAccessibilityData() {
   try {
     const res = await fetch(dataUrl('accessibility.json'), { cache: 'no-store' });
     if (res.ok) return res.json();
   } catch {
-    // The accessibility feed is additive and may not exist on the data origin
-    // during the first deploy. Fall through to the bundled empty payload.
+    // The accessibility feed may not exist on the data origin before the
+    // collector's first run. Fall through to the bundled empty payload.
   }
 
   const fallback = await fetch('/data/accessibility.json', { cache: 'no-store' });
@@ -20,10 +31,10 @@ export async function fetchAccessibilityData() {
 }
 
 export function stationHref(outageOrRow) {
-  const agency = outageOrRow?.agency;
+  const kind = outageOrRow?.kind ?? outageKind(outageOrRow);
   const slug = outageOrRow?.station?.slug ?? outageOrRow?.slug;
   if (!slug) return null;
-  return agency === 'metra' ? `/metra/station/${slug}` : `/station/${slug}`;
+  return kind === 'rail' ? `/rail/station/${slug}` : `/station/${slug}`;
 }
 
 export function outageDuration(outage, now = Date.now()) {
@@ -37,48 +48,47 @@ export function stationLabel(outage) {
   return outage?.station?.name || 'Unmatched station';
 }
 
-export function agencyLabel(agency) {
-  return agency === 'metra' ? 'Metra' : 'CTA';
+export function kindLabel(kind) {
+  return kind === 'rail' ? 'Regional Rail' : 'SEPTA Metro';
 }
 
-export function normalizeOutageLine(agency, line) {
-  if (agency === 'metra') return normalizeMetraLine(line);
-  if (agency === 'cta') return normalizeTrainLine(line);
+export function normalizeOutageLine(kind, line) {
+  if (kind === 'rail') return normalizeRailLine(line);
+  if (kind === 'metro') return normalizeMetroLine(line);
   return line;
 }
 
 export function outageHasLine(outage, line) {
   if (!line) return true;
-  const want = normalizeOutageLine(outage?.agency, line);
-  return (outage?.station?.lines || []).some(
-    (raw) => normalizeOutageLine(outage?.agency, raw) === want,
-  );
+  const kind = outageKind(outage);
+  const want = normalizeOutageLine(kind, line);
+  return (outage?.station?.lines || []).some((raw) => normalizeOutageLine(kind, raw) === want);
 }
 
-export function currentlyOut(outages = [], { now = Date.now(), agency = null, line = null } = {}) {
+export function currentlyOut(outages = [], { now = Date.now(), kind = null, line = null } = {}) {
   return outages
     .filter((o) => o.lifecycle?.active)
-    .filter((o) => !agency || o.agency === agency)
+    .filter((o) => !kind || outageKind(o) === kind)
     .filter((o) => outageHasLine(o, line))
     .map((o) => ({ ...o, durationMs: outageDuration(o, now) }))
     .sort(
       (a, b) =>
         b.durationMs - a.durationMs ||
-        a.agency.localeCompare(b.agency) ||
+        outageKind(a).localeCompare(outageKind(b)) ||
         stationLabel(a).localeCompare(stationLabel(b)),
     );
 }
 
 export function summarizeOutages(outages = []) {
   const stations = new Set();
-  let cta = 0;
-  let metra = 0;
+  let metro = 0;
+  let rail = 0;
   for (const o of outages) {
-    stations.add(`${o.agency}:${o.station?.slug || stationLabel(o)}`);
-    if (o.agency === 'metra') metra += 1;
-    else cta += 1;
+    stations.add(`${outageKind(o)}:${o.station?.slug || stationLabel(o)}`);
+    if (outageKind(o) === 'rail') rail += 1;
+    else metro += 1;
   }
-  return { total: outages.length, stations: stations.size, cta, metra };
+  return { total: outages.length, stations: stations.size, metro, rail };
 }
 
 // Collapses active outages into one group per station so a stop with several
@@ -90,11 +100,12 @@ export function summarizeOutages(outages = []) {
 export function groupOutagesByStation(outages = []) {
   const groups = new Map();
   for (const o of outages) {
-    const key = `${o.agency}:${o.station?.slug || stationLabel(o)}`;
+    const kind = outageKind(o);
+    const key = `${kind}:${o.station?.slug || stationLabel(o)}`;
     if (!groups.has(key)) {
       groups.set(key, {
         key,
-        agency: o.agency,
+        kind,
         name: stationLabel(o),
         slug: o.station?.slug ?? null,
         lines: o.station?.lines || [],
@@ -106,13 +117,10 @@ export function groupOutagesByStation(outages = []) {
   return [...groups.values()];
 }
 
-export function outagesForStation(
-  outages = [],
-  { agency, slug, now = Date.now(), limit = 8 } = {},
-) {
-  if (!agency || !slug) return [];
+export function outagesForStation(outages = [], { kind, slug, now = Date.now(), limit = 8 } = {}) {
+  if (!kind || !slug) return [];
   return outages
-    .filter((o) => o.agency === agency && o.station?.slug === slug)
+    .filter((o) => outageKind(o) === kind && o.station?.slug === slug)
     .map((o) => ({ ...o, durationMs: outageDuration(o, now) }))
     .sort((a, b) => {
       if (a.lifecycle?.active !== b.lifecycle?.active) return a.lifecycle?.active ? -1 : 1;
@@ -121,10 +129,10 @@ export function outagesForStation(
     .slice(0, limit);
 }
 
-export function outagesForLine(outages = [], { agency, line, now = Date.now(), limit = 8 } = {}) {
-  if (!agency || !line) return [];
+export function outagesForLine(outages = [], { kind, line, now = Date.now(), limit = 8 } = {}) {
+  if (!kind || !line) return [];
   return outages
-    .filter((o) => o.agency === agency)
+    .filter((o) => outageKind(o) === kind)
     .filter((o) => outageHasLine(o, line))
     .map((o) => ({ ...o, durationMs: outageDuration(o, now) }))
     .sort((a, b) => {
@@ -136,21 +144,22 @@ export function outagesForLine(outages = [], { agency, line, now = Date.now(), l
 
 export function stationReliability(
   outages = [],
-  { now = Date.now(), windowDays = 90, agency = null, line = null } = {},
+  { now = Date.now(), windowDays = 90, kind = null, line = null } = {},
 ) {
   const cutoff = now - windowDays * DAY_MS;
   const byStation = new Map();
   for (const outage of outages) {
-    if (agency && outage.agency !== agency) continue;
+    const outKind = outageKind(outage);
+    if (kind && outKind !== kind) continue;
     if (!outageHasLine(outage, line)) continue;
     const start = outage.lifecycle?.first_seen_ts;
     if (start == null) continue;
     const restored = outage.lifecycle?.restored_ts ?? (outage.lifecycle?.active ? now : null);
     if (restored != null && restored < cutoff) continue;
-    const key = `${outage.agency}:${outage.station?.slug || stationLabel(outage)}`;
+    const key = `${outKind}:${outage.station?.slug || stationLabel(outage)}`;
     if (!byStation.has(key)) {
       byStation.set(key, {
-        agency: outage.agency,
+        kind: outKind,
         slug: outage.station?.slug ?? null,
         name: stationLabel(outage),
         lines: outage.station?.lines || [],
@@ -173,7 +182,7 @@ export function stationReliability(
       b.currentlyOut - a.currentlyOut ||
       b.totalDownMs - a.totalDownMs ||
       b.outageCount - a.outageCount ||
-      a.agency.localeCompare(b.agency) ||
+      a.kind.localeCompare(b.kind) ||
       a.name.localeCompare(b.name),
   );
 }

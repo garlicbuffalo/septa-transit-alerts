@@ -71,8 +71,8 @@ describe('buildCalendarMonths', () => {
 
   it('joins per-day counts from the input by date string', () => {
     const days = [
-      { date: '2026-05-01', train_count: 3, bus_count: 2 },
-      { date: '2026-05-02', train_count: 1, bus_count: 0 },
+      { date: '2026-05-01', metro_count: 3, bus_count: 2 },
+      { date: '2026-05-02', metro_count: 1, bus_count: 0 },
     ];
     const r = buildCalendarMonths(days, { now: NOW, monthsBack: 1 });
     expect(r[0].cells[0].count).toBe(5);

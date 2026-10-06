@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
 import { buildDailyTrend, computeDisruptionMinutes } from '../lib/aggregate.js';
 import { formatBusRoute } from '../lib/busRoutes.js';
-import { TRAIN_LINE_ORDER, TRAIN_LINES } from '../lib/ctaLines.js';
 import { formatMinutesAsHours } from '../lib/format.js';
-import { METRA_LINE_ORDER, METRA_LINES } from '../lib/metraLines.js';
+import { METRO_LINE_ORDER, METRO_LINES, metroLineFullName } from '../lib/metroLines.js';
+import { RAIL_LINE_ORDER, RAIL_LINES } from '../lib/railLines.js';
 import TrendSparkline from './TrendSparkline.jsx';
 
 // Callout threshold: only surface a "X% busier/quieter than the prior week"
@@ -17,9 +17,10 @@ function Sep() {
   return <span className="mx-2 text-slate-300 dark:text-slate-600">·</span>;
 }
 
-// Leading agency tag on each most-affected / quietest line, so a reader can
-// tell a CTA line from a Metra line at a glance in the combined "All" view.
-function AgencyTag({ children }) {
+// Leading network tag on each most-affected / quietest line, so a reader can
+// tell a Metro line from a bus route or a Regional Rail line at a glance in the
+// combined "All" view.
+function NetworkTag({ children }) {
   return (
     <span className="font-semibold text-slate-400 dark:text-slate-500 mr-1.5">{children}</span>
   );
@@ -53,16 +54,16 @@ export default function SummaryStats({
   mostAffectedId,
   quietestLineId,
   quietestLineDays,
-  metraMostAffectedId,
-  metraQuietestLineId,
-  metraQuietestLineDays,
+  railMostAffectedId,
+  railQuietestLineId,
+  railQuietestLineDays,
   alerts,
   observations,
   // Homepage hides the active-now figure because the Active Now / All-clear
   // status header right above already states it — repeating it here is noise.
   // Other pages (line, system) keep it since they have no such header.
   showActive = true,
-  agency = 'all',
+  network = 'all',
   // The homepage opens on the two-lane live status, so it drops the
   // most-affected / quietest line sentences here to stay scannable — those
   // editorial-leaning callouts still live on the Stats and per-line pages,
@@ -76,54 +77,55 @@ export default function SummaryStats({
 
   // System-wide disruption-hours over the last 7 days, sized to match the
   // existing "X incidents in the last 7 days" phrase. Line-hours are summed
-  // across each agency's rail lines, keeping CTA and Metra visually distinct.
-  const ctaDisruption7d = useMemo(() => {
+  // across each network's rail lines, keeping Metro and Regional Rail distinct.
+  const metroDisruption7d = useMemo(() => {
     if (!alerts || !observations) return null;
     return computeDisruptionMinutes(
-      alerts.filter((a) => a.kind === 'train'),
-      observations.filter((o) => o.kind === 'train'),
+      alerts.filter((a) => a.kind === 'metro'),
+      observations.filter((o) => o.kind === 'metro'),
       {
         windowDays: 7,
-        lines: TRAIN_LINE_ORDER.map((line) => ({ kind: 'train', line })),
+        lines: METRO_LINE_ORDER.map((line) => ({ kind: 'metro', line })),
       },
     );
   }, [alerts, observations]);
 
-  const metraDisruption7d = useMemo(() => {
+  const railDisruption7d = useMemo(() => {
     if (!alerts || !observations) return null;
     return computeDisruptionMinutes(
-      alerts.filter((a) => a.kind === 'metra'),
-      observations.filter((o) => o.kind === 'metra'),
+      alerts.filter((a) => a.kind === 'rail'),
+      observations.filter((o) => o.kind === 'rail'),
       {
         windowDays: 7,
-        lines: METRA_LINE_ORDER.map((line) => ({ kind: 'metra', line })),
+        lines: RAIL_LINE_ORDER.map((line) => ({ kind: 'rail', line })),
       },
     );
   }, [alerts, observations]);
 
-  // CTA and Metra each surface their own "most affected" / "quietest" line, and
-  // only while the page-level agency filter covers that agency (the data is
-  // already agency-scoped, so the off-agency phrases come back empty anyway —
-  // this gate just makes the intent explicit and matches the disruption cards).
-  const showCta = agency !== 'metra';
-  const showMetra = agency !== 'cta';
+  // Transit (Metro + bus) and Regional Rail each surface their own "most
+  // affected" / "quietest" line, and only while the page-level network scope
+  // covers that network (the data is already network-scoped, so the
+  // off-network phrases come back empty anyway — this gate just makes the
+  // intent explicit and matches the disruption cards).
+  const showTransit = network !== 'rail';
+  const showRail = network !== 'transit';
 
   let affectedPhrase = null;
-  if (showCta && mostAffectedKind === 'train' && TRAIN_LINES[mostAffectedId]) {
-    const info = TRAIN_LINES[mostAffectedId];
+  if (showTransit && mostAffectedKind === 'metro' && METRO_LINES[mostAffectedId]) {
+    const info = METRO_LINES[mostAffectedId];
     affectedPhrase = (
       <>
-        <AgencyTag>CTA</AgencyTag>
+        <NetworkTag>Metro</NetworkTag>
         <a href={`/line/${mostAffectedId}`} className="hover:underline">
-          <strong style={{ color: info.color }}>{info.label} Line</strong>
+          <strong style={{ color: info.color }}>{metroLineFullName(mostAffectedId)}</strong>
         </a>{' '}
         most affected (last 30 days)
       </>
     );
-  } else if (showCta && mostAffectedKind === 'bus') {
+  } else if (showTransit && mostAffectedKind === 'bus') {
     affectedPhrase = (
       <>
-        <AgencyTag>CTA</AgencyTag>
+        <NetworkTag>Bus</NetworkTag>
         <a href={`/route/${mostAffectedId}`} className="hover:underline">
           <strong className="text-slate-800 dark:text-slate-100">
             {formatBusRoute(mostAffectedId)}
@@ -134,15 +136,14 @@ export default function SummaryStats({
     );
   }
 
-  // Metra lines carry their own name ("BNSF", "Metra Electric") — no " Line".
-  let metraAffectedPhrase = null;
-  if (showMetra && metraMostAffectedId && METRA_LINES[metraMostAffectedId]) {
-    const info = METRA_LINES[metraMostAffectedId];
-    metraAffectedPhrase = (
+  let railAffectedPhrase = null;
+  if (showRail && railMostAffectedId && RAIL_LINES[railMostAffectedId]) {
+    const info = RAIL_LINES[railMostAffectedId];
+    railAffectedPhrase = (
       <>
-        <AgencyTag>Metra</AgencyTag>
-        <a href={`/metra/line/${metraMostAffectedId}`} className="hover:underline">
-          <strong style={{ color: info.color }}>{info.label}</strong>
+        <NetworkTag>Regional Rail</NetworkTag>
+        <a href={`/rail/line/${railMostAffectedId}`} className="hover:underline">
+          <strong style={{ color: info.color }}>{info.label} Line</strong>
         </a>{' '}
         most affected (last 30 days)
       </>
@@ -171,34 +172,34 @@ export default function SummaryStats({
   // Quietest streak: positive callout, surfaced only when the streak is
   // long enough to be interesting. <2 days clears that bar most of the time.
   let quietestPhrase = null;
-  if (showCta && quietestLineId && TRAIN_LINES[quietestLineId] && quietestLineDays >= 2) {
-    const info = TRAIN_LINES[quietestLineId];
+  if (showTransit && quietestLineId && METRO_LINES[quietestLineId] && quietestLineDays >= 2) {
+    const info = METRO_LINES[quietestLineId];
     quietestPhrase = (
       <>
-        <AgencyTag>CTA</AgencyTag>
+        <NetworkTag>Metro</NetworkTag>
         <a href={`/line/${quietestLineId}`} className="hover:underline">
-          <strong style={{ color: info.color }}>{info.label} Line</strong>
+          <strong style={{ color: info.color }}>{metroLineFullName(quietestLineId)}</strong>
         </a>{' '}
         quietest: {quietestLineDays} days since last incident
       </>
     );
   }
 
-  let metraQuietestPhrase = null;
+  let railQuietestPhrase = null;
   if (
-    showMetra &&
-    metraQuietestLineId &&
-    METRA_LINES[metraQuietestLineId] &&
-    metraQuietestLineDays >= 2
+    showRail &&
+    railQuietestLineId &&
+    RAIL_LINES[railQuietestLineId] &&
+    railQuietestLineDays >= 2
   ) {
-    const info = METRA_LINES[metraQuietestLineId];
-    metraQuietestPhrase = (
+    const info = RAIL_LINES[railQuietestLineId];
+    railQuietestPhrase = (
       <>
-        <AgencyTag>Metra</AgencyTag>
-        <a href={`/metra/line/${metraQuietestLineId}`} className="hover:underline">
-          <strong style={{ color: info.color }}>{info.label}</strong>
+        <NetworkTag>Regional Rail</NetworkTag>
+        <a href={`/rail/line/${railQuietestLineId}`} className="hover:underline">
+          <strong style={{ color: info.color }}>{info.label} Line</strong>
         </a>{' '}
-        quietest: {metraQuietestLineDays} days since last incident
+        quietest: {railQuietestLineDays} days since last incident
       </>
     );
   }
@@ -227,20 +228,20 @@ export default function SummaryStats({
       />
     );
   };
-  const ctaDisruptionCard =
-    agency !== 'metra'
+  const transitDisruptionCard =
+    network !== 'rail'
       ? buildDisruptionCard(
-          ctaDisruption7d,
-          'CTA',
-          'Total CTA train line-hours in a detected disruption over the last 7 days, summed across the 8 lines (overlapping detections on one line are unioned; separate lines are summed). The percentage is that share of scheduled CTA train service hours.',
+          metroDisruption7d,
+          'Metro',
+          `Total SEPTA Metro line-hours in a disruption over the last 7 days, summed across the ${METRO_LINE_ORDER.length} lines (overlapping incidents on one line are unioned; separate lines are summed). The percentage is that share of scheduled Metro service hours.`,
         )
       : null;
-  const metraDisruptionCard =
-    agency !== 'cta'
+  const railDisruptionCard =
+    network !== 'transit'
       ? buildDisruptionCard(
-          metraDisruption7d,
-          'Metra',
-          'Total Metra line-hours in a detected disruption over the last 7 days, summed across the 11 lines (overlapping detections on one line are unioned; separate lines are summed). The percentage is that share of estimated Metra service hours.',
+          railDisruption7d,
+          'Regional Rail',
+          `Total Regional Rail line-hours in a disruption over the last 7 days, summed across the ${RAIL_LINE_ORDER.length} lines (overlapping incidents on one line are unioned; separate lines are summed). The percentage is that share of estimated Regional Rail service hours.`,
         )
       : null;
   const trendCard = (() => {
@@ -264,8 +265,8 @@ export default function SummaryStats({
   const mobileCards = [
     showActive ? activeCard : null,
     weekCard,
-    ctaDisruptionCard,
-    metraDisruptionCard,
+    transitDisruptionCard,
+    railDisruptionCard,
     trendCard,
   ].filter(Boolean);
   // Desktop strip omits the trend card (rendered as a phrase + sparkline row
@@ -274,8 +275,8 @@ export default function SummaryStats({
   const desktopCards = [
     showActive ? activeCard : null,
     weekCard,
-    ctaDisruptionCard,
-    metraDisruptionCard,
+    transitDisruptionCard,
+    railDisruptionCard,
   ].filter(Boolean);
 
   // Two layouts share data but diverge structurally:
@@ -308,11 +309,11 @@ export default function SummaryStats({
             {quietestPhrase && (
               <p className="text-sm text-slate-600 dark:text-slate-300">{quietestPhrase}</p>
             )}
-            {metraAffectedPhrase && (
-              <p className="text-sm text-slate-600 dark:text-slate-300">{metraAffectedPhrase}</p>
+            {railAffectedPhrase && (
+              <p className="text-sm text-slate-600 dark:text-slate-300">{railAffectedPhrase}</p>
             )}
-            {metraQuietestPhrase && (
-              <p className="text-sm text-slate-600 dark:text-slate-300">{metraQuietestPhrase}</p>
+            {railQuietestPhrase && (
+              <p className="text-sm text-slate-600 dark:text-slate-300">{railQuietestPhrase}</p>
             )}
           </div>
         )}
@@ -337,7 +338,7 @@ export default function SummaryStats({
           </div>
         )}
         {showLineCallouts && <StatRow>{[affectedPhrase, quietestPhrase]}</StatRow>}
-        {showLineCallouts && <StatRow>{[metraAffectedPhrase, metraQuietestPhrase]}</StatRow>}
+        {showLineCallouts && <StatRow>{[railAffectedPhrase, railQuietestPhrase]}</StatRow>}
       </div>
     </div>
   );

@@ -10,7 +10,7 @@ const NOW = 1_000_000_000_000;
 // and an `observations[]` list.
 const obsRecord = (over = {}) => ({
   id: 1,
-  kind: 'train',
+  kind: 'metro',
   line: 'red',
   from_station: 'Jarvis',
   to_station: '95th/Dan Ryan',
@@ -24,7 +24,7 @@ const obsRecord = (over = {}) => ({
 const alertInc = (over = {}) =>
   incident({
     id: 'alert1',
-    kind: 'train',
+    kind: 'metro',
     routes: ['red'],
     first_seen_ts: NOW - 60 * 60_000,
     resolved_ts: NOW - 30 * 60_000,
@@ -42,7 +42,7 @@ const alertInc = (over = {}) =>
 const obsInc = (over = {}) =>
   incident({
     id: 'obs1',
-    kind: 'train',
+    kind: 'metro',
     routes: ['red'],
     first_seen_ts: NOW - 55 * 60_000,
     resolved_ts: NOW - 30 * 60_000,
@@ -55,7 +55,7 @@ const obsInc = (over = {}) =>
 const mergedInc = (over = {}) =>
   incident({
     id: 'm1',
-    kind: 'train',
+    kind: 'metro',
     routes: ['red'],
     first_seen_ts: NOW - 60 * 60_000,
     resolved_ts: NOW - 30 * 60_000,
@@ -135,7 +135,7 @@ describe('IncidentList', () => {
   it('shows a "delayed" badge and leads with the train number for a Metra delay', () => {
     const delayInc = incident({
       id: 'metra-992',
-      kind: 'metra',
+      kind: 'rail',
       routes: ['bnsf'],
       first_seen_ts: NOW,
       resolved_ts: NOW,
@@ -144,7 +144,7 @@ describe('IncidentList', () => {
       observations: [
         {
           id: 'metra-992',
-          kind: 'metra',
+          kind: 'rail',
           line: 'bnsf',
           train_number: '121',
           from_station: 'Aurora',
@@ -168,7 +168,7 @@ describe('IncidentList', () => {
   it('shows a "possible cancellation" badge for an inferred Metra cancellation', () => {
     const inferredInc = incident({
       id: 'metra-972',
-      kind: 'metra',
+      kind: 'rail',
       routes: ['ri'],
       first_seen_ts: NOW,
       resolved_ts: NOW,
@@ -177,7 +177,7 @@ describe('IncidentList', () => {
       observations: [
         {
           id: 'metra-972',
-          kind: 'metra',
+          kind: 'rail',
           line: 'ri',
           from_station: 'LaSalle Street',
           to_station: 'Joliet',

@@ -1,125 +1,148 @@
-# Chicago Transit Alerts — full reference
+# SEPTA Transit Alerts — full reference
 
-> An unofficial public archive of Chicago Transit Authority (CTA) train and bus plus Metra commuter-rail service alerts and bot-detected disruptions. Not affiliated with the CTA or Metra. This file expands on [/llms.txt](https://chicagotransitalerts.app/llms.txt) with the complete data schema an agent needs to consume the API.
+> An unofficial public archive of SEPTA (Southeastern Pennsylvania Transportation Authority) service alerts and detected disruptions across SEPTA Metro, buses, and Regional Rail. Not affiliated with SEPTA. This file expands on [/llms.txt](__SITE_ORIGIN__/llms.txt) with the full data schema.
 
 ## What this site is
 
-Official alerts and independent bot detections are combined into unified "incidents." An official alert and the bot observation(s) describing the same disruption on the same line within a couple of hours are paired server-side into one incident — no client-side merging. Pairing is within-agency: a CTA alert never merges with a Metra observation, or vice-versa. The site is a static React app on GitHub Pages; the same JSON it renders is published for reuse (research, journalism, dashboards, training data).
+A collector polls SEPTA's public APIs about every 10 minutes and records:
 
-Every incident has a `kind` of `train`, `bus`, or `metra`. Train routes use full line names: `red`, `blue`, `green`, `brown`, `orange`, `pink`, `purple`, `yellow`. Bus routes use route numbers/identifiers (`66`, `X9`, `J14`). Metra lines use lowercase route codes: `bnsf`, `hc`, `md-n`, `md-w`, `me`, `ncs`, `ri`, `sws`, `up-n`, `up-nw`, `up-w`. JSON timestamps are epoch milliseconds; CSV timestamps are ISO 8601 (UTC).
+- **Official alerts** from SEPTA's alerts feed — service advisories, real-time alerts, and short-term (≤72h) bus detours across SEPTA Metro, bus, and Regional Rail. Long-running construction detours and station-amenity notices (parking, ticket offices, waiting rooms) are excluded. Each alert is an incident from when SEPTA posted it until it leaves the feed or its stated end passes.
+- **Regional Rail delays** — trains SEPTA's TrainView feed reports running 15+ minutes late; active while late, resolved when the train recovers or arrives.
+- **Regional Rail cancellations** — trains SEPTA marks cancelled, anchored to the scheduled departure.
+- **Elevator outages** at SEPTA Metro and Regional Rail stations (separate `accessibility.json`).
+
+Every incident has a `mode` of `metro`, `bus`, or `regional_rail`. Route keys:
+
+- SEPTA Metro: `l1` (Market-Frankford), `b1`/`b2`/`b3` (Broad Street Line, Express, Broad-Ridge Spur), `m1` (Norristown High Speed Line), `t1`–`t5` (subway-surface trolleys), `g1` (Girard Ave trolley), `d1`/`d2` (Media and Sharon Hill trolleys).
+- Bus: SEPTA route ids with spaces hyphenated — `17`, `K`, `LUCYGO`, `L1-OWL`, `T-Bus`.
+- Regional Rail: lowercase route codes — `air`, `che`, `chw`, `cyn`, `fox`, `lan`, `med`, `nor`, `pao`, `tre`, `war`, `wil`, `wtr`.
 
 ## Endpoints
 
-- Incidents JSON: https://data.chicagotransitalerts.app/alerts.json
-- Daily counts JSON: https://data.chicagotransitalerts.app/daily-counts.json
-- Accessibility outages JSON: https://data.chicagotransitalerts.app/accessibility.json
-- Incidents CSV: https://data.chicagotransitalerts.app/alerts.csv
-- Data changelog: https://chicagotransitalerts.app/data/CHANGELOG.md
-- Atom feed: https://chicagotransitalerts.app/feed.xml (per-line/route: /feed/line/<line>.xml, /feed/route/<route>.xml)
-- JSON feed: https://chicagotransitalerts.app/feed.json
-- API catalog (RFC 9264 linkset): https://chicagotransitalerts.app/.well-known/api-catalog
+- Recent incidents JSON: __SITE_ORIGIN__/data/alerts-recent.json (active + last 93 days)
+- Archive index JSON: __SITE_ORIGIN__/data/alerts-index.json
+- Monthly shards: __SITE_ORIGIN__/data/alerts/<YYYY-MM>.json (incidents first seen that Philadelphia month)
+- Per-line files: __SITE_ORIGIN__/data/incidents/by-line/<key>.json (all-time, one line/route)
+- Year-over-year aggregates: __SITE_ORIGIN__/data/aggregates.json
+- Daily counts JSON: __SITE_ORIGIN__/data/daily-counts.json
+- Accessibility outages JSON: __SITE_ORIGIN__/data/accessibility.json
+- Incidents CSV: __SITE_ORIGIN__/data/alerts.csv
+- Data changelog: __SITE_ORIGIN__/data/CHANGELOG.md
+- Atom feed: __SITE_ORIGIN__/feed.xml (per-line/route: /feed/line/<line>.xml, /feed/route/<route>.xml, /feed/rail/line/<line>.xml)
+- JSON feed: __SITE_ORIGIN__/feed.json
+- API catalog (RFC 9264 linkset): __SITE_ORIGIN__/.well-known/api-catalog
 
-Regenerated whenever the underlying data changes (typically every ~7 minutes when there's activity).
+## Incident shape
+
+Every incident-bearing file (`alerts-recent.json`, the monthly shards, the per-line files) carries `schema_version: 2`, `generated_at`, `data_start_ts`, and an `incidents[]` array of objects shaped like:
+
+```jsonc
+{
+  "id": "alert-136615",               // stable permalink id; /event/:id
+  "agency": "septa",
+  "mode": "metro",                    // "metro", "bus", or "regional_rail"
+  "routes": ["b1", "b2", "b3"],
+  "sources": ["septa"],               // "septa" (official alert) and/or "bot" (detection)
+  "lifecycle": {
+    "first_seen_ts": 1790880991000,   // when SEPTA posted it (or first detection)
+    "resolved_ts": null,              // null = still open
+    "active": true,
+    "duration_ms": null
+  },
+  "official_alert": {                 // null for bot-only incidents
+    "id": "136615",                   // SEPTA's alert id ("D17471" for detours)
+    "headline": "Shuttle Busing Between Olney and Fern Rock Transit Center",
+    "description": "Bus service replaces trains from Olney to Fern Rock …",
+    "post_url": null,
+    "source_url": "https://www.septa.org/schedules/B1",
+    "resolved_reply_url": null,
+    "lifecycle": { /* same fields as above */ },
+    "scope": {
+      "from_station": "Olney Transit Center",
+      "to_station": "Fern Rock Transit Center",
+      "stations": ["Olney Transit Center", "Fern Rock Transit Center"], // full stretch
+      "direction": null,
+      "mentioned_stations": ["Olney Transit Center", "Fern Rock Transit Center"]
+    },
+    "agency_event_window": {          // SEPTA's stated start/end
+      "start_ts": 1791607500000,
+      "end_ts": 1791792000000,
+      "start_is_date_only": false,
+      "end_is_date_only": false
+    },
+    "septa": { "type": "ADVISORY", "cause": "MAINTENANCE", "effect": "MODIFIED_SERVICE", "severity": "SEVERE" }
+    // "versions": [...]              // present only when SEPTA edited the alert text
+  },
+  "detections": [],                   // bot detections (see below)
+  "status": null                      // Regional Rail delay/cancellation status, else null
+}
+```
+
+A Regional Rail delay:
+
+```jsonc
+{
+  "id": "delay-2026-10-05-3556",
+  "agency": "septa",
+  "mode": "regional_rail",
+  "routes": ["lan", "med"],           // every line the train was seen late on
+  "sources": ["bot"],
+  "lifecycle": { "first_seen_ts": …, "resolved_ts": …, "active": false, "duration_ms": … },
+  "official_alert": null,
+  "detections": [
+    {
+      "id": "delay-2026-10-05-3556",
+      "source": "delay",              // "delay" or "cancellation"
+      "scope": {
+        "route": "lan",
+        "from_station": "Wawa",       // the train's origin
+        "to_station": "Doylestown",   // the train's destination
+        "stations": [],
+        "direction": null,
+        "direction_label": "toward Doylestown"
+      },
+      "lifecycle": { "first_seen_ts": …, "onset_ts": null, "resolved_ts": …, "active": false, "duration_ms": … },
+      "post_url": null,
+      "description": "~22 min late — the 6:31 PM Wawa to Doylestown train (#3556)",
+      "evidence": {
+        "train_number": "3556",
+        "details": { "late_min": 4, "max_late_min": 35, "last_stop": "Glenside", "last_seen_ts": …, "service": "LOCAL" },
+        "updates": [ { "ts": …, "description": "22 min late at Fern Rock Transit Center", "evidence": { "late_min": 22 } } ]
+      }
+    }
+  ],
+  "status": {
+    "type": "delay",                  // "delay" or "cancellation"
+    "train_number": "3556",
+    "delay_min": 35,                  // worst lateness seen
+    "origin": "Wawa",
+    "scheduled_departure_ts": …,      // from SEPTA's schedule for that train, when available
+    "scheduled_arrival_ts": …
+    // cancellations add "state": "upcoming" (before departure) or "cancelled"
+  }
+}
+```
 
 ## accessibility.json shape
-
-CTA rail and Metra station accessibility notices are published separately from
-the main service-disruption incident archive. The feed covers elevator,
-escalator, entrance, ADA, and accessibility notices from the official CTA and
-Metra alert sources.
 
 ```jsonc
 {
   "schema_version": 1,
-  "generated_at": 1715200000000,
-  "data_start_ts": 1699648000000,
+  "generated_at": 1791245264003,
+  "data_start_ts": 1791245264003,
   "window_days": 180,
   "outages": [
     {
-      "id": "cta-12345",
-      "agency": "cta",                 // "cta" or "metra"
-      "station": {
-        "slug": "belmont-red-brown-purple",
-        "name": "Belmont (Red/Brown/Purple)",
-        "lines": ["red", "brn", "p"]  // CTA source codes or Metra lowercase route codes
-      },
-      "unit_type": "elevator",         // elevator, escalator, entrance, or accessibility
-      "unit_label": "to platform",
-      "headline": "Elevator temporarily out of service",
-      "description": "Plain-text agency alert body",
-      "lifecycle": {
-        "first_seen_ts": 1715199000000,
-        "last_seen_ts": 1715202600000,
-        "restored_ts": null,
-        "active": true
-      },
-      "source_url": "https://..."
-    }
-  ]
-}
-```
-
-## alerts.json shape
-
-The top-level array is `incidents` — one object per real-world disruption.
-
-```jsonc
-{
-  "generated_at": 1715200000000,        // epoch ms when the snapshot was produced
-  "data_start_ts": 1707350400000,       // earliest moment with coverage
-  "incidents": [
-    {
-      "id": "3k2j...",                  // stable permalink id (Bluesky post rkey); /event/:id
-      "kind": "train",                  // "train", "bus", or "metra"
-      "routes": ["red"],                // full line names, bus route numbers, or Metra codes (e.g. "up-n")
-      "first_seen_ts": 1715199000000,
-      "resolved_ts": null,              // null = still open
-      "active": true,
-      "sources": ["cta", "bot"],        // contributors: "cta", "bot", or both
-      "cancellation": null,             // Metra single-train annulment (else null): { state:
-                                        // 'upcoming'|'cancelled', scheduled_departure_ts,
-                                        // scheduled_arrival_ts, train_number, origin }
-      "cta": {                          // null for bot-only incidents
-        "alert_id": "...",
-        "headline": "...",
-        "short_description": "...",     // CTA body text (reroute/closure details)
-        "post_url": "https://bsky.app/profile/.../post/...",
-        "resolved_reply_url": null,
-        "first_seen_ts": 1715199000000, // CTA's own lifecycle, distinct from the incident's
-        "resolved_ts": null,
-        "active": true,
-        "affected_from_station": null,
-        "affected_to_station": null,
-        "affected_direction": null,
-        "mentioned_stations": [],       // canonical station names parsed from the alert
-        "affected_stations": [],        // full segment fill (endpoints + inner stops); [] when none
-        "cta_event_start_ts": null,
-        "cta_event_end_ts": null
-        // "versions": [...]            // present only when CTA edited the alert over time
-      },
-      "observations": [                 // [] for CTA-only incidents
-        {
-          "id": 12345,
-          "detection_source": "pulse-cold", // see glossary below
-          "signals": ["gap", "bunching"],   // populated for roundups
-          "from_station": "Howard",
-          "to_station": "Loyola",
-          "stations": ["Howard", "Jarvis", "Morse", "Loyola"], // full stretch (endpoints + inner
-                                        // stops), from→to; omitted when not enumerable
-          "direction_label": "toward the Loop", // null when unavailable
-          "ts": 1715199000000,          // when the bot posted; matches post_url
-          "onset_ts": 1715197860000,    // disruption start, back-dated to last observed train
-                                        // (pulse-cold/thin-gap); null when not back-dated — use ts
-          "resolved_ts": 1715202600000,
-          "duration_ms": 4740000,       // resolved_ts - (onset_ts ?? ts); null while active
-          "active": false,
-          "post_url": "https://bsky.app/profile/.../post/...",
-          "resolved_post_url": null,
-          "bot_description": "…",       // pre-rendered plain-English summary
-          "onset_description": "…",     // pre-rendered onset-timeline sentence; omitted when no back-date
-          "evidence": { /* small "why the bot fired" payload */ }
-        }
-      ]
+      "id": "elevator-8th-market-eastbound-city-of-philadelphia-2026-10-05",
+      "agency": "septa",
+      "mode": "metro",                // "metro" or "regional_rail"
+      "station": { "slug": "8th-market", "name": "8th-Market", "lines": ["l1", "b3"] },
+      "unit_type": "elevator",
+      "unit_label": "Eastbound (City of Philadelphia)",
+      "headline": "8th-Market elevator out of service (Eastbound (City of Philadelphia))",
+      "description": "No access to/from station",
+      "lifecycle": { "first_seen_ts": …, "last_seen_ts": …, "restored_ts": null, "active": true },
+      "source_url": "https://…"
     }
   ]
 }
@@ -127,29 +150,23 @@ The top-level array is `incidents` — one object per real-world disruption.
 
 ## alerts.csv columns
 
-One row per alert or observation (incidents flattened), with an explicit `type` column:
+One row per official alert or detection (incidents flattened), with an explicit `record_type` column:
 
 ```
-type, id, kind, routes, headline, detection_source, signals, from_station, to_station,
-direction, direction_label, first_seen_ts, onset_ts, resolved_ts, duration_minutes, active,
-post_url, resolved_post_url
+record_type, incident_id, agency, mode, routes, source, status_type, headline, description,
+from_station, to_station, stations, direction, direction_label, first_seen_ts, onset_ts,
+resolved_ts, duration_minutes, active, post_url, resolved_post_url, source_url
 ```
 
-Timestamps are ISO 8601 (UTC). `routes` (full line names) and `signals` are semicolon-separated when multi-valued. `onset_ts` is the disruption start for absence-style observations (back-dated from `first_seen_ts` to the last observed train) and is blank when not back-dated; `duration_minutes` is measured from `onset_ts` when present, else `first_seen_ts`.
+Timestamps are ISO 8601 (UTC); `routes` and `stations` are semicolon-separated when multi-valued.
 
-## detection_source glossary
+## detection source glossary
 
-- `gap` — a longer-than-expected gap between trains/buses on a route+direction.
-- `bunching` — vehicles arriving clustered together after a gap.
-- `ghost` — scheduled service that never materialized (ghost trains/buses).
-- `pulse-held` — a vehicle held stationary mid-route.
-- `pulse-cold` — a platform/segment that went "cold" (no service observed).
-- `thin-gap` — a smaller gap flagged with back-dated onset.
-- `roundup` — multiple simultaneous signals summarized into one observation (`signals[]` populated).
-- `cancellation` — a Metra train Metra confirmed as cancelled (the timetabled analog of `ghost`).
-- `cancellation-inferred` — a scheduled Metra train the bot never saw run, with no covering alert (hedged; suppressed during fleet-wide feed outages).
-- `delay` — a Metra train running materially behind schedule (15+ min).
+- `delay` — a Regional Rail train running 15+ minutes late (TrainView).
+- `cancellation` — a Regional Rail train SEPTA marked cancelled (TrainView).
+
+The site also understands Metro/bus detector sources (`gap`, `bunching`, `ghost`, `pulse-cold`, `pulse-held`, `thin-gap`, `roundup`) for future detectors; the collector does not emit them yet.
 
 ## Etiquette
 
-Public data, no auth. Please cache responses, don't poll faster than every few minutes, and credit the project if you build something public. Breaking changes to the shape are recorded in the data changelog — check it before pinning. Source and field-by-field JSDoc: https://github.com/cailinpitt/chicago-transit-alerts
+Public data, no auth. Please cache responses, don't poll faster than every few minutes, and credit the project if you build something public. Changes to the shape are recorded in the data changelog.

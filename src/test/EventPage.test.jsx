@@ -8,7 +8,7 @@ const NOW = 1_000_000_000_000;
 // Build the published incident wire shape: a top-level incident with a nullable
 // `cta` block and an `observations[]` list. Train line keys are already full
 // names ('purple') — normalization now happens server-side.
-function ctaBlock(over) {
+function officialBlock(over) {
   return {
     alert_id: 'a',
     headline: '',
@@ -18,10 +18,10 @@ function ctaBlock(over) {
     affected_to_station: null,
     affected_direction: null,
     resolved_reply_url: null,
-    cta_event_start_ts: null,
-    cta_event_end_ts: null,
-    cta_event_start_is_date_only: false,
-    cta_event_end_is_date_only: false,
+    agency_event_start_ts: null,
+    agency_event_end_ts: null,
+    agency_event_start_is_date_only: false,
+    agency_event_end_is_date_only: false,
     ...over,
   };
 }
@@ -32,13 +32,13 @@ const PAYLOAD = {
   incidents: [
     {
       id: 'abc123',
-      kind: 'train',
+      kind: 'metro',
       routes: ['red'],
       first_seen_ts: NOW - 60 * 60_000,
       resolved_ts: NOW - 30 * 60_000,
       active: false,
       sources: ['cta'],
-      cta: ctaBlock({
+      cta: officialBlock({
         alert_id: 'a1',
         headline: 'Red Line Delays at Howard',
         first_seen_ts: NOW - 60 * 60_000,
@@ -50,13 +50,13 @@ const PAYLOAD = {
     },
     {
       id: 'brnriver',
-      kind: 'train',
+      kind: 'metro',
       routes: ['brown'],
       first_seen_ts: NOW - 45 * 60_000,
       resolved_ts: NOW - 15 * 60_000,
       active: false,
       sources: ['cta'],
-      cta: ctaBlock({
+      cta: officialBlock({
         alert_id: 'a3',
         headline: 'Brown Line Delays',
         short_description:
@@ -77,7 +77,7 @@ const PAYLOAD = {
       resolved_ts: NOW - 5 * 60_000,
       active: false,
       sources: ['cta'],
-      cta: ctaBlock({
+      cta: officialBlock({
         alert_id: 'a2',
         headline: 'Temporary Reroute',
         short_description: 'SB State will be closed between Wacker and Randolph.',
@@ -94,13 +94,13 @@ const PAYLOAD = {
       // Multi-line Loop incident: the CTA alert grouped with one pulse-cold
       // detection per line (Purple primary, Pink extra).
       id: 'loopevt',
-      kind: 'train',
+      kind: 'metro',
       routes: ['purple', 'pink'],
       first_seen_ts: NOW - 40 * 60_000,
       resolved_ts: NOW - 10 * 60_000,
       active: false,
       sources: ['cta', 'bot'],
-      cta: ctaBlock({
+      cta: officialBlock({
         alert_id: 'loop1',
         headline: 'Loop Elevated Service Delayed',
         first_seen_ts: NOW - 40 * 60_000,
@@ -111,7 +111,7 @@ const PAYLOAD = {
       observations: [
         {
           id: 201,
-          kind: 'train',
+          kind: 'metro',
           line: 'purple',
           from_station: 'Belmont (Red/Brown/Purple)',
           to_station: 'Chicago (Brown/Purple)',
@@ -123,7 +123,7 @@ const PAYLOAD = {
         },
         {
           id: 202,
-          kind: 'train',
+          kind: 'metro',
           line: 'pink',
           from_station: 'Ashland (Green/Pink)',
           to_station: 'Washington/Wabash',
@@ -141,13 +141,13 @@ const PAYLOAD = {
       // both Lake St stations that serve Green too. The page must fan the
       // stretch onto Green so it isn't presented as Pink-only.
       id: 'sharedtrk',
-      kind: 'train',
+      kind: 'metro',
       routes: ['pink', 'green'],
       first_seen_ts: NOW - 40 * 60_000,
       resolved_ts: NOW - 10 * 60_000,
       active: false,
       sources: ['cta', 'bot'],
-      cta: ctaBlock({
+      cta: officialBlock({
         alert_id: 'shared1',
         headline: 'Delays near Ashland/Lake Affecting Green and Pink Line Service',
         first_seen_ts: NOW - 40 * 60_000,
@@ -158,7 +158,7 @@ const PAYLOAD = {
       observations: [
         {
           id: 301,
-          kind: 'train',
+          kind: 'metro',
           line: 'pink',
           from_station: 'Ashland (Green/Pink)',
           to_station: 'Adams/Wabash',
@@ -177,13 +177,13 @@ const PAYLOAD = {
       // must NOT be pulled in — shared trackage only spreads across lines the
       // incident already names, never invents new ones.
       id: 'brnpurple',
-      kind: 'train',
+      kind: 'metro',
       routes: ['brown'],
       first_seen_ts: NOW - 40 * 60_000,
       resolved_ts: NOW - 10 * 60_000,
       active: false,
       sources: ['cta', 'bot'],
-      cta: ctaBlock({
+      cta: officialBlock({
         alert_id: 'brnp1',
         headline: 'Brown Line Delays near Belmont',
         first_seen_ts: NOW - 40 * 60_000,
@@ -194,7 +194,7 @@ const PAYLOAD = {
       observations: [
         {
           id: 401,
-          kind: 'train',
+          kind: 'metro',
           line: 'brown',
           from_station: 'Belmont (Red/Brown/Purple)',
           to_station: 'Fullerton',
@@ -233,7 +233,7 @@ const PAYLOAD = {
       // the timeline must carry a third "Per bot" entry at the onset, ahead of
       // the detection and clear entries, so the rail lines up with First seen.
       id: 'greenonset',
-      kind: 'train',
+      kind: 'metro',
       routes: ['green'],
       first_seen_ts: NOW - 80 * 60_000,
       resolved_ts: NOW - 4 * 60_000,
@@ -243,7 +243,7 @@ const PAYLOAD = {
       observations: [
         {
           id: 502,
-          kind: 'train',
+          kind: 'metro',
           line: 'green',
           from_station: 'Roosevelt',
           to_station: 'Cermak-McCormick Place',
@@ -265,7 +265,7 @@ const PAYLOAD = {
     },
     {
       id: 'metra-972',
-      kind: 'metra',
+      kind: 'rail',
       routes: ['ri'],
       first_seen_ts: NOW - 60 * 60_000,
       resolved_ts: NOW - 60 * 60_000,
@@ -275,7 +275,7 @@ const PAYLOAD = {
       observations: [
         {
           id: 'metra-972',
-          kind: 'metra',
+          kind: 'rail',
           line: 'ri',
           from_station: 'LaSalle Street',
           to_station: 'Joliet',
@@ -290,7 +290,7 @@ const PAYLOAD = {
     },
     {
       id: 'metra-991',
-      kind: 'metra',
+      kind: 'rail',
       routes: ['me'],
       first_seen_ts: NOW - 60 * 60_000,
       resolved_ts: NOW - 60 * 60_000,
@@ -300,7 +300,7 @@ const PAYLOAD = {
       observations: [
         {
           id: 'metra-991',
-          kind: 'metra',
+          kind: 'rail',
           line: 'me',
           train_number: '121',
           from_station: 'Millennium Station',
@@ -316,13 +316,13 @@ const PAYLOAD = {
     },
     {
       id: 'metra-official-delay',
-      kind: 'metra',
+      kind: 'rail',
       routes: ['ri'],
       first_seen_ts: NOW - 45 * 60_000,
       resolved_ts: NOW - 10 * 60_000,
       active: false,
       sources: ['cta'],
-      cta: ctaBlock({
+      cta: officialBlock({
         alert_id: 'metra-delay-1',
         headline: 'RID #426 Delayed',
         short_description:
@@ -330,9 +330,9 @@ const PAYLOAD = {
         first_seen_ts: NOW - 45 * 60_000,
         resolved_ts: NOW - 10 * 60_000,
         active: false,
-        post_url: 'https://bsky.app/profile/did:plc:abc/post/metra-official-delay',
+        post_url: 'https://bsky.app/profile/did:plc:abc/post/rail-official-delay',
       }),
-      metra_status: {
+      rail_status: {
         source: 'delay',
         deadline_ts: NOW - 10 * 60_000,
         delay_min: 35,
@@ -346,13 +346,13 @@ const PAYLOAD = {
       // is meaningless. Should relabel "First seen" → "Announced", drop the
       // timer, and show a neutral "planned" pill instead of red "ongoing".
       id: 'metra-planned',
-      kind: 'metra',
+      kind: 'rail',
       routes: ['bnsf', 'md-n', 'md-w', 'me', 'ri', 'up-nw', 'up-w'],
       first_seen_ts: NOW - 60 * 60_000,
       resolved_ts: null,
       active: true,
       sources: ['cta'],
-      cta: ctaBlock({
+      cta: officialBlock({
         alert_id: 'metra-planned-1',
         headline: 'Track Construction Saturday, June 13 through Sunday, June 14',
         short_description:
@@ -360,9 +360,9 @@ const PAYLOAD = {
         first_seen_ts: NOW - 60 * 60_000,
         resolved_ts: null,
         active: true,
-        post_url: 'https://bsky.app/profile/did:plc:abc/post/metra-planned',
+        post_url: 'https://bsky.app/profile/did:plc:abc/post/rail-planned',
       }),
-      metra_status: { source: 'planned-delay', train_number: null },
+      rail_status: { source: 'planned-delay', train_number: null },
       observations: [],
     },
   ].map((inc) => incident(inc)),
@@ -376,7 +376,7 @@ const V2_PAYLOAD = {
     {
       id: 'v2evt',
       agency: 'cta',
-      mode: 'train',
+      mode: 'metro',
       routes: ['red'],
       sources: ['cta', 'bot'],
       lifecycle: {

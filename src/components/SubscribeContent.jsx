@@ -1,46 +1,51 @@
 import { useEffect, useState } from 'react';
-import { BUS_ROUTE_NAMES, compareBusRoutes } from '../lib/busRoutes.js';
-import { TRAIN_LINE_ORDER, TRAIN_LINES } from '../lib/ctaLines.js';
+import { BUS_ROUTE_NAMES, compareBusRoutes, formatBusRoute } from '../lib/busRoutes.js';
 import { dataUrl } from '../lib/dataSource.js';
-import { METRA_LINE_ORDER, METRA_LINES } from '../lib/metraLines.js';
+import { METRO_LINE_ORDER, metroLineFullName } from '../lib/metroLines.js';
+import { RAIL_LINE_ORDER, railLineFullName } from '../lib/railLines.js';
+import { SITE_ORIGIN } from '../lib/site.js';
 
 const LINK = 'text-blue-500 hover:text-blue-400 hover:underline';
-const SITE = 'https://chicagotransitalerts.app';
-const FEED_URL = `${SITE}/feed.xml`;
-const CSV_URL = dataUrl('alerts.csv');
-const RECENT_URL = dataUrl('alerts-recent.json');
-const INDEX_URL = dataUrl('alerts-index.json');
-const LEGACY_JSON_URL = dataUrl('alerts.json');
-const ACCESSIBILITY_URL = dataUrl('accessibility.json');
-const CHANGELOG_URL = 'https://chicagotransitalerts.app/data/CHANGELOG.md';
+const FEED_URL = `${SITE_ORIGIN}/feed.xml`;
+// The data origin defaults to the site's own /data path; show absolute URLs
+// either way so they can be copied into scripts.
+const absoluteDataUrl = (file) => {
+  const url = dataUrl(file);
+  return /^https?:\/\//.test(url) ? url : `${SITE_ORIGIN}${url}`;
+};
+const CSV_URL = absoluteDataUrl('alerts.csv');
+const RECENT_URL = absoluteDataUrl('alerts-recent.json');
+const INDEX_URL = absoluteDataUrl('alerts-index.json');
+const ACCESSIBILITY_URL = absoluteDataUrl('accessibility.json');
+const CHANGELOG_URL = `${SITE_ORIGIN}/data/CHANGELOG.md`;
 
 const CURL_CMD = `curl -s ${RECENT_URL} | jq '.incidents | length'`;
 
 // Picker options for the per-line/route feed chooser. Values are the feed path
-// segment after `/feed/` (e.g. `line/red`, `route/66`).
-const LINE_FEED_OPTIONS = TRAIN_LINE_ORDER.map((id) => ({
+// segment after `/feed/` (e.g. `line/l1`, `route/17`, `rail/line/pao`).
+const LINE_FEED_OPTIONS = METRO_LINE_ORDER.map((id) => ({
   value: `line/${id}`,
-  label: `${TRAIN_LINES[id]?.label ?? id} Line`,
+  label: metroLineFullName(id),
 }));
 const ROUTE_FEED_OPTIONS = Object.keys(BUS_ROUTE_NAMES)
   .sort(compareBusRoutes)
   .map((r) => ({
     value: `route/${r}`,
-    label: BUS_ROUTE_NAMES[r] ? `#${r} ${BUS_ROUTE_NAMES[r]}` : `#${r}`,
+    label: `${formatBusRoute(r)} · ${BUS_ROUTE_NAMES[r]}`,
   }));
-// Metra feeds live under their own namespace (`metra/line/:line`) so a Metra
-// route_id can never collide with a CTA train-line key.
-const METRA_FEED_OPTIONS = METRA_LINE_ORDER.map((id) => ({
-  value: `metra/line/${id}`,
-  label: METRA_LINES[id]?.label ?? id,
+// Regional Rail feeds live under their own namespace (`rail/line/:line`) so a
+// Regional Rail key can never collide with a Metro line key or bus route.
+const RAIL_FEED_OPTIONS = RAIL_LINE_ORDER.map((id) => ({
+  value: `rail/line/${id}`,
+  label: railLineFullName(id),
 }));
 
 export default function SubscribeContent() {
   const [copied, setCopied] = useState(null);
-  const [pickedCtaFeed, setPickedCtaFeed] = useState('line/red');
-  const [pickedMetraFeed, setPickedMetraFeed] = useState('metra/line/me');
-  const pickedCtaFeedUrl = `${SITE}/feed/${pickedCtaFeed}.xml`;
-  const pickedMetraFeedUrl = `${SITE}/feed/${pickedMetraFeed}.xml`;
+  const [pickedTransitFeed, setPickedTransitFeed] = useState('line/l1');
+  const [pickedRailFeed, setPickedRailFeed] = useState('rail/line/pao');
+  const pickedTransitFeedUrl = `${SITE_ORIGIN}/feed/${pickedTransitFeed}.xml`;
+  const pickedRailFeedUrl = `${SITE_ORIGIN}/feed/${pickedRailFeed}.xml`;
 
   useEffect(() => {
     if (!copied) return;
@@ -60,73 +65,10 @@ export default function SubscribeContent() {
 
   return (
     <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-      <h3 className="font-semibold text-slate-700 dark:text-slate-200">Follow on Bluesky</h3>
+      <h3 className="font-semibold text-slate-700 dark:text-slate-200">RSS / Atom feed</h3>
       <p>
-        The bots that feed this archive post directly to Bluesky in real time. Follow whichever
-        modes you care about:
-      </p>
-      <ul className="list-disc list-outside ml-5 space-y-1">
-        <li>
-          <a
-            className={LINK}
-            href="https://bsky.app/profile/ctaalertinsights.chicagotransitalerts.app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            @ctaalertinsights
-          </a>{' '}
-          — official CTA alerts plus full-line/route blackouts and roundups.
-        </li>
-        <li>
-          <a
-            className={LINK}
-            href="https://bsky.app/profile/ctatraininsights.chicagotransitalerts.appl"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            @ctatraininsights
-          </a>{' '}
-          — bunching, gaps, and ghost-hour detections on the L.
-        </li>
-        <li>
-          <a
-            className={LINK}
-            href="https://bsky.app/profile/ctabusinsights.chicagotransitalerts.app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            @ctabusinsights
-          </a>{' '}
-          — same, for bus routes.
-        </li>
-        <li>
-          <a
-            className={LINK}
-            href="https://bsky.app/profile/metraalertinsights.chicagotransitalerts.app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            @metraalertinsights
-          </a>{' '}
-          — Metra cancellations, late trains, and republished Metra alerts.
-        </li>
-        <li>
-          <a
-            className={LINK}
-            href="https://bsky.app/profile/metrainsights.chicagotransitalerts.app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            @metrainsights
-          </a>{' '}
-          — Metra speed maps and performance recaps.
-        </li>
-      </ul>
-
-      <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-3">RSS / Atom feed</h3>
-      <p>
-        An Atom feed of the 50 most recent incidents — official CTA and Metra alerts plus
-        bot-detected disruptions, across every line and route. Drop the URL below into any feed
+        An Atom feed of the 50 most recent incidents — official SEPTA alerts plus detected Regional
+        Rail delays and cancellations, across every line and route. Drop the URL below into any feed
         reader to follow along.
       </p>
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -156,23 +98,23 @@ export default function SubscribeContent() {
         Just one line or route
       </h3>
       <p>
-        Only care about your commute? Pick a CTA line or route, or a Metra line, to get its own
-        feed. Every CTA train line, every bus route, and every Metra line has one at a predictable
-        URL (<code className="text-xs">/feed/line/:line.xml</code>,{' '}
+        Only care about your commute? Pick a SEPTA Metro line or bus route, or a Regional Rail line,
+        to get its own feed. Every Metro line, every bus route, and every Regional Rail line has one
+        at a predictable URL (<code className="text-xs">/feed/line/:line.xml</code>,{' '}
         <code className="text-xs">/feed/route/:route.xml</code>, or{' '}
-        <code className="text-xs">/feed/metra/line/:line.xml</code>):
+        <code className="text-xs">/feed/rail/line/:line.xml</code>):
       </p>
       <div className="grid gap-3 md:grid-cols-2">
         <FeedPicker
-          id="cta-feed-picker"
-          label="CTA line or route"
-          value={pickedCtaFeed}
-          onChange={setPickedCtaFeed}
-          url={pickedCtaFeedUrl}
-          copied={copied === 'cta-picked'}
-          onCopy={copy('cta-picked', pickedCtaFeedUrl)}
+          id="transit-feed-picker"
+          label="Metro line or bus route"
+          value={pickedTransitFeed}
+          onChange={setPickedTransitFeed}
+          url={pickedTransitFeedUrl}
+          copied={copied === 'transit-picked'}
+          onCopy={copy('transit-picked', pickedTransitFeedUrl)}
         >
-          <optgroup label="Train Lines">
+          <optgroup label="SEPTA Metro">
             {LINE_FEED_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -188,15 +130,15 @@ export default function SubscribeContent() {
           </optgroup>
         </FeedPicker>
         <FeedPicker
-          id="metra-feed-picker"
-          label="Metra line"
-          value={pickedMetraFeed}
-          onChange={setPickedMetraFeed}
-          url={pickedMetraFeedUrl}
-          copied={copied === 'metra-picked'}
-          onCopy={copy('metra-picked', pickedMetraFeedUrl)}
+          id="rail-feed-picker"
+          label="Regional Rail line"
+          value={pickedRailFeed}
+          onChange={setPickedRailFeed}
+          url={pickedRailFeedUrl}
+          copied={copied === 'rail-picked'}
+          onCopy={copy('rail-picked', pickedRailFeedUrl)}
         >
-          {METRA_FEED_OPTIONS.map((o) => (
+          {RAIL_FEED_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -204,9 +146,9 @@ export default function SubscribeContent() {
         </FeedPicker>
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        Feeds exist for every CTA line, every roster route, and every Metra line up front, so you
-        can subscribe to your route today — it just stays quiet until something happens, then fills
-        in automatically. Every line and route page also carries a{' '}
+        Feeds exist for every Metro line, every bus route, and every Regional Rail line up front, so
+        you can subscribe to your route today — it just stays quiet until something happens, then
+        fills in automatically. Every line and route page also carries a{' '}
         <span className="whitespace-nowrap">“🔔 Subscribe (RSS)”</span> link. A JSON Feed version
         lives at the same path with a <code>.json</code> extension.
       </p>
@@ -286,7 +228,7 @@ export default function SubscribeContent() {
           <a className={LINK} href={ACCESSIBILITY_URL} target="_blank" rel="noopener noreferrer">
             {ACCESSIBILITY_URL}
           </a>{' '}
-          — elevator, escalator, and ADA outages, the same data behind the{' '}
+          — elevator outages, the same data behind the{' '}
           <a className={LINK} href="/accessibility">
             accessibility
           </a>{' '}
@@ -294,12 +236,7 @@ export default function SubscribeContent() {
         </li>
       </ul>
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        The original full-history{' '}
-        <a className={LINK} href={LEGACY_JSON_URL} target="_blank" rel="noopener noreferrer">
-          alerts.json
-        </a>{' '}
-        is still available but <strong>deprecated</strong> and will be retired — migrate to the
-        files above. Format changes (and the retirement date) are tracked in the{' '}
+        Format changes are tracked in the{' '}
         <a className={LINK} href={CHANGELOG_URL} target="_blank" rel="noopener noreferrer">
           data changelog
         </a>{' '}

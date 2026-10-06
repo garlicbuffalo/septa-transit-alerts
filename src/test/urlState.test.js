@@ -7,7 +7,7 @@ describe('parseUrlState', () => {
       selectedLines: null,
       showBus: true,
       selectedBusRoutes: [],
-      selectedMetraLines: [],
+      selectedRailLines: [],
       dateRange: 7,
       selectedDay: null,
       selectedSignals: [],
@@ -65,10 +65,10 @@ describe('parseUrlState', () => {
   });
 
   it('parses metra lines and drops invalid keys (incl. legacy metra=1)', () => {
-    expect(parseUrlState('?metra=up-n,bnsf').selectedMetraLines).toEqual(['up-n', 'bnsf']);
-    expect(parseUrlState('?metra=UP-N,fake').selectedMetraLines).toEqual(['up-n']);
-    // The old gate param `?metra=1` has no valid line → no narrowing.
-    expect(parseUrlState('?metra=1').selectedMetraLines).toEqual([]);
+    expect(parseUrlState('?rail=up-n,bnsf').selectedRailLines).toEqual(['up-n', 'bnsf']);
+    expect(parseUrlState('?rail=UP-N,fake').selectedRailLines).toEqual(['up-n']);
+    // The old gate param `?rail=1` has no valid line → no narrowing.
+    expect(parseUrlState('?rail=1').selectedRailLines).toEqual([]);
   });
 
   it('parses range=all as null', () => {
@@ -189,7 +189,7 @@ describe('buildSearch', () => {
       selectedLines: ['red'],
       showBus: false,
       selectedBusRoutes: ['66'],
-      selectedMetraLines: ['up-n', 'bnsf'],
+      selectedRailLines: ['up-n', 'bnsf'],
       dateRange: 30,
       selectedDay: null,
       selectedSignals: [],
@@ -206,7 +206,7 @@ describe('buildSearch', () => {
       selectedLines: null,
       showBus: true,
       selectedBusRoutes: [],
-      selectedMetraLines: [],
+      selectedRailLines: [],
       dateRange: 7,
       selectedDay: dayUtc,
       selectedSignals: [],

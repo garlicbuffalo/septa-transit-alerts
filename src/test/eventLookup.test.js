@@ -14,7 +14,7 @@ const NOW = 1_000_000_000_000;
 // bot-only incident has `cta: null`.
 const mergedIncident = incident({
   id: '3ml5idb536d2c', // = alert post rkey
-  kind: 'train',
+  kind: 'metro',
   routes: ['red'],
   first_seen_ts: NOW - 60 * 60_000,
   resolved_ts: NOW - 30 * 60_000,
@@ -31,7 +31,7 @@ const mergedIncident = incident({
   observations: [
     {
       id: 1,
-      kind: 'train',
+      kind: 'metro',
       line: 'red',
       ts: NOW - 55 * 60_000,
       resolved_ts: NOW - 30 * 60_000,
@@ -107,7 +107,7 @@ describe('findIncidentById', () => {
   it('finds a grouped incident by any official alert rkey alias', () => {
     const grouped = incident({
       id: 'canonical',
-      kind: 'metra',
+      kind: 'rail',
       routes: ['bnsf', 'md-w'],
       official_alerts: [
         { ...mergedIncident.official_alert, post_url: ALERT_URL },
@@ -145,15 +145,15 @@ describe('formatRoutesLabel', () => {
     expect(formatRoutesLabel('bus', ['1', '3', '4', '7', '147'])).toBe('#1, #3 + 3 more');
   });
   it('single train line', () => {
-    expect(formatRoutesLabel('train', ['red'])).toBe('Red Line');
+    expect(formatRoutesLabel('metro', ['red'])).toBe('Red Line');
   });
   it('two train lines pluralizes', () => {
     // Routes here are full-name keys (the export normalizes the bot's short
     // codes into full names like `purple` server-side).
-    expect(formatRoutesLabel('train', ['red', 'purple'])).toBe('Red and Purple Lines');
+    expect(formatRoutesLabel('metro', ['red', 'purple'])).toBe('Red and Purple Lines');
   });
   it('empty routes falls back to generic', () => {
     expect(formatRoutesLabel('bus', [])).toBe('this route');
-    expect(formatRoutesLabel('train', [])).toBe('this line');
+    expect(formatRoutesLabel('metro', [])).toBe('this line');
   });
 });

@@ -1,7 +1,7 @@
 {
-  "name": "Chicago Transit Alerts",
-  "short_name": "CTA Alerts",
-  "description": "A public archive of CTA and Metra service alerts and bot-detected disruptions, with a 90-day heatmap of incident frequency.",
+  "name": "SEPTA Transit Alerts",
+  "short_name": "SEPTA Alerts",
+  "description": "A public archive of SEPTA service alerts and detected disruptions across SEPTA Metro, buses, and Regional Rail, with a 90-day heatmap of incident frequency.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0d1117",

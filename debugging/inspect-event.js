@@ -5,12 +5,12 @@
 // without spinning up the SPA.
 //
 // Usage:
-//   node debugging/inspect-event.js --id 3mndpmuotdx2m
-//   node debugging/inspect-event.js --id 3mndpmuotdx2m --titles
-//   node debugging/inspect-event.js --id 3mndpmuotdx2m --data public/data/alerts.json
+//   node debugging/inspect-event.js --id alert-136615
+//   node debugging/inspect-event.js --id alert-136615 --titles
+//   node debugging/inspect-event.js --id alert-136615 --data public/data/alerts-recent.json
 //
-// Data source: the live site's alerts.json by default; pass --data <path> for a
-// local snapshot. The --titles strings use the same pure helpers the app does
+// Data source: the deployed site's alerts-recent.json by default (DATA_URL
+// overrides it); pass --data <path> for a local snapshot. The --titles strings use the same pure helpers the app does
 // (lib/incidents.js, lib/stations.js); the in-app title mirrors describeText in
 // components/event/incidentText.jsx (a .jsx file the renderers can't import).
 
@@ -21,14 +21,19 @@ import {
   botSummaryText,
   findIncidentById,
   formatRoutesLabel,
+  incidentHeadlineText,
+  incidentLifecycle,
+  legacyKind,
+  officialAlert,
   splitObservations,
 } from '../src/lib/incidents.js';
+import { SITE_ORIGIN } from '../src/lib/site.js';
 import { displayStationName } from '../src/lib/stations.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
-// Public production feed by default; override with CTA_DATA_URL for a fork.
-const LIVE = process.env.CTA_DATA_URL || 'https://chicagotransitalerts.app/data/alerts.json';
+// The deployed site's recent slice by default; override with DATA_URL.
+const LIVE = process.env.DATA_URL || `${SITE_ORIGIN}/data/alerts-recent.json`;
 
 function parseArgs(argv) {
   const out = {};
@@ -61,7 +66,7 @@ async function loadRaw(dataArg) {
 // Plain-text in-app title — mirrors describeText() in incidentText.jsx, which
 // can't be imported here (it's a .jsx file pulling in React components).
 function inAppTitle(incident) {
-  if (incident.cta) return incident.cta.headline;
+  if (officialAlert(incident)) return incidentHeadlineText(incident);
   const { primary } = splitObservations(incident);
   if (primary?.from_station && primary?.to_station) {
     const seg = `${displayStationName(primary.from_station)} → ${displayStationName(primary.to_station)}`;
@@ -82,21 +87,21 @@ async function main() {
   const raw = await loadRaw(args.data);
   const incident = findIncidentById(raw.incidents || [], id);
   if (!incident) {
-    console.error(`No event with id "${id}" in ${args.data ? args.data : 'live alerts.json'}.`);
-    console.error('The id is the rkey at the end of an /event/<id>/ URL.');
+    console.error(`No event with id "${id}" in ${args.data ? args.data : LIVE}.`);
+    console.error('The id is the last segment of an /event/<id> URL.');
     process.exit(1);
   }
 
   if (args.titles) {
     const routes = Array.isArray(incident.routes) ? incident.routes : [];
     console.log(`event:        ${incident.id}`);
-    console.log(`line/route:   ${formatRoutesLabel(incident.kind, routes)}`);
+    console.log(`line/route:   ${formatRoutesLabel(legacyKind(incident), routes)}`);
     console.log(`in-app title: ${inAppTitle(incident)}`);
     console.log(`bot summary:  ${botSummaryText(incident)}`);
     console.log(
-      `source:       ${incident.cta ? (incident.observations?.length ? 'merged (CTA+bot)' : 'CTA') : 'bot'}`,
+      `source:       ${officialAlert(incident) ? (incident.detections?.length ? 'merged (SEPTA+bot)' : 'SEPTA') : 'bot'}`,
     );
-    console.log(`active:       ${!!incident.active}`);
+    console.log(`active:       ${!!incidentLifecycle(incident).active}`);
     return;
   }
 

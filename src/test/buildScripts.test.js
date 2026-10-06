@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { pickIncidents } from '../../scripts/prerender-events.js';
 import * as incidentsLib from '../lib/incidents.js';
 import { incidentRecords } from '../lib/incidents.js';
-import { incident, officialAlertFromCta } from './v2TestHelpers.js';
+import { incident, officialAlertFromAgency } from './v2TestHelpers.js';
 
 // Regression guard for a class of bug that shipped to production once already:
 // the incidents[] migration deleted `normalizeAlertsPayload` from
@@ -77,7 +77,7 @@ describe('incidentRecords wire → row contract', () => {
   const incidents = [
     incident({
       id: '3ml5idb536d2c',
-      kind: 'train',
+      kind: 'metro',
       routes: ['red'],
       cta: {
         alert_id: 'a1',
@@ -90,7 +90,7 @@ describe('incidentRecords wire → row contract', () => {
       observations: [
         {
           id: 1,
-          kind: 'train',
+          kind: 'metro',
           line: 'red',
           ts: NOW - 55 * 60_000,
           post_url: OBS_URL,
@@ -112,7 +112,7 @@ describe('incidentRecords wire → row contract', () => {
     const [alert] = officialRecords;
     // Fields the scripts actually consume (csv rows, OG cards, sitemap rkeys).
     expect(alert).toMatchObject({
-      kind: 'train',
+      kind: 'metro',
       routes: ['red'],
       headline: 'Red Line Delays',
       post_url: ALERT_URL,
@@ -133,7 +133,7 @@ describe('incidentRecords wire → row contract', () => {
     const detectionUrl = 'https://bsky.app/profile/did:plc:def/post/detectionrkey';
     const grouped = incident({
       id: 'primaryrkey',
-      kind: 'metra',
+      kind: 'rail',
       routes: ['bnsf', 'md-w'],
       cta: {
         alert_id: 'primary',
@@ -141,12 +141,12 @@ describe('incidentRecords wire → row contract', () => {
         post_url: primaryUrl,
       },
       official_alerts: [
-        officialAlertFromCta({
+        officialAlertFromAgency({
           alert_id: 'primary',
           headline: 'Track Construction',
           post_url: primaryUrl,
         }),
-        officialAlertFromCta({
+        officialAlertFromAgency({
           alert_id: 'child',
           headline: 'Track Construction',
           post_url: childUrl,
@@ -166,7 +166,7 @@ describe('incidentRecords wire → row contract', () => {
       {
         id: 'v2',
         agency: 'cta',
-        mode: 'train',
+        mode: 'metro',
         routes: ['red'],
         lifecycle: {
           first_seen_ts: NOW - 60 * 60_000,
@@ -224,7 +224,7 @@ describe('incidentRecords wire → row contract', () => {
 
     expect(officialRecords[0]).toMatchObject({
       alert_id: 'v2-alert',
-      kind: 'train',
+      kind: 'metro',
       headline: 'Red Line Delays',
       affected_from_station: 'Howard',
       affected_to_station: 'Loyola',
@@ -232,7 +232,7 @@ describe('incidentRecords wire → row contract', () => {
     });
     expect(detectionRecords[0]).toMatchObject({
       id: 7,
-      kind: 'train',
+      kind: 'metro',
       line: 'red',
       detection_source: 'pulse-cold',
       from_station: 'Howard',

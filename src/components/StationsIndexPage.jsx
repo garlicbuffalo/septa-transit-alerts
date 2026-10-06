@@ -1,28 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useBrowseData } from '../hooks/useBrowseData.js';
 import { useDarkMode } from '../hooks/useDarkMode.js';
-import { fetchAccessibilityData } from '../lib/accessibility.js';
+import { fetchAccessibilityData, outageKind } from '../lib/accessibility.js';
 import { topLevelTrail } from '../lib/breadcrumbs.js';
-import { normalizeTrainLine, TRAIN_LINE_ORDER, TRAIN_LINES } from '../lib/ctaLines.js';
-import { METRA_LINES } from '../lib/metraLines.js';
-import { metraStationRoster } from '../lib/metraStations.js';
+import {
+  METRO_LINE_ORDER,
+  METRO_LINES,
+  metroLineFullName,
+  normalizeMetroLine,
+} from '../lib/metroLines.js';
+import metroStations from '../lib/metroStations.json';
+import { RAIL_LINE_ORDER, RAIL_LINES } from '../lib/railLines.js';
+import { railStationRoster } from '../lib/railStations.js';
+import { SITE_NAME } from '../lib/site.js';
 import { slugifyStation } from '../lib/stations.js';
-import trainStations from '../lib/trainStations.json';
 import Breadcrumb from './Breadcrumb.jsx';
 import Footer from './Footer.jsx';
 import Header from './Header.jsx';
 
-const TRAIN_LINE_SET = new Set(TRAIN_LINE_ORDER);
+const METRO_LINE_SET = new Set(METRO_LINE_ORDER);
 
-// Roster, computed once: numeric-aware A–Z sort (so "35th/Archer" lands ahead
-// of "Adams"), plus each station's serving lines normalized to full keys
-// ('org' → 'orange') so the line filter can match against TRAIN_LINE_ORDER.
-const ROSTER = [...trainStations]
-  .map((s) => ({ ...s, normLines: [...new Set((s.lines || []).map(normalizeTrainLine))] }))
+// Roster, computed once: numeric-aware A–Z sort (so "2nd St" lands ahead of
+// "13th St"), plus each station's serving lines normalized to lowercase keys
+// ('L1' → 'l1') so the line filter can match against METRO_LINE_ORDER.
+const ROSTER = [...metroStations]
+  .map((s) => ({ ...s, normLines: [...new Set((s.lines || []).map(normalizeMetroLine))] }))
   .sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' }));
 
-// Metra station roster — same numeric-aware A–Z sort. `lines` are Metra web keys.
-const METRA_ROSTER = metraStationRoster().sort((a, b) =>
+// Regional Rail station roster — same numeric-aware A–Z sort. `lines` are Regional Rail web keys.
+const RAIL_ROSTER = railStationRoster().sort((a, b) =>
   a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' }),
 );
 
@@ -48,8 +54,8 @@ function groupRoster(roster, search) {
   return { groups: ordered, total: filtered.length };
 }
 
-// First-character bucket for the A–Z grouping. Digits (e.g. "35th/Archer",
-// "18th") collapse into a single "#" group that sorts ahead of the letters,
+// First-character bucket for the A–Z grouping. Digits (e.g. "8th-Market",
+// "69th St Transit Center") collapse into a single "#" group that sorts ahead of the letters,
 // matching how a print directory handles numeric entries.
 function groupKey(name) {
   const ch = name.trim().charAt(0).toUpperCase();
@@ -57,15 +63,15 @@ function groupKey(name) {
 }
 
 // Read the `?lines=` param (shared convention with the rest of the site), tol-
-// erant of CTA short codes so a `/stations?lines=org,p` link still resolves.
+// erant of SEPTA's uppercase codes so a `/stations?lines=L1,B1` link resolves.
 // Returns null (= all lines) when absent or empty.
 function parseLinesParam(search) {
   const raw = new URLSearchParams(search).get('lines');
   if (!raw) return null;
   const valid = raw
     .split(',')
-    .map((s) => normalizeTrainLine(s.trim()))
-    .filter((s) => TRAIN_LINE_SET.has(s));
+    .map((s) => normalizeMetroLine(s.trim()))
+    .filter((s) => METRO_LINE_SET.has(s));
   return valid.length > 0 ? valid : null;
 }
 
@@ -76,7 +82,30 @@ function LineDots({ lines }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-1">
       {lines.map((key) => {
-        const info = TRAIN_LINES[normalizeTrainLine(key)];
+        const info = METRO_LINES[normalizeMetroLine(key)];
+        if (!info) return null;
+        return (
+          <span
+            key={key}
+            role="img"
+            title={metroLineFullName(key)}
+            aria-label={metroLineFullName(key)}
+            className="inline-block h-2.5 w-2.5 rounded-sm"
+            style={{ backgroundColor: info.color }}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+// Regional Rail variant — colored squares for the Regional Rail lines serving a station.
+function RailLineDots({ lines }) {
+  if (!lines || lines.length === 0) return null;
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1">
+      {lines.map((key) => {
+        const info = RAIL_LINES[key];
         if (!info) return null;
         return (
           <span
@@ -93,33 +122,10 @@ function LineDots({ lines }) {
   );
 }
 
-// Metra variant — colored squares for the Metra lines serving a station.
-function MetraLineDots({ lines }) {
-  if (!lines || lines.length === 0) return null;
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1">
-      {lines.map((key) => {
-        const info = METRA_LINES[key];
-        if (!info) return null;
-        return (
-          <span
-            key={key}
-            role="img"
-            title={info.label}
-            aria-label={info.label}
-            className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ backgroundColor: info.color }}
-          />
-        );
-      })}
-    </span>
-  );
-}
-
-// A–Z station list rendered as grouped letter sections. Shared by the CTA and
-// Metra blocks; `hrefBase` is `/station` or `/metra/station` and `Dots` is the
-// agency's line-square component.
-function StationGroups({ groups, hrefBase, Dots, agency, activeOutageCounts }) {
+// A–Z station list rendered as grouped letter sections. Shared by SEPTA and
+// Regional Rail blocks; `hrefBase` is `/station` or `/rail/station` and `Dots` is the
+// network's line-square component; `kind` ('metro' | 'rail') keys the outage counts.
+function StationGroups({ groups, hrefBase, Dots, kind, activeOutageCounts }) {
   return groups.map(([letter, stations]) => (
     <section key={letter}>
       <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
@@ -130,7 +136,7 @@ function StationGroups({ groups, hrefBase, Dots, agency, activeOutageCounts }) {
           <li key={s.slug ?? s.name}>
             {(() => {
               const stationSlug = s.slug ?? slugifyStation(s.name);
-              const outageCount = activeOutageCounts.get(`${agency}:${stationSlug}`) || 0;
+              const outageCount = activeOutageCounts.get(`${kind}:${stationSlug}`) || 0;
               return (
                 <a
                   href={`${hrefBase}/${stationSlug}`}
@@ -172,9 +178,9 @@ export default function StationsIndexPage() {
   );
 
   useEffect(() => {
-    document.title = 'All stations · Chicago Transit Alerts';
+    document.title = `All stations · ${SITE_NAME}`;
     return () => {
-      document.title = 'Chicago Transit Alerts';
+      document.title = SITE_NAME;
     };
   }, []);
 
@@ -216,18 +222,18 @@ export default function StationsIndexPage() {
     return groupRoster(base, search);
   }, [selectedLines, search]);
 
-  // Metra stations are scoped out when a CTA line filter is active (that filter
-  // is CTA-only); otherwise they're shown, narrowed by the shared name search.
-  const showMetra = selectedLines === null;
-  const metra = useMemo(() => groupRoster(METRA_ROSTER, search), [search]);
+  // Regional Rail stations are scoped out when a SEPTA line filter is active (that filter
+  // is official-only); otherwise they're shown, narrowed by the shared name search.
+  const showRail = selectedLines === null;
+  const rail = useMemo(() => groupRoster(RAIL_ROSTER, search), [search]);
 
   const isFiltered = selectedLines !== null || search.trim() !== '';
-  const nothingMatches = total === 0 && (!showMetra || metra.total === 0);
+  const nothingMatches = total === 0 && (!showRail || rail.total === 0);
   const activeOutageCounts = useMemo(() => {
     const counts = new Map();
     for (const outage of accessibilityData?.outages || []) {
       if (!outage.lifecycle?.active || !outage.station?.slug) continue;
-      const key = `${outage.agency}:${outage.station.slug}`;
+      const key = `${outageKind(outage)}:${outage.station.slug}`;
       counts.set(key, (counts.get(key) || 0) + 1);
     }
     return counts;
@@ -250,9 +256,9 @@ export default function StationsIndexPage() {
           <Breadcrumb items={topLevelTrail('Stations')} className="mb-3" />
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">All stations</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
-            Every CTA &lsquo;L&rsquo; station ({trainStations.length} stops across 8 lines) and
-            Metra station ({METRA_ROSTER.length} stops across 11 lines). Pick one for its alert and
-            disruption history.
+            Every SEPTA Metro station ({ROSTER.length} stations across {METRO_LINE_ORDER.length}{' '}
+            lines) and Regional Rail station ({RAIL_ROSTER.length} stations across{' '}
+            {RAIL_LINE_ORDER.length} lines). Pick one for its alert and disruption history.
           </p>
 
           {/* Name search — composes with the line filter (line narrows the
@@ -283,7 +289,7 @@ export default function StationsIndexPage() {
               when another line is selected). */}
           <div className="flex flex-wrap items-center gap-1.5 mb-2">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400 mr-1">
-              Filter by CTA line
+              Filter by Metro line
             </span>
             <button
               type="button"
@@ -297,8 +303,8 @@ export default function StationsIndexPage() {
             >
               All
             </button>
-            {TRAIN_LINE_ORDER.map((key) => {
-              const info = TRAIN_LINES[key];
+            {METRO_LINE_ORDER.map((key) => {
+              const info = METRO_LINES[key];
               const active = selectedLines?.includes(key);
               const dimmed = selectedLines !== null && !active;
               return (
@@ -313,6 +319,7 @@ export default function StationsIndexPage() {
                       : ''
                   }`}
                   style={dimmed ? {} : { backgroundColor: info.color, color: info.textColor }}
+                  title={info.name}
                 >
                   {info.label}
                 </button>
@@ -321,10 +328,10 @@ export default function StationsIndexPage() {
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
             {!isFiltered
-              ? `${ROSTER.length} CTA · ${METRA_ROSTER.length} Metra stations`
-              : showMetra
-                ? `${total} CTA · ${metra.total} Metra matching`
-                : `${total} of ${ROSTER.length} CTA station${total === 1 ? '' : 's'}`}
+              ? `${ROSTER.length} Metro · ${RAIL_ROSTER.length} Regional Rail stations`
+              : showRail
+                ? `${total} Metro · ${rail.total} Regional Rail matching`
+                : `${total} of ${ROSTER.length} Metro station${total === 1 ? '' : 's'}`}
           </p>
 
           {nothingMatches ? (
@@ -340,27 +347,27 @@ export default function StationsIndexPage() {
               {total > 0 && (
                 <div className="bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border p-4 sm:p-6 space-y-6">
                   <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                    CTA &lsquo;L&rsquo; stations
+                    SEPTA Metro stations
                   </h2>
                   <StationGroups
                     groups={groups}
                     hrefBase="/station"
                     Dots={LineDots}
-                    agency="cta"
+                    kind="metro"
                     activeOutageCounts={activeOutageCounts}
                   />
                 </div>
               )}
-              {showMetra && metra.total > 0 && (
+              {showRail && rail.total > 0 && (
                 <div className="bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border p-4 sm:p-6 space-y-6">
                   <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                    Metra stations
+                    Regional Rail stations
                   </h2>
                   <StationGroups
-                    groups={metra.groups}
-                    hrefBase="/metra/station"
-                    Dots={MetraLineDots}
-                    agency="metra"
+                    groups={rail.groups}
+                    hrefBase="/rail/station"
+                    Dots={RailLineDots}
+                    kind="rail"
                     activeOutageCounts={activeOutageCounts}
                   />
                 </div>

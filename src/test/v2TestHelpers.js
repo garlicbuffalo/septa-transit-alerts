@@ -1,7 +1,7 @@
 export const DEFAULT_NOW = 1_000_000_000_000;
 
-export const modeForKind = (kind) => (kind === 'metra' ? 'commuter_rail' : kind);
-export const agencyForKind = (kind) => (kind === 'metra' ? 'metra' : 'cta');
+export const modeForKind = (kind) => (kind === 'rail' ? 'commuter_rail' : kind);
+export const agencyForKind = (kind) => (kind === 'rail' ? 'rail' : 'cta');
 
 export function lifecycle({
   first_seen_ts = null,
@@ -22,7 +22,7 @@ export function lifecycle({
 
 export function detectionFromObs(
   obs = {},
-  { kind: _kind = 'train', routes = ['red'], now = DEFAULT_NOW } = {},
+  { kind: _kind = 'metro', routes = ['red'], now = DEFAULT_NOW } = {},
 ) {
   return {
     id: obs.id ?? 1,
@@ -56,7 +56,7 @@ export function detectionFromObs(
   };
 }
 
-export function officialAlertFromCta(
+export function officialAlertFromAgency(
   cta = {},
   {
     id = 'alert1',
@@ -86,12 +86,12 @@ export function officialAlertFromCta(
       direction: cta.affected_direction ?? cta.direction ?? null,
     },
     agency_event_window: {
-      start_ts: cta.cta_event_start_ts ?? cta.agency_event_window?.start_ts ?? null,
-      end_ts: cta.cta_event_end_ts ?? cta.agency_event_window?.end_ts ?? null,
+      start_ts: cta.agency_event_start_ts ?? cta.agency_event_window?.start_ts ?? null,
+      end_ts: cta.agency_event_end_ts ?? cta.agency_event_window?.end_ts ?? null,
       start_is_date_only:
-        cta.cta_event_start_is_date_only ?? cta.agency_event_window?.start_is_date_only ?? false,
+        cta.agency_event_start_is_date_only ?? cta.agency_event_window?.start_is_date_only ?? false,
       end_is_date_only:
-        cta.cta_event_end_is_date_only ?? cta.agency_event_window?.end_is_date_only ?? false,
+        cta.agency_event_end_is_date_only ?? cta.agency_event_window?.end_is_date_only ?? false,
     },
     versions: cta.versions,
   };
@@ -99,7 +99,7 @@ export function officialAlertFromCta(
 
 export function incident(over = {}) {
   const {
-    kind = 'train',
+    kind = 'metro',
     agency = agencyForKind(kind),
     mode = modeForKind(kind),
     routes = ['red'],
@@ -112,7 +112,7 @@ export function incident(over = {}) {
     official_alerts,
     observations,
     detections,
-    metra_status,
+    rail_status,
     cancellation,
     status,
     sources,
@@ -122,7 +122,7 @@ export function incident(over = {}) {
   const builtOfficial =
     official_alert ??
     (hasOfficial
-      ? officialAlertFromCta(cta ?? {}, {
+      ? officialAlertFromAgency(cta ?? {}, {
           id: over.id ?? 'alert1',
           first_seen_ts,
           resolved_ts,
@@ -136,7 +136,7 @@ export function incident(over = {}) {
   const builtStatus =
     status ??
     (cancellation ? { type: 'cancellation', ...cancellation } : null) ??
-    (metra_status ? { type: metra_status.source, ...metra_status } : null);
+    (rail_status ? { type: rail_status.source, ...rail_status } : null);
   return {
     id: over.id ?? 'inc1',
     agency,

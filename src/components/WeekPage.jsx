@@ -4,17 +4,18 @@ import { useNow } from '../hooks/useNow.js';
 import { buildWeekSummary, weekStartUTC } from '../lib/aggregate.js';
 import { weekTrail } from '../lib/breadcrumbs.js';
 import { formatBusRoute } from '../lib/busRoutes.js';
-import { TRAIN_LINES } from '../lib/ctaLines.js';
 import {
-  chicagoDayIsoUTC,
-  chicagoDayUTC,
-  formatChicagoDay,
   formatDuration,
+  formatPhillyDay,
   formatWeekRange,
+  phillyDayIsoUTC,
+  phillyDayUTC,
 } from '../lib/format.js';
 import { loadIndex, loadRange } from '../lib/incidentStore.js';
 import { incidentLifecycle, incidentRecords } from '../lib/incidents.js';
-import { METRA_LINES } from '../lib/metraLines.js';
+import { METRO_LINES } from '../lib/metroLines.js';
+import { RAIL_LINES } from '../lib/railLines.js';
+import { SITE_NAME } from '../lib/site.js';
 import { buildStationIndex } from '../lib/stations.js';
 import { dayStringToUtc } from '../lib/urlState.js';
 import Breadcrumb from './Breadcrumb.jsx';
@@ -43,12 +44,12 @@ export default function WeekPage({ weekParam }) {
   // day in a week normalizes to that week's Sunday, so /week/2026-05-20 (a
   // Wednesday) still resolves to the week starting 2026-05-17.
   const weekStartUtc = useMemo(() => {
-    if (weekParam == null) return weekStartUTC(chicagoDayUTC(now));
+    if (weekParam == null) return weekStartUTC(phillyDayUTC(now));
     const dayUtc = dayStringToUtc(weekParam);
     return dayUtc == null ? null : weekStartUTC(dayUtc);
   }, [weekParam, now]);
 
-  const isFuture = weekStartUtc != null && weekStartUtc > weekStartUTC(chicagoDayUTC(now));
+  const isFuture = weekStartUtc != null && weekStartUtc > weekStartUTC(phillyDayUTC(now));
   const rangeLabel = weekStartUtc != null ? formatWeekRange(weekStartUtc, { year: true }) : null;
 
   useEffect(() => {
@@ -71,7 +72,7 @@ export default function WeekPage({ weekParam }) {
   }, [flat, weekStartUtc, now]);
 
   // Incidents that started in this week, newest first — the list under the
-  // recap. Same start-in-week predicate (in chicagoDayUTC space) as the
+  // recap. Same start-in-week predicate (in phillyDayUTC space) as the
   // summary, so the list length matches the headline count.
   const weekIncidents = useMemo(() => {
     if (!data || weekStartUtc == null) return [];
@@ -80,7 +81,7 @@ export default function WeekPage({ weekParam }) {
       .filter((inc) => {
         const ts = incidentLifecycle(inc).first_seen_ts;
         if (ts == null) return false;
-        const d = chicagoDayUTC(ts);
+        const d = phillyDayUTC(ts);
         return d >= weekStartUtc && d <= end;
       })
       .sort((a, b) => incidentLifecycle(b).first_seen_ts - incidentLifecycle(a).first_seen_ts);
@@ -92,7 +93,7 @@ export default function WeekPage({ weekParam }) {
   }, [flat, now]);
 
   useEffect(() => {
-    const base = 'Chicago Transit Alerts';
+    const base = SITE_NAME;
     if (!rangeLabel) {
       document.title = base;
       return;
@@ -114,10 +115,10 @@ export default function WeekPage({ weekParam }) {
   }
 
   // Neighbor weeks. Next is hidden when it'd land in a future week.
-  const prevIso = chicagoDayIsoUTC(weekStartUtc - WEEK_MS);
+  const prevIso = phillyDayIsoUTC(weekStartUtc - WEEK_MS);
   const nextWeekStart = weekStartUtc + WEEK_MS;
-  const nextIso = chicagoDayIsoUTC(nextWeekStart);
-  const showNext = nextWeekStart <= weekStartUTC(chicagoDayUTC(now));
+  const nextIso = phillyDayIsoUTC(nextWeekStart);
+  const showNext = nextWeekStart <= weekStartUTC(phillyDayUTC(now));
 
   const maxDayCount = summary ? Math.max(1, ...summary.perDay.map((d) => d.count)) : 1;
 
@@ -195,8 +196,8 @@ export default function WeekPage({ weekParam }) {
                   </>
                 )}
                 {' · '}
-                {summary.trainCount} train · {summary.busCount} bus
-                {summary.metraCount > 0 && ` · ${summary.metraCount} Metra`}
+                {summary.metroCount} Metro · {summary.busCount} bus · {summary.railCount} Regional
+                Rail
                 {wow && (
                   <>
                     {' · '}
@@ -231,9 +232,9 @@ export default function WeekPage({ weekParam }) {
                       return (
                         <a
                           key={d.dayUtc}
-                          href={`/day/${chicagoDayIsoUTC(d.dayUtc)}`}
+                          href={`/day/${phillyDayIsoUTC(d.dayUtc)}`}
                           className="flex-1 flex flex-col items-center justify-end h-full group"
-                          title={`${formatChicagoDay(d.dayUtc)}: ${d.count} incident${d.count === 1 ? '' : 's'}`}
+                          title={`${formatPhillyDay(d.dayUtc)}: ${d.count} incident${d.count === 1 ? '' : 's'}`}
                         >
                           <span className="text-[10px] tabular-nums text-slate-500 dark:text-slate-400 mb-0.5">
                             {d.count > 0 ? d.count : ''}
@@ -257,10 +258,10 @@ export default function WeekPage({ weekParam }) {
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 pt-3 border-t border-slate-100 dark:border-gh-border">
                       Busiest day:{' '}
                       <a
-                        href={`/day/${chicagoDayIsoUTC(summary.busiestDay.dayUtc)}`}
+                        href={`/day/${phillyDayIsoUTC(summary.busiestDay.dayUtc)}`}
                         className="text-blue-500 hover:text-blue-400 hover:underline"
                       >
-                        <strong>{formatChicagoDay(summary.busiestDay.dayUtc)}</strong>
+                        <strong>{formatPhillyDay(summary.busiestDay.dayUtc)}</strong>
                       </a>{' '}
                       ({summary.busiestDay.count} incident
                       {summary.busiestDay.count === 1 ? '' : 's'})
@@ -277,8 +278,8 @@ export default function WeekPage({ weekParam }) {
                   </h2>
                   <div className="flex flex-wrap gap-1.5">
                     {summary.mostAffected.slice(0, 8).map((m) => {
-                      if (m.kind === 'train') {
-                        const info = TRAIN_LINES[m.id];
+                      if (m.kind === 'metro') {
+                        const info = METRO_LINES[m.id];
                         if (!info) return null;
                         return (
                           <a
@@ -292,12 +293,12 @@ export default function WeekPage({ weekParam }) {
                           </a>
                         );
                       }
-                      if (m.kind === 'metra') {
-                        const info = METRA_LINES[m.id];
+                      if (m.kind === 'rail') {
+                        const info = RAIL_LINES[m.id];
                         return (
                           <a
-                            key={`metra:${m.id}`}
-                            href={`/metra/line/${m.id}`}
+                            key={`rail:${m.id}`}
+                            href={`/rail/line/${m.id}`}
                             title={info?.label ?? m.id}
                             className="inline-flex items-center gap-1.5 min-h-[24px] px-2 py-0.5 rounded-full text-xs font-bold hover:opacity-80 transition-opacity"
                             style={{

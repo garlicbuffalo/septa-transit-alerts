@@ -1,4 +1,4 @@
-# Public, unofficial CTA service-alert archive. AI agents and crawlers welcome —
+# Public, unofficial SEPTA service-alert archive. AI agents and crawlers welcome —
 # see /llms.txt for a curated index and /data/ for the machine-readable API.
 
 User-agent: *
@@ -39,4 +39,4 @@ Allow: /
 User-agent: Meta-ExternalAgent
 Allow: /
 
-Sitemap: https://chicagotransitalerts.app/sitemap.xml
+Sitemap: __SITE_ORIGIN__/sitemap.xml

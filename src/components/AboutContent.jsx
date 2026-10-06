@@ -4,131 +4,78 @@ export default function AboutContent() {
   return (
     <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
       <p>
-        A public archive of Chicago Transit Authority and Metra service disruptions — one place to
-        check how Chicago transit is doing right now, this week, or over the past few months.
+        A public archive of SEPTA service disruptions across SEPTA Metro, buses, and Regional Rail —
+        one place to check how Philadelphia transit is doing right now, this week, or over the past
+        few months.
       </p>
       <p className="text-xs italic text-slate-500 dark:text-slate-400">
-        Unofficial. Not affiliated with, endorsed by, or sponsored by the Chicago Transit Authority
-        or Metra.
+        Unofficial. Not affiliated with, endorsed by, or sponsored by the Southeastern Pennsylvania
+        Transportation Authority (SEPTA).
       </p>
 
       <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">
         Where the data comes from
       </h3>
-      <p>Five Bluesky bots feed this archive — three for the CTA, two for Metra:</p>
+      <p>
+        A collector polls SEPTA's public real-time APIs about every 10 minutes and keeps a running
+        record of what it sees:
+      </p>
       <ul className="list-disc list-outside ml-5 space-y-2">
         <li>
-          <a
-            className={LINK}
-            href="https://bsky.app/profile/ctaalertinsights.chicagotransitalerts.app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <strong>@ctaalertinsights</strong>
-          </a>{' '}
-          — republished CTA service alerts, plus the bot's own detections: stretches without trains
-          when service drops out of part of a line for 15+ minutes, full-line or full-route
-          blackouts when nothing is running at all, and roundups when several smaller disruptions
-          cluster on the same line or route at once.
+          <strong>Service alerts</strong> — SEPTA's own advisories and alerts for SEPTA Metro, bus,
+          and Regional Rail: shuttle busing, station closures, platform changes, delays, and
+          short-term bus detours. Each one is tracked from when SEPTA posts it until it comes down.
+          Long-running construction detours (weeks or months of moved bus stops) and station-amenity
+          notices (parking, ticket offices, waiting rooms) are left out, so the archive stays
+          focused on service.
         </li>
         <li>
-          <a
-            className={LINK}
-            href="https://bsky.app/profile/ctatraininsights.chicagotransitalerts.app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <strong>@ctatraininsights</strong>
-          </a>{' '}
-          — bot-detected train disruptions: bunching, long gaps versus the scheduled headway, and
-          "ghost" hours when fewer trains are running than expected.
+          <strong>Regional Rail delays</strong> — trains SEPTA's TrainView feed reports running 15+
+          minutes late, tracked for as long as they stay late.
         </li>
         <li>
-          <a
-            className={LINK}
-            href="https://bsky.app/profile/ctabusinsights.chicagotransitalerts.app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <strong>@ctabusinsights</strong>
-          </a>{' '}
-          — the same kinds of disruptions, for bus routes.
+          <strong>Regional Rail cancellations</strong> — trains SEPTA marks as cancelled, anchored
+          to the train's scheduled departure.
         </li>
         <li>
-          <a
-            className={LINK}
-            href="https://bsky.app/profile/metraalertinsights.chicagotransitalerts.app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <strong>@metraalertinsights</strong>
+          <strong>Elevator outages</strong> — out-of-service elevators at SEPTA Metro and Regional
+          Rail stations, kept on the{' '}
+          <a className={LINK} href="/accessibility">
+            accessibility page
           </a>{' '}
-          — Metra disruptions: cancelled trains, trains running well behind schedule, and
-          republished Metra service alerts.
-        </li>
-        <li>
-          <a
-            className={LINK}
-            href="https://bsky.app/profile/metrainsights.chicagotransitalerts.app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <strong>@metrainsights</strong>
-          </a>{' '}
-          — speed maps and periodic performance recaps across the Metra rail lines.
+          rather than mixed in with service disruptions.
         </li>
       </ul>
       <p>
-        When an official alert and a bot observation describe the same incident on the same line
-        within a couple of hours, they're merged into a single entry rather than counted twice. This
-        happens for both CTA and Metra; an alert and an observation never merge across agencies.
+        Station names in alert text ("Shuttle busing between Olney and Fern Rock") are matched to
+        SEPTA's station list, so line maps and station pages can show where disruptions happen.
       </p>
 
-      <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">
-        How Metra detection works
-      </h3>
+      <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">Not covered yet</h3>
       <p>
-        Metra runs on a published timetable, so its detectors look different from the CTA's. A{' '}
-        <strong>cancelled train</strong> is either Metra-confirmed (the agency's own feed flags the
-        trip as cancelled) or bot-inferred — a scheduled train that never appears in the real-time
-        feed long after its departure, with no covering alert. Inferred cancellations are held back
-        whenever the whole feed goes quiet, so a data outage isn't mistaken for mass cancellations.
-        A <strong>delayed train</strong> is one running materially behind its scheduled arrival
-        (currently 15+ minutes). The Bluesky bot posts an hourly per-line digest of these; this
-        website keeps the full record.
+        SEPTA Metro and bus disruptions appear here only when SEPTA posts an alert about them. The
+        site has room for bot-detected Metro and bus disruptions — long gaps between vehicles,
+        bunching, missing trips — but the collector doesn't detect those yet.
       </p>
 
       <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">Updates</h3>
       <p>
-        The page checks for new data every 5 minutes while visible. The "Last data change" timestamp
-        in the header tracks the most recent change to the alerts — not when the system last
-        checked. An older time just means nothing new has happened.
+        The page checks for new data every 5 minutes while visible. The "Updated" time in the header
+        is when the collector last published data.
       </p>
 
       <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">How far back</h3>
       <p>
-        Anything earlier than these dates predates the bots. Each data source started on its own
-        day:
+        The archive starts on the day the collector first ran; days before that show as "no data" on
+        the calendar and timelines. Alerts that were already up on that first day keep the date
+        SEPTA originally posted them.
       </p>
-      <ul className="list-disc list-outside ml-5 space-y-1">
-        <li>
-          <strong>CTA service alerts</strong> — April 26, 2026
-        </li>
-        <li>
-          <strong>Metra service alerts</strong> — June 9, 2026
-        </li>
-        <li>
-          <strong>Accessibility outages</strong> (elevators + ADA notices) — June 23, 2026
-        </li>
-      </ul>
-      <p>Stats, calendar, and leaderboard views all draw from these windows.</p>
 
       <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">Privacy</h3>
       <p>
-        No accounts, no cookies, and no advertising — the site doesn't collect personal data. It
-        uses cookieless Cloudflare Web Analytics for rough, aggregate page-view counts, which don't
-        identify or profile you. Your dark-mode and filter preferences are saved locally in your
-        browser and never leave your device. Full details on the{' '}
+        No accounts, no cookies, no analytics, and no advertising — the site doesn't collect
+        personal data. Your dark-mode and filter preferences are saved locally in your browser and
+        never leave your device. Full details on the{' '}
         <a className={LINK} href="/privacy">
           privacy page
         </a>
@@ -139,11 +86,20 @@ export default function AboutContent() {
         Source on{' '}
         <a
           className={LINK}
-          href="https://github.com/cailinpitt/chicago-transit-alerts"
+          href="https://github.com/garlicbuffalo/septa-transit-alerts"
           target="_blank"
           rel="noopener noreferrer"
         >
           GitHub
+        </a>
+        . Adapted from{' '}
+        <a
+          className={LINK}
+          href="https://github.com/cailinpitt/chicago-transit-alerts"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Chicago Transit Alerts
         </a>
         .
       </p>

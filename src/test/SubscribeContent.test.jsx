@@ -23,7 +23,7 @@ describe('SubscribeContent feed picker', () => {
     render(<SubscribeContent />);
     await userEvent.selectOptions(screen.getByLabelText('Metra line'), 'metra/line/bnsf');
     expect(
-      screen.getByDisplayValue('https://chicagotransitalerts.app/feed/metra/line/bnsf.xml'),
+      screen.getByDisplayValue('https://chicagotransitalerts.app/feed/rail/line/bnsf.xml'),
     ).toBeInTheDocument();
   });
 });

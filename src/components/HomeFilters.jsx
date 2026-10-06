@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { TRAIN_LINES } from '../lib/ctaLines.js';
-import { formatChicagoDay } from '../lib/format.js';
+import { formatPhillyDay } from '../lib/format.js';
 import { SOURCE_TYPES } from '../lib/incidents.js';
-import { METRA_LINES } from '../lib/metraLines.js';
+import { METRO_LINES } from '../lib/metroLines.js';
+import { RAIL_LINES } from '../lib/railLines.js';
 import Filters from './Filters.jsx';
 
 // Default date range — mirrors App's resetFilters(). A range other than this
@@ -14,29 +14,29 @@ const RANGE_LABELS = { 7: '7 days', 30: '30 days', 60: '60 days', 90: '90 days' 
 // can tell at a glance what's narrowing the list while the controls stay
 // collapsed. Chips are descriptive only — expanding reveals the real toggles,
 // and "Clear" resets everything. Kept deliberately compact: a colored pill
-// per selected train line, then a short label per other active dimension.
+// per selected Metro line, then a short label per other active dimension.
 function buildChips({
   selectedLines,
   showBus,
   selectedBusRoutes,
-  selectedMetraLines = [],
+  selectedRailLines = [],
   dateRange,
   selectedDay,
   selectedSignals,
   selectedSources,
-  agency = 'all',
+  network = 'all',
 }) {
   const chips = [];
-  // CTA line/bus chips are meaningless when the page is scoped to Metra (and
-  // vice-versa), so skip the out-of-scope agency's chips entirely.
-  const showCta = agency !== 'metra';
-  const showMetra = agency !== 'cta';
-  if (showCta && Array.isArray(selectedLines)) {
+  // Metro line/bus chips are meaningless when the page is scoped to Regional
+  // Rail (and vice-versa), so skip the out-of-scope network's chips entirely.
+  const showTransit = network !== 'rail';
+  const showRail = network !== 'transit';
+  if (showTransit && Array.isArray(selectedLines)) {
     if (selectedLines.length === 0) {
-      chips.push({ key: 'no-trains', label: 'Trains hidden' });
+      chips.push({ key: 'no-trains', label: 'Metro hidden' });
     } else {
       for (const line of selectedLines) {
-        const info = TRAIN_LINES[line];
+        const info = METRO_LINES[line];
         chips.push({
           key: `line-${line}`,
           label: info?.label ?? line,
@@ -45,30 +45,30 @@ function buildChips({
       }
     }
   }
-  // Only flag buses-off when it isn't the implied consequence of a train-line
+  // Only flag buses-off when it isn't the implied consequence of a Metro-line
   // selection (App auto-hides buses when a line subset is active). Otherwise
-  // every "Red" pick would also sprout a redundant "Buses hidden" chip.
-  const trainSubsetActive = Array.isArray(selectedLines) && selectedLines.length > 0;
-  if (showCta && !showBus && !trainSubsetActive) {
+  // every "L1" pick would also sprout a redundant "Buses hidden" chip.
+  const metroSubsetActive = Array.isArray(selectedLines) && selectedLines.length > 0;
+  if (showTransit && !showBus && !metroSubsetActive) {
     chips.push({ key: 'no-bus', label: 'Buses hidden' });
   }
-  if (showCta && selectedBusRoutes.length > 0) {
+  if (showTransit && selectedBusRoutes.length > 0) {
     chips.push({ key: 'routes', label: `Routes (${selectedBusRoutes.length})` });
   }
-  if (showMetra) {
-    for (const line of selectedMetraLines) {
-      const info = METRA_LINES[line];
-      // Short route code (UP-NW) keeps the chip compact; the popover carries the
-      // full name. Matches the colored-code pills shown in the Metra picker.
+  if (showRail) {
+    for (const line of selectedRailLines) {
+      const info = RAIL_LINES[line];
+      // Short route code (PAO) keeps the chip compact; the popover carries the
+      // full name. Matches the colored-code pills shown in the Regional Rail picker.
       chips.push({
-        key: `metra-${line}`,
-        label: line.toUpperCase(),
+        key: `rail-${line}`,
+        label: info?.code ?? line.toUpperCase(),
         style: info ? { backgroundColor: info.color, color: info.textColor } : undefined,
       });
     }
   }
   if (selectedDay != null) {
-    chips.push({ key: 'day', label: formatChicagoDay(selectedDay) });
+    chips.push({ key: 'day', label: formatPhillyDay(selectedDay) });
   } else if (dateRange !== DEFAULT_RANGE) {
     chips.push({ key: 'range', label: dateRange == null ? 'All time' : RANGE_LABELS[dateRange] });
   }

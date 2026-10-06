@@ -18,7 +18,7 @@ function obs(line, from, to, source = 'pulse-cold') {
 
 function inc(over = {}) {
   return incident({
-    kind: 'train',
+    kind: 'metro',
     routes: over.routes ?? [over.observations?.[0]?.line ?? 'red'],
     cta: null,
     ...over,
@@ -29,26 +29,26 @@ describe('computeStretchRecurrence', () => {
   const incidents = [
     inc({
       id: 's1',
-      kind: 'train',
+      kind: 'metro',
       first_seen_ts: NOW - 1 * DAY,
       observations: [obs('orange', 'Western (Orange)', 'Ashland (Orange)')],
     }),
     inc({
       id: 's2',
-      kind: 'train',
+      kind: 'metro',
       first_seen_ts: NOW - 10 * DAY,
       observations: [obs('orange', 'Western (Orange)', 'Ashland (Orange)')],
     }),
     inc({
       id: 'self',
-      kind: 'train',
+      kind: 'metro',
       first_seen_ts: NOW,
       observations: [obs('orange', 'Western (Orange)', 'Ashland (Orange)')],
     }),
     // Different stretch — must not count.
     inc({
       id: 'other',
-      kind: 'train',
+      kind: 'metro',
       first_seen_ts: NOW - 2 * DAY,
       observations: [obs('orange', 'Halsted', 'Ashland (Orange)')],
     }),
@@ -85,7 +85,7 @@ describe('computeStretchRecurrence', () => {
     const round = [
       inc({
         id: 'r',
-        kind: 'train',
+        kind: 'metro',
         first_seen_ts: NOW,
         observations: [obs('orange', 'A', 'B', 'roundup')],
       }),
@@ -109,7 +109,7 @@ describe('computeLineDurationRank', () => {
     incidents.push(
       inc({
         id: `b${i}`,
-        kind: 'train',
+        kind: 'metro',
         routes: ['blue'],
         first_seen_ts: NOW - (i + 1) * DAY,
         resolved_ts: NOW - (i + 1) * DAY + 20 * MIN,
@@ -118,7 +118,7 @@ describe('computeLineDurationRank', () => {
   }
   const subject = inc({
     id: 'subj',
-    kind: 'train',
+    kind: 'metro',
     routes: ['blue'],
     first_seen_ts: NOW - 5 * MIN,
     resolved_ts: NOW + 3 * HOUR,
@@ -140,7 +140,7 @@ describe('computeLineDurationRank', () => {
   it('returns null for an active (unbounded) incident', () => {
     const active = inc({
       id: subject.id,
-      kind: 'train',
+      kind: 'metro',
       routes: ['blue'],
       first_seen_ts: NOW - 5 * MIN,
       resolved_ts: null,
@@ -155,10 +155,10 @@ describe('computeHourOfDayContext', () => {
   const incidents = [];
   for (let i = 0; i < 30; i++) {
     incidents.push(
-      inc({ id: `h${i}`, kind: 'train', routes: ['red'], first_seen_ts: NOW - i * DAY }),
+      inc({ id: `h${i}`, kind: 'metro', routes: ['red'], first_seen_ts: NOW - i * DAY }),
     );
   }
-  const subject = inc({ id: 'subj', kind: 'train', routes: ['red'], first_seen_ts: NOW });
+  const subject = inc({ id: 'subj', kind: 'metro', routes: ['red'], first_seen_ts: NOW });
   incidents.push(subject);
 
   it('flags a busy hour for the line', () => {
@@ -177,13 +177,13 @@ describe('computeHourOfDayContext', () => {
     // 4/54 ≈ 1.78× the flat mean but only ~1.2σ above expectation, so it must
     // not read as busy.
     const THIS_HOUR = NOW; // subject's hour
-    const list = [inc({ id: 'subj', kind: 'train', routes: ['blue'], first_seen_ts: THIS_HOUR })];
+    const list = [inc({ id: 'subj', kind: 'metro', routes: ['blue'], first_seen_ts: THIS_HOUR })];
     // 3 more in the subject's hour → 4 total in-hour.
     for (let i = 1; i < 4; i++)
       list.push(
         inc({
           id: `in${i}`,
-          kind: 'train',
+          kind: 'metro',
           routes: ['blue'],
           first_seen_ts: THIS_HOUR - i * DAY,
         }),
@@ -193,7 +193,7 @@ describe('computeHourOfDayContext', () => {
       list.push(
         inc({
           id: `out${i}`,
-          kind: 'train',
+          kind: 'metro',
           routes: ['blue'],
           first_seen_ts: THIS_HOUR - ((i % 12) + 1) * HOUR - i * DAY,
         }),

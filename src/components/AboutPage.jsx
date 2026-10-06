@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useDarkMode } from '../hooks/useDarkMode.js';
 import { topLevelTrail } from '../lib/breadcrumbs.js';
+import { SITE_NAME } from '../lib/site.js';
 import AboutContent from './AboutContent.jsx';
 import Breadcrumb from './Breadcrumb.jsx';
 import Footer from './Footer.jsx';
@@ -10,9 +11,9 @@ export default function AboutPage() {
   const [dark, toggleDark] = useDarkMode();
 
   useEffect(() => {
-    document.title = 'About · Chicago Transit Alerts';
+    document.title = `About · ${SITE_NAME}`;
     return () => {
-      document.title = 'Chicago Transit Alerts';
+      document.title = SITE_NAME;
     };
   }, []);
 

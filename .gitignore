@@ -4,10 +4,11 @@ node_modules/
 dist/
 .og-cache/
 .og-cache-pages/
-cron/*.log
 .claude/
 plan.md
 research.md
 tmp/
-public/data/alerts.json
-public/data/daily-counts.json
+# Collector output (`npm run collect`) and build-time data staging. Only the
+# data changelog is source-controlled; the data itself lives on the `data` branch.
+public/data/*
+!public/data/CHANGELOG.md

@@ -1,15 +1,15 @@
 import { formatGap } from '../lib/format.js';
 
-// Per-line Metra cancellation + delay analytics, rendered on the Metra line page
-// from the stats computed by computeMetraCancellationDelayStats. Three blocks,
+// Per-line Regional Rail cancellation + delay analytics, rendered on the Regional Rail line page
+// from the stats computed by computeRailCancellationDelayStats. Three blocks,
 // each shown only when it has data:
 //   1. A stat grid (counts, per-week rates, recency).
 //   2. Most-cancelled departures, grouped by originating terminal.
 //   3. When cancellations happen, by part of day.
-// Metra delays are point events with no minutes-late magnitude, so there is no
+// Regional Rail delays are point events with no minutes-late magnitude, so there is no
 // "typical delay length" stat (the MARTA analog has one; the feeds differ).
 // Purely descriptive — counts and bars, no verdict.
-export default function MetraCancellationDelayStats({ stats }) {
+export default function RailCancellationDelayStats({ stats }) {
   if (!stats || stats.total === 0) return null;
   const { windowDays, cancellations: c, delays: d } = stats;
 

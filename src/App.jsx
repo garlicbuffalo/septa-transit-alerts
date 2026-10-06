@@ -7,7 +7,7 @@ import HomeFilters from './components/HomeFilters.jsx';
 import HourOfWeekHeatmap from './components/HourOfWeekHeatmap.jsx';
 import IncidentList from './components/IncidentList.jsx';
 import { LONG_RUNNING_THRESHOLD_MS } from './components/LongRunningBanner.jsx';
-import MetraUpcomingCancellations from './components/MetraUpcomingCancellations.jsx';
+import RailUpcomingCancellations from './components/RailUpcomingCancellations.jsx';
 import RecentActivityGantt from './components/RecentActivityGantt.jsx';
 import RightNow from './components/RightNow.jsx';
 import SignalBreakdown from './components/SignalBreakdown.jsx';
@@ -26,12 +26,14 @@ import { cancellationInfo, collectUpcomingCancellations } from './lib/cancellati
 import { loadRecent } from './lib/incidentStore.js';
 import {
   filterIncidents,
-  incidentAgency,
   incidentLifecycle,
+  incidentNetwork,
   incidentRecords,
+  NETWORK_LABELS,
   observationSignals,
   SOURCE_TYPES,
 } from './lib/incidents.js';
+import { SITE_NAME } from './lib/site.js';
 import { buildStationIndex } from './lib/stations.js';
 import {
   buildSearch,
@@ -42,14 +44,14 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Page-level agency scope options, in display order. The label is what the
-// segmented control shows; the value is matched against an incident's agency
-// (`metra` for kind='metra', else `cta`).
-const AGENCY_SCOPES = ['all', 'cta', 'metra'];
-const AGENCY_OPTIONS = [
+// Page-level network scope options, in display order. The label is what the
+// segmented control shows; the value is matched against an incident's network
+// (`rail` for Regional Rail, else `transit` — SEPTA Metro + buses).
+const NETWORK_SCOPES = ['all', 'transit', 'rail'];
+const NETWORK_OPTIONS = [
   ['all', 'All'],
-  ['cta', 'CTA'],
-  ['metra', 'Metra'],
+  ['transit', NETWORK_LABELS.transit],
+  ['rail', NETWORK_LABELS.rail],
 ];
 
 export default function App() {
@@ -80,35 +82,36 @@ export default function App() {
   const [selectedLines, setSelectedLines] = useState(initial.selectedLines); // null = all lines; [] = no lines
   const [showBus, setShowBus] = useState(initial.showBus);
   const [selectedBusRoutes, setSelectedBusRoutes] = useState(initial.selectedBusRoutes);
-  const [selectedMetraLines, setSelectedMetraLines] = useState(initial.selectedMetraLines ?? []);
+  const [selectedRailLines, setSelectedRailLines] = useState(initial.selectedRailLines ?? []);
   const [dateRange, setDateRange] = useState(initial.dateRange); // days; null = all time
-  // selectedDay is a Chicago-day UTC midnight epoch, or null. When set it
+  // selectedDay is a Philadelphia-day UTC midnight epoch, or null. When set it
   // overrides dateRange for the incident list — the user is drilled into a
   // single day from the timeline.
   const [selectedDay, setSelectedDay] = useState(initial.selectedDay);
   const [selectedSignals, setSelectedSignals] = useState(initial.selectedSignals);
   const [selectedSources, setSelectedSources] = useState(initial.selectedSources);
   const [search, setSearch] = useState(initial.search);
-  // Agency scope for the All/CTA/Metra control: 'all' | 'cta' | 'metra'. This is
-  // a page-level scope (not just a list filter) — it narrows the active-now
-  // banner, summary stats, timeline, and everything else, since a rider almost
-  // always cares about one agency at a time. Persisted to localStorage; a stale
-  // or garbage stored value falls back to 'all' rather than emptying the page.
-  const [selectedAgency, setSelectedAgency] = useState(() =>
-    AGENCY_SCOPES.includes(initial.selectedAgency) ? initial.selectedAgency : 'all',
+  // Network scope for the All / Metro & Bus / Regional Rail control: 'all' |
+  // 'transit' | 'rail'. This is a page-level scope (not just a list filter) —
+  // it narrows the active-now banner, summary stats, timeline, and everything
+  // else, since a rider almost always cares about one network at a time.
+  // Persisted to localStorage; a stale or garbage stored value falls back to
+  // 'all' rather than emptying the page.
+  const [selectedNetwork, setSelectedNetwork] = useState(() =>
+    NETWORK_SCOPES.includes(initial.selectedNetwork) ? initial.selectedNetwork : 'all',
   );
 
   function resetFilters() {
     setSelectedLines(null);
     setShowBus(true);
     setSelectedBusRoutes([]);
-    setSelectedMetraLines([]);
+    setSelectedRailLines([]);
     setDateRange(7);
     setSelectedDay(null);
     setSelectedSignals([]);
     setSelectedSources([...SOURCE_TYPES]);
     setSearch('');
-    setSelectedAgency('all');
+    setSelectedNetwork('all');
   }
 
   // Picking any range pill drops the day pin — the two are mutually exclusive
@@ -118,9 +121,9 @@ export default function App() {
     setSelectedDay(null);
   }
 
-  // Auto-flip bus visibility on transitions in/out of a positive train-line
-  // selection. So clicking "Red" hides buses (a Red Line view almost never
-  // wants unrelated bus disruptions); clicking it off restores them. The
+  // Auto-flip bus visibility on transitions in/out of a positive Metro-line
+  // selection. So clicking "L1" hides buses (an L1 view almost never wants
+  // unrelated bus disruptions); clicking it off restores them. The
   // "Buses" button still lets the user override.
   function handleLinesChange(next) {
     const resolved = typeof next === 'function' ? next(selectedLines) : next;
@@ -137,7 +140,7 @@ export default function App() {
       selectedLines,
       showBus,
       selectedBusRoutes,
-      selectedMetraLines,
+      selectedRailLines,
       dateRange,
       selectedDay,
       selectedSignals,
@@ -152,7 +155,7 @@ export default function App() {
     selectedLines,
     showBus,
     selectedBusRoutes,
-    selectedMetraLines,
+    selectedRailLines,
     dateRange,
     selectedDay,
     selectedSignals,
@@ -169,19 +172,19 @@ export default function App() {
       selectedLines,
       showBus,
       selectedBusRoutes,
-      selectedMetraLines,
+      selectedRailLines,
       selectedSignals,
       selectedSources,
-      selectedAgency,
+      selectedNetwork,
     });
   }, [
     selectedLines,
     showBus,
     selectedBusRoutes,
-    selectedMetraLines,
+    selectedRailLines,
     selectedSignals,
     selectedSources,
-    selectedAgency,
+    selectedNetwork,
   ]);
 
   useEffect(() => {
@@ -194,8 +197,8 @@ export default function App() {
     function fetchData() {
       lastFetchedAt = Date.now();
       // loadRecent() fetches the bounded 93-day-∪-active recent slice (not the
-      // full history) with revalidation, and applies the Metra/CTA gate at that
-      // single boundary. A quiet poll still comes back 304 with no body.
+      // full history) with revalidation. A quiet poll still comes back 304 with
+      // no body.
       loadRecent()
         .then((fresh) => {
           setData((prev) => {
@@ -245,31 +248,31 @@ export default function App() {
     };
   }, []);
 
-  // The whole page is scoped to the selected agency. Everything downstream
+  // The whole page is scoped to the selected network. Everything downstream
   // (flat view, active-now banner, summary stats, timeline, incident list)
-  // derives from this slice, so toggling CTA/Metra rescopes the page as a unit
-  // rather than just filtering the list at the bottom.
-  const agencyIncidents = useMemo(() => {
+  // derives from this slice, so toggling Metro & Bus / Regional Rail rescopes
+  // the page as a unit rather than just filtering the list at the bottom.
+  const networkIncidents = useMemo(() => {
     if (!data) return [];
-    if (selectedAgency === 'all') return data.incidents;
-    return data.incidents.filter((inc) => incidentAgency(inc) === selectedAgency);
-  }, [data, selectedAgency]);
+    if (selectedNetwork === 'all') return data.incidents;
+    return data.incidents.filter((inc) => incidentNetwork(inc) === selectedNetwork);
+  }, [data, selectedNetwork]);
 
   // Incident-derived official/detection records for analytics helpers
   // (summary stats, station index, timeline, ActiveAlerts/Gantt). The incident
-  // list path reads the nested `agencyIncidents` directly.
+  // list path reads the nested `networkIncidents` directly.
   const flat = useMemo(
-    () => (data ? incidentRecords(agencyIncidents) : null),
-    [data, agencyIncidents],
+    () => (data ? incidentRecords(networkIncidents) : null),
+    [data, networkIncidents],
   );
 
   const activeIncidents = useMemo(() => {
     // Each incident is already unified server-side, so the active set is just
     // the open incidents — no client-side merge needed.
-    return agencyIncidents
+    return networkIncidents
       .filter((inc) => incidentLifecycle(inc).active)
       .sort((a, b) => incidentLifecycle(b).first_seen_ts - incidentLifecycle(a).first_seen_ts);
-  }, [agencyIncidents]);
+  }, [networkIncidents]);
 
   // Split active incidents on the 12h elapsed mark. Long-runners (planned
   // reroutes, multi-day construction) get their own quieter banner — left
@@ -290,15 +293,16 @@ export default function App() {
     return { recentActive: recent, longRunningActive: longRunning };
   }, [activeIncidents, now]);
 
-  // Per-agency split of the active sets, for the All view's two-lane "Right
-  // now" block (CTA lane | Metra lane, never interleaved). When a single agency
-  // is selected the page is already scoped, so these just mirror the full set.
+  // Per-network split of the active sets, for the All view's two-lane "Right
+  // now" block (Metro & Bus lane | Regional Rail lane, never interleaved).
+  // When a single network is selected the page is already scoped, so these
+  // just mirror the full set.
   const lanes = useMemo(
     () => ({
-      ctaRecent: recentActive.filter((i) => incidentAgency(i) !== 'metra'),
-      ctaLong: longRunningActive.filter((i) => incidentAgency(i) !== 'metra'),
-      metraRecent: recentActive.filter((i) => incidentAgency(i) === 'metra'),
-      metraLong: longRunningActive.filter((i) => incidentAgency(i) === 'metra'),
+      transitRecent: recentActive.filter((i) => incidentNetwork(i) === 'transit'),
+      transitLong: longRunningActive.filter((i) => incidentNetwork(i) === 'transit'),
+      railRecent: recentActive.filter((i) => incidentNetwork(i) === 'rail'),
+      railLong: longRunningActive.filter((i) => incidentNetwork(i) === 'rail'),
     }),
     [recentActive, longRunningActive],
   );
@@ -314,7 +318,7 @@ export default function App() {
   // Surface the active count in the tab title so a pinned tab tells the user
   // something is wrong without them having to switch to it.
   useEffect(() => {
-    const base = 'Chicago Transit Alerts';
+    const base = SITE_NAME;
     document.title = activeIncidents.length > 0 ? `(${activeIncidents.length}) ${base}` : base;
   }, [activeIncidents.length]);
 
@@ -358,7 +362,7 @@ export default function App() {
   }, [flat]);
 
   // Prune any selected bus routes that don't exist in the current data —
-  // typically from a stale shareable URL (?routes=66,99 where 99 no longer
+  // typically from a stale shareable URL (?routes=17,99 where 99 no longer
   // appears). Without this the bus-route filter silently filters everything
   // out and the user just sees an empty list.
   useEffect(() => {
@@ -368,7 +372,7 @@ export default function App() {
     if (valid.length !== selectedBusRoutes.length) setSelectedBusRoutes(valid);
   }, [data, availableBusRoutes, selectedBusRoutes]);
 
-  // Visualization data — `data` minus standalone CTA alerts that the signal
+  // Visualization data — `data` minus standalone official alerts that the signal
   // filter would drop, plus observations restricted to those carrying any of
   // the selected signal kinds. Used for the Timeline grid and the hour-of-
   // week heatmap so the signal chips actually narrow what those views show.
@@ -429,14 +433,14 @@ export default function App() {
 
   const filtered = useMemo(() => {
     const startTs = dateRange ? now - dateRange * DAY_MS : null;
-    // `agencyIncidents` is already scoped to the selected agency, so the
-    // per-agency line/route filters below just refine within it.
-    return filterIncidents(agencyIncidents, {
+    // `networkIncidents` is already scoped to the selected network, so the
+    // per-network line/route filters below just refine within it.
+    return filterIncidents(networkIncidents, {
       lines: selectedLines,
       startTs,
       showBus,
       busRoutes: selectedBusRoutes.length > 0 ? selectedBusRoutes : null,
-      metraLines: selectedMetraLines.length > 0 ? selectedMetraLines : null,
+      railLines: selectedRailLines.length > 0 ? selectedRailLines : null,
       selectedDay,
       signals: selectedSignals.length > 0 ? selectedSignals : null,
       // Only narrow when the user picked a subset; default (all three) ⇒
@@ -446,11 +450,11 @@ export default function App() {
       now,
     });
   }, [
-    agencyIncidents,
+    networkIncidents,
     selectedLines,
     showBus,
     selectedBusRoutes,
-    selectedMetraLines,
+    selectedRailLines,
     dateRange,
     selectedDay,
     selectedSignals,
@@ -488,23 +492,23 @@ export default function App() {
         )}
         {data && (
           <>
-            {/* Page-level agency scope. Sits above the status banner so it
+            {/* Page-level network scope. Sits above the status banner so it
                 governs the active-now count and every stat below — a rider
-                almost always cares about one agency at a time. */}
+                almost always cares about one network at a time. */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500 dark:text-slate-400">Showing</span>
               <div className="inline-flex rounded-lg border border-slate-300 dark:border-gh-border overflow-hidden text-xs font-semibold">
-                {AGENCY_OPTIONS.map(([value, label]) => (
+                {NETWORK_OPTIONS.map(([value, label]) => (
                   <button
                     type="button"
                     key={value}
-                    onClick={() => setSelectedAgency(value)}
+                    onClick={() => setSelectedNetwork(value)}
                     className={`px-3 py-1 transition-colors ${
-                      selectedAgency === value
+                      selectedNetwork === value
                         ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
                         : 'bg-transparent text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-gh-border/40'
                     }`}
-                    aria-pressed={selectedAgency === value}
+                    aria-pressed={selectedNetwork === value}
                   >
                     {label}
                   </button>
@@ -513,15 +517,16 @@ export default function App() {
             </div>
 
             {/* Status, top of page: always a clear answer to "is anything
-                wrong right now?". The All view splits it into a CTA lane and a
-                Metra lane so the two systems never blur into one stream; a
-                single selected agency renders one focused ActiveAlerts. */}
-            {selectedAgency === 'all' ? (
+                wrong right now?". The All view splits it into a Metro & Bus
+                lane and a Regional Rail lane so the two networks never blur
+                into one stream; a single selected network renders one focused
+                ActiveAlerts. */}
+            {selectedNetwork === 'all' ? (
               <RightNow
-                ctaRecent={lanes.ctaRecent}
-                ctaLong={lanes.ctaLong}
-                metraRecent={lanes.metraRecent}
-                metraLong={lanes.metraLong}
+                transitRecent={lanes.transitRecent}
+                transitLong={lanes.transitLong}
+                railRecent={lanes.railRecent}
+                railLong={lanes.railLong}
                 activeIncidents={activeIncidents}
                 upcomingCount={upcomingCancellations.length}
                 now={now}
@@ -532,9 +537,9 @@ export default function App() {
               />
             ) : (
               <>
-                {/* Forward-looking strip: trains Metra has announced won't run
+                {/* Forward-looking strip: trains SEPTA has announced won't run
                     but haven't yet reached their scheduled departure. */}
-                <MetraUpcomingCancellations incidents={activeIncidents} now={now} showLine />
+                <RailUpcomingCancellations incidents={activeIncidents} now={now} showLine />
                 {recentActive.length > 0 || longRunningActive.length > 0 ? (
                   <ActiveAlerts
                     incidents={recentActive}
@@ -556,8 +561,7 @@ export default function App() {
                         All clear
                       </p>
                       <p className="text-xs text-green-700/80 dark:text-green-400/80">
-                        No active {selectedAgency === 'cta' ? 'CTA' : 'Metra'} disruptions right
-                        now.
+                        No active {NETWORK_LABELS[selectedNetwork]} disruptions right now.
                       </p>
                     </div>
                   </section>
@@ -601,7 +605,7 @@ export default function App() {
                     alerts={flat.officialRecords}
                     observations={flat.detectionRecords}
                     showActive={false}
-                    agency={selectedAgency}
+                    network={selectedNetwork}
                     showLineCallouts={false}
                   />
                 )}
@@ -616,7 +620,7 @@ export default function App() {
             <section className="space-y-3">
               <div className="sticky top-0 z-30 -mx-4 px-4 py-2 bg-slate-50/95 dark:bg-gh-canvas/95 backdrop-blur-sm">
                 <HomeFilters
-                  agency={selectedAgency}
+                  network={selectedNetwork}
                   selectedLines={selectedLines}
                   onLinesChange={handleLinesChange}
                   showBus={showBus}
@@ -627,8 +631,8 @@ export default function App() {
                   availableBusRoutes={availableBusRoutes}
                   selectedBusRoutes={selectedBusRoutes}
                   onBusRoutesChange={setSelectedBusRoutes}
-                  selectedMetraLines={selectedMetraLines}
-                  onMetraLinesChange={setSelectedMetraLines}
+                  selectedRailLines={selectedRailLines}
+                  onRailLinesChange={setSelectedRailLines}
                   dateRange={dateRange}
                   onDateRangeChange={handleDateRangeChange}
                   selectedDay={selectedDay}
@@ -647,11 +651,11 @@ export default function App() {
                 highlightedIds={highlightedIds}
                 stationIndex={stationIndex}
                 isFiltered={
-                  // Out-of-scope agency selections are hidden and don't narrow
+                  // Out-of-scope network selections are hidden and don't narrow
                   // the list, so they don't count toward the "filtered" state.
-                  (selectedAgency !== 'metra' &&
+                  (selectedNetwork !== 'rail' &&
                     (selectedLines !== null || !showBus || selectedBusRoutes.length > 0)) ||
-                  (selectedAgency !== 'cta' && selectedMetraLines.length > 0) ||
+                  (selectedNetwork !== 'transit' && selectedRailLines.length > 0) ||
                   dateRange !== 7 ||
                   selectedDay !== null ||
                   selectedSignals.length > 0 ||
@@ -669,7 +673,7 @@ export default function App() {
               subtitle="Last 24h · 90-day timeline · patterns"
               className="pt-4 mt-2 border-t border-slate-200 dark:border-gh-border"
             >
-              <RecentActivityGantt incidents={agencyIncidents} now={now} />
+              <RecentActivityGantt incidents={networkIncidents} now={now} />
               <Timeline
                 alerts={vizAlerts}
                 observations={vizObservations}

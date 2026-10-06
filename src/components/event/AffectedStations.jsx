@@ -1,18 +1,18 @@
-import { TRAIN_LINE_ORDER } from '../../lib/ctaLines.js';
 import { officialAlert, splitObservations } from '../../lib/incidents.js';
+import { METRO_LINE_ORDER } from '../../lib/metroLines.js';
 import { displayStationName, linesServingStation, slugifyStation } from '../../lib/stations.js';
 import StationName from '../StationName.jsx';
 import { RowLabel } from './MiniTimeline.jsx';
 
 // Wrap each mention of a known station in the alert text with a StationName
 // component so the same dotted-underline that links bot observations also
-// links the inline names in CTA's own description ("delays at Monroe" →
-// "delays at <link>Monroe</link>"). Match against the canonical names in
-// `mentions` (already line-scoped upstream so "Halsted" doesn't bleed across
+// links the inline names in SEPTA's own description ("delays at Race-Vine" →
+// "delays at <link>Race-Vine</link>"). Match against the canonical names in
+// `mentions` (already line-scoped upstream so "Erie" doesn't bleed across
 // lines) plus their base form (without the parenthetical disambiguator),
-// since CTA writes "Monroe" not "Monroe (Red)". Longest-first scan prevents
-// "UIC" from matching inside "UIC-Halsted". Whole-word boundaries on either
-// side keep "Howard" from matching inside "Howards" or station-suffix tokens.
+// since SEPTA writes "Walnut St" not "Walnut St (D1)". Longest-first scan
+// prevents "Erie" from matching inside "Erie-Torresdale". Whole-word boundaries
+// on either side keep "Olney" from matching inside longer tokens.
 export function linkifyMentionedStations(text, mentions, stationIndex) {
   if (!text) return text;
   // No aliases to match → return text as-is. Without this short-circuit,
@@ -23,7 +23,7 @@ export function linkifyMentionedStations(text, mentions, stationIndex) {
   // stationsServingLines pool is empty) it blew the vitest worker's heap.
   if (!mentions || mentions.length === 0) return text;
   // Pair each canonical name with its display alias(es) that might appear in
-  // the text. Display form (no parenthetical) is what CTA writes; canonical
+  // the text. Display form (no parenthetical) is what SEPTA writes; canonical
   // form is what we link to. Same canonical can have one or both forms.
   const aliases = [];
   // Dedupe across the upstream-extracted mentions and any roster-derived
@@ -38,30 +38,31 @@ export function linkifyMentionedStations(text, mentions, stationIndex) {
       aliases.push({ alias: display, canonical });
     }
   }
-  // Longest-first so substring aliases ("Halsted") don't shadow longer ones
-  // ("UIC-Halsted") that share a prefix.
+  // Longest-first so substring aliases ("Erie") don't shadow longer ones
+  // ("Erie-Torresdale") that share a prefix.
   aliases.sort((a, b) => b.alias.length - a.alias.length);
-  // Slash and hyphen handling: CTA sometimes writes "Adams/ Wabash" or
-  // "UIC Halsted" where the canonical name uses "Adams/Wabash" or
-  // "UIC-Halsted". Build a regex per alias that tolerates whitespace
+  // Slash and hyphen handling: SEPTA sometimes writes "15th St/ City Hall" or
+  // "Walnut Locust" where the canonical name uses "15th St/City Hall" or
+  // "Walnut-Locust". Build a regex per alias that tolerates whitespace
   // around slashes and treats `-`/space as interchangeable.
   function aliasPattern(alias) {
     return (
       alias
         .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        // CTA writes "Adams/ Wabash" with a stray space; the canonical name is
-        // "Adams/Wabash". Allow whitespace around any `/` in the alias.
+        // SEPTA may write "15th St/ City Hall" with a stray space; the canonical
+        // name is "15th St/City Hall". Allow whitespace around any `/`.
         .replace(/\//g, '\\s*/\\s*')
         // Hyphens and runs of whitespace are interchangeable: canonical
-        // "UIC-Halsted" matches CTA's "UIC Halsted".
+        // "Walnut-Locust" matches "Walnut Locust".
         .replace(/[\s-]+/g, '[\\s-]+')
     );
   }
-  // Suffix denylist: short single-word station names like "Chicago" or
-  // "Loop" collide with geographic features ("Chicago River", "Chicago
-  // Avenue") and neighborhood phrasing ("Loop area"). When the match is
-  // immediately followed by one of these tokens it's a place name in the
-  // alert text, not a station reference, so we skip the link.
+  // Suffix denylist: Philadelphia stations are often named for the street
+  // they sit on, so short names like "Erie" or "Allegheny" collide with the
+  // streets themselves ("Erie Ave", "Allegheny Avenue") and with neighborhood
+  // phrasing ("Logan area"). When the match is immediately followed by one of
+  // these tokens it's a place name in the alert text, not a station reference,
+  // so we skip the link.
   const NON_STATION_SUFFIX =
     '(?:River|Bridge|Avenue|Ave|Street|St|Boulevard|Blvd|Road|Rd|Drive|Dr|Expressway|Expy|area|neighborhood|Heights)';
   const combined = new RegExp(
@@ -98,8 +99,8 @@ export function linkifyMentionedStations(text, mentions, stationIndex) {
 }
 
 export function collectAffectedStations(incident) {
-  const cta = officialAlert(incident);
-  const scope = cta?.scope ?? {};
+  const official = officialAlert(incident);
+  const scope = official?.scope ?? {};
   const { primary, extras } = splitObservations(incident);
   const seen = new Set();
   const out = [];
@@ -114,25 +115,25 @@ export function collectAffectedStations(incident) {
   add(scope.to_station);
   add(primary?.from_station);
   add(primary?.to_station);
-  // Every merged observation's endpoints, not just the primary's. A Loop-wide
-  // alert merges one pulse-cold detection per affected line; showing only the
-  // primary obs's segment (e.g. "Armitage ↔ Chicago") misrepresents a
+  // Every merged observation's endpoints, not just the primary's. A
+  // tunnel-wide alert merges one detection per affected line; showing only the
+  // primary obs's segment (e.g. "19th St ↔ 33rd St") misrepresents a
   // five-line incident as a single stretch on one line.
   for (const e of extras) {
     add(e.from_station);
     add(e.to_station);
   }
   // mentioned_stations carries impact-context matches the upstream extractor
-  // pulled from the alert text ("delays at Monroe"). Include after the
+  // pulled from the alert text ("delays at Race-Vine"). Include after the
   // segment endpoints so the canonical "from → to" still renders first when
   // both are present; the dedupe keeps overlap from doubling up.
   for (const name of scope.mentioned_stations || []) add(name);
-  // Upstream sometimes carries both a bare name (e.g. "Garfield" from the
-  // headline) and its fully qualified counterpart ("Garfield (Green)" from
+  // Upstream sometimes carries both a bare name (e.g. "Walnut St" from the
+  // headline) and its fully qualified counterpart ("Walnut St (D1)" from
   // the extracted mentions) for the same physical station. Drop the bare
   // entry when a qualified version of the same display name exists — it's
   // the same station, just less disambiguated. Distinct qualified entries
-  // ("Garfield (Red)" + "Garfield (Green)") stay, since those are two
+  // ("Walnut St (D1)" + "Walnut St (L1)") stay, since those are two
   // physically different stations.
   const QUALIFIER = /\s*\([^)]*\)\s*$/;
   const qualifiedDisplays = new Set();
@@ -148,7 +149,7 @@ export function collectAffectedStations(incident) {
 // Group an incident's affected stretches by line, for the per-line station
 // list on multi-line incidents. Mirrors the multi-line map: each merged
 // observation contributes a segment on its own line. Returns null when no
-// segment owns a line (a pure CTA alert applies to all its routes at once,
+// segment owns a line (a official-only alerts applies to all its routes at once,
 // so there's nothing to split by — the flat chips are clearer there).
 export function groupAffectedStationsByLine(segments) {
   const segs = segments.filter((s) => s.line);
@@ -163,14 +164,14 @@ export function groupAffectedStationsByLine(segments) {
     list.push({ from: s.from, to: s.to });
   }
   return [...byLine.entries()]
-    .sort((a, b) => TRAIN_LINE_ORDER.indexOf(a[0]) - TRAIN_LINE_ORDER.indexOf(b[0]))
+    .sort((a, b) => METRO_LINE_ORDER.indexOf(a[0]) - METRO_LINE_ORDER.indexOf(b[0]))
     .map(([line, segments]) => ({ line, segments }));
 }
 
 // Spread a bot's single-line stretch onto the OTHER affected lines that share
-// the same trackage. The bot scopes a pulse-cold to one line ('pink'), but on
-// shared track (the Lake St elevated, the Loop, Red+Purple north of Belmont)
-// the same stations carry several lines — and the CTA alert that scopes the
+// the same trackage. The bot scopes a detection to one line ('t1'), but on
+// shared track (the trolley tunnel under Market St, the B1/B2/B3 trunk, the
+// D1/D2 trunk from 69th St) the same stations carry several lines — and the SEPTA alert that scopes the
 // incident to `routes` confirms those other lines are down too. So for each
 // line-owned segment, we add a copy on every other incident route that the
 // roster says serves BOTH endpoints. Returns the augmented segment list plus
@@ -224,7 +225,7 @@ export function StationChips({ stations, direction }) {
   // glyph matches reality. When upstream actually carries a direction
   // ("Northbound only"), keep the one-way arrow.
   const segmentGlyph = direction ? '→' : '↔';
-  // Two distinct stations (e.g. Garfield Red vs Garfield Green) collapse to
+  // Two distinct stations (e.g. Walnut St on D1 vs another line) collapse to
   // the same displayStationName, so show the raw qualifier-bearing name for
   // any station whose stripped label collides with another in this list.
   const displayCounts = new Map();
@@ -287,7 +288,7 @@ function StationLink({ name }) {
 
 // Per-line affected stations for multi-line incidents. Each row pairs the
 // line's brand-color pill with its affected stretch(es), so the list reads
-// the same way the multi-line map does ("Brown: Armitage ↔ Chicago") instead
+// the same way the multi-line map does ("T1: 19th St ↔ 33rd St") instead
 // of one flat run of names that hides which station sits on which line.
 export function StationsByLine({ groups, direction, sharedTrackage = false }) {
   if (!groups || groups.length === 0) return null;
@@ -295,7 +296,7 @@ export function StationsByLine({ groups, direction, sharedTrackage = false }) {
   // a one-way alert keeps the directional arrow.
   const glyph = direction ? '→' : '↔';
   // When the rows were fanned out across shared trackage, the bot only fired on
-  // one of them — the rest are inferred from the CTA's line scope + the roster.
+  // one of them — the rest are inferred from SEPTA's line scope + the roster.
   // Say "affected" (not "bot observed") and note the shared-track inference so
   // the duplicate stretches don't read as separate detections.
   return (
@@ -306,12 +307,12 @@ export function StationsByLine({ groups, direction, sharedTrackage = false }) {
       <div className="mt-1 space-y-1">
         {groups.map(({ line, segments }) => (
           // Fixed-width pill column so every line's stations start at the same
-          // x — the pills vary in width (Brown vs Orange vs Purple), which
+          // x — the pills vary in width across lines, which
           // otherwise left the station names ragged. items-center vertically
           // centers the station text against its line pill.
           <div key={line} className="flex items-center gap-2">
             <div className="w-16 flex-shrink-0">
-              <RowLabel kind="train" route={line} />
+              <RowLabel kind="metro" route={line} />
             </div>
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-slate-600 dark:text-slate-300">
               {segments.map((seg, si) => (

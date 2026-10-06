@@ -9,7 +9,7 @@ const NOW = 1_000_000_000_000;
 // (same line, ±24h) picks up the rows below.
 const parent = incident({
   id: 'parent',
-  kind: 'metra',
+  kind: 'rail',
   routes: ['ri'],
   first_seen_ts: NOW,
   resolved_ts: NOW,
@@ -18,7 +18,7 @@ const parent = incident({
   observations: [
     {
       id: 'parent',
-      kind: 'metra',
+      kind: 'rail',
       line: 'ri',
       detection_source: 'delay',
       from_station: 'Joliet',
@@ -33,7 +33,7 @@ const parent = incident({
 
 const inferred = incident({
   id: 'metra-972',
-  kind: 'metra',
+  kind: 'rail',
   routes: ['ri'],
   first_seen_ts: NOW - 60 * 60_000,
   resolved_ts: NOW - 60 * 60_000,
@@ -42,7 +42,7 @@ const inferred = incident({
   observations: [
     {
       id: 'metra-972',
-      kind: 'metra',
+      kind: 'rail',
       line: 'ri',
       detection_source: 'cancellation-inferred',
       from_station: 'LaSalle Street',
@@ -59,7 +59,7 @@ const inferred = incident({
 // `cancellation` block (state 'cancelled') and renders as a stable train-title.
 const cancelled = incident({
   id: 'rid413',
-  kind: 'metra',
+  kind: 'rail',
   routes: ['ri'],
   first_seen_ts: NOW - 30 * 60_000,
   resolved_ts: NOW - 30 * 60_000,

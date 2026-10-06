@@ -9,10 +9,10 @@ const NOW = 1_700_000_000_000;
 // Three blue-line incidents + one red, so the subject (middle blue) has a
 // same-line prev and a global prev/next that differ.
 const incidents = [
-  incident({ id: 'older-blue', kind: 'train', routes: ['blue'], first_seen_ts: NOW - 3 * HOUR }),
-  incident({ id: 'red-between', kind: 'train', routes: ['red'], first_seen_ts: NOW - 2 * HOUR }),
-  incident({ id: 'subject', kind: 'train', routes: ['blue'], first_seen_ts: NOW - 1 * HOUR }),
-  incident({ id: 'newest', kind: 'train', routes: ['green'], first_seen_ts: NOW }),
+  incident({ id: 'older-blue', kind: 'metro', routes: ['blue'], first_seen_ts: NOW - 3 * HOUR }),
+  incident({ id: 'red-between', kind: 'metro', routes: ['red'], first_seen_ts: NOW - 2 * HOUR }),
+  incident({ id: 'subject', kind: 'metro', routes: ['blue'], first_seen_ts: NOW - 1 * HOUR }),
+  incident({ id: 'newest', kind: 'metro', routes: ['green'], first_seen_ts: NOW }),
 ];
 
 describe('EventNav', () => {
@@ -35,7 +35,7 @@ describe('EventNav', () => {
   it('renders nothing when the subject is not in the list', () => {
     const { container } = render(
       <EventNav
-        incident={incident({ id: 'ghost', kind: 'train', routes: ['blue'] })}
+        incident={incident({ id: 'ghost', kind: 'metro', routes: ['blue'] })}
         incidents={incidents}
       />,
     );

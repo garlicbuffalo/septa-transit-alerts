@@ -9,8 +9,7 @@ import {
   DURATION_BINS,
 } from '../lib/aggregate.js';
 import { topLevelTrail } from '../lib/breadcrumbs.js';
-import { BUS_ROUTE_NAMES, formatBusRoute } from '../lib/busRoutes.js';
-import { normalizeTrainLine, TRAIN_LINE_ORDER, TRAIN_LINES } from '../lib/ctaLines.js';
+import { BUS_ROUTE_NAMES, busRouteDisplayId, formatBusRoute } from '../lib/busRoutes.js';
 import { formatGap, formatMinutesAsHours } from '../lib/format.js';
 import { loadLine, loadRecent } from '../lib/incidentStore.js';
 import {
@@ -19,7 +18,19 @@ import {
   SIGNAL_LABELS,
   SIGNAL_TYPES,
 } from '../lib/incidents.js';
-import { METRA_LINE_ORDER, METRA_LINES, normalizeMetraLine } from '../lib/metraLines.js';
+import {
+  METRO_LINE_ORDER,
+  METRO_LINES,
+  metroLineFullName,
+  normalizeMetroLine,
+} from '../lib/metroLines.js';
+import {
+  normalizeRailLine,
+  RAIL_LINE_ORDER,
+  RAIL_LINES,
+  railLineFullName,
+} from '../lib/railLines.js';
+import { SITE_NAME } from '../lib/site.js';
 import Breadcrumb from './Breadcrumb.jsx';
 import Footer from './Footer.jsx';
 import Header from './Header.jsx';
@@ -27,26 +38,30 @@ import HourOfWeekHeatmap from './HourOfWeekHeatmap.jsx';
 
 const MAX_SELECTED = 3;
 
-// Comparison palette: distinct, accessible-pair colors. For trains we
-// override these with each line's brand color so a "Red vs Blue" chart
-// reads with CTA's actual hues; bus routes (no brand color) use this
-// palette directly.
+// Comparison palette: distinct, accessible-pair colors. Metro lines use their
+// brand color so an "L1 vs B1" chart reads with SEPTA's actual hues — unless
+// the selection shares a brand color (B1 vs B2, T1 vs T3), where the palette
+// keeps them apart. Regional Rail lines all share one brand color, so they use
+// their per-line chart color; bus routes (no brand color) use the palette.
 const COMPARE_PALETTE = ['#0ea5e9', '#f97316', '#6366f1'];
 
-function colorFor(kind, key, idx) {
-  if (kind === 'train') return TRAIN_LINES[key]?.color ?? COMPARE_PALETTE[idx];
-  if (kind === 'metra') return METRA_LINES[key]?.color ?? COMPARE_PALETTE[idx];
+function colorFor(kind, key, idx, selected = []) {
+  if (kind === 'metro') {
+    const brand = METRO_LINES[key]?.color;
+    const shared = selected.some((k) => k !== key && METRO_LINES[k]?.color === brand);
+    return brand && !shared ? brand : COMPARE_PALETTE[idx % COMPARE_PALETTE.length];
+  }
+  if (kind === 'rail') return RAIL_LINES[key]?.chartColor ?? COMPARE_PALETTE[idx];
   return COMPARE_PALETTE[idx % COMPARE_PALETTE.length];
 }
 
 function labelFor(kind, key) {
-  // Metra lines aren't called "X Line" — use the label as-is.
-  if (kind === 'metra') return METRA_LINES[key]?.label ?? key;
-  if (kind === 'train') return `${TRAIN_LINES[key]?.label ?? key} Line`;
-  return `#${key}`;
+  if (kind === 'rail') return railLineFullName(key);
+  if (kind === 'metro') return metroLineFullName(key);
+  return formatBusRoute(key);
 }
 
-// Filter the dataset down to one line/route. Train lines match on `routes`
+// Filter the dataset down to one line/route. Lines match on `routes`
 // (alerts) and `line` (observations); bus routes match on the same fields
 // using the route number as the key.
 function scopeIncidents(payload, kind, key) {
@@ -57,23 +72,23 @@ function scopeIncidents(payload, kind, key) {
   return { alerts, observations };
 }
 
-// URL param name per mode. `?trains=red,blue` → train mode; `?buses=66,X9` →
-// bus mode; `?metra=up-n,bnsf` → Metra mode.
-const PARAM_FOR_KIND = { train: 'trains', bus: 'buses', metra: 'metra' };
+// URL param name per mode. `?metro=l1,b1` → Metro mode; `?buses=17,33` → bus
+// mode; `?rail=pao,wtr` → Regional Rail mode.
+const PARAM_FOR_KIND = { metro: 'metro', bus: 'buses', rail: 'rail' };
 
-// Read mode + selection from the URL. Both empty → default to train mode with
+// Read mode + selection from the URL. All empty → default to Metro mode with
 // no selection (picker UI appears).
 function readUrlState() {
   const params = new URLSearchParams(window.location.search);
-  const trainsParam = params.get('trains');
+  const metroParam = params.get('metro');
   const busesParam = params.get('buses');
-  const metraParam = params.get('metra');
-  if (trainsParam) {
-    const valid = trainsParam
+  const railParam = params.get('rail');
+  if (metroParam) {
+    const valid = metroParam
       .split(',')
-      .map((s) => normalizeTrainLine(s.trim()))
-      .filter((s) => TRAIN_LINES[s]);
-    return { kind: 'train', selected: valid.slice(0, MAX_SELECTED) };
+      .map((s) => normalizeMetroLine(s.trim()))
+      .filter((s) => METRO_LINES[s]);
+    return { kind: 'metro', selected: valid.slice(0, MAX_SELECTED) };
   }
   if (busesParam) {
     const valid = busesParam
@@ -82,20 +97,20 @@ function readUrlState() {
       .filter((s) => s.length > 0);
     return { kind: 'bus', selected: valid.slice(0, MAX_SELECTED) };
   }
-  if (metraParam) {
-    const valid = metraParam
+  if (railParam) {
+    const valid = railParam
       .split(',')
-      .map((s) => normalizeMetraLine(s.trim()))
-      .filter((s) => METRA_LINES[s]);
-    return { kind: 'metra', selected: valid.slice(0, MAX_SELECTED) };
+      .map((s) => normalizeRailLine(s.trim()))
+      .filter((s) => RAIL_LINES[s]);
+    return { kind: 'rail', selected: valid.slice(0, MAX_SELECTED) };
   }
-  return { kind: 'train', selected: [] };
+  return { kind: 'metro', selected: [] };
 }
 
 function writeUrlState(kind, selected) {
   const params = new URLSearchParams();
   if (selected.length > 0) {
-    params.set(PARAM_FOR_KIND[kind] ?? 'trains', selected.join(','));
+    params.set(PARAM_FOR_KIND[kind] ?? 'metro', selected.join(','));
   }
   const s = params.toString();
   const next = `${window.location.pathname}${s ? `?${s}` : ''}${window.location.hash}`;
@@ -136,7 +151,7 @@ function StatTable({ kind, selected, perLine, yoyByLine }) {
                 key={key}
                 scope="col"
                 className="py-2 pr-3 text-xs font-semibold whitespace-nowrap"
-                style={{ color: colorFor(kind, key, idx) }}
+                style={{ color: colorFor(kind, key, idx, selected) }}
               >
                 {labelFor(kind, key)}
               </th>
@@ -187,7 +202,7 @@ function StatTable({ kind, selected, perLine, yoyByLine }) {
             </th>
             {yoyByLine.map((y, idx) => cell(y ? `${y.currentCount}` : '—', idx))}
           </tr>
-          <tr title="Severity-weighted: total line-time spent in a detected disruption over the last 30 days, against an assumed 21h/day service window.">
+          <tr title="Severity-weighted: total line-time spent in a detected disruption over the last 30 days, against an assumed 20h/day service window.">
             <th
               scope="row"
               className="py-2 pr-3 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 sticky left-0 bg-white dark:bg-gh-surface z-10 whitespace-nowrap font-normal text-left"
@@ -280,7 +295,10 @@ function CompareDurationHistogram({ kind, selected, perLine }) {
                       {c > 0 && (
                         <div
                           className="h-full"
-                          style={{ width: `${pct}%`, backgroundColor: colorFor(kind, key, idx) }}
+                          style={{
+                            width: `${pct}%`,
+                            backgroundColor: colorFor(kind, key, idx, selected),
+                          }}
                           role="img"
                           aria-label={`${labelFor(kind, key)} ${bin.label}: ${c} incidents`}
                         />
@@ -302,7 +320,7 @@ function CompareDurationHistogram({ kind, selected, perLine }) {
             <div key={key} className="flex items-center gap-1.5">
               <div
                 className="w-2.5 h-2.5 rounded-sm"
-                style={{ backgroundColor: colorFor(kind, key, idx) }}
+                style={{ backgroundColor: colorFor(kind, key, idx, selected) }}
               />
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 {labelFor(kind, key)}
@@ -321,22 +339,22 @@ const SIGNAL_COLORS = {
   ghost: '#6366f1',
   'pulse-cold': '#94a3b8',
   'pulse-held': '#64748b',
-  // Metra detection sources — its signal vocabulary is cancellations + delays,
-  // not the CTA gap/bunching/ghost set.
+  // Regional Rail detection sources — its signal vocabulary is cancellations + delays,
+  // not SEPTA gap/bunching/ghost set.
   cancellation: '#dc2626',
   'cancellation-inferred': '#fb923c',
   delay: '#eab308',
 };
 
-// Metra's signal mix is a different vocabulary from CTA's; pick the right set
+// Regional Rail's signal mix is a different vocabulary from SEPTA's; pick the right set
 // of detection sources to tally based on the comparison mode.
-const METRA_SIGNAL_TYPES = ['cancellation', 'cancellation-inferred', 'delay'];
+const RAIL_SIGNAL_TYPES = ['cancellation', 'cancellation-inferred', 'delay'];
 
 // Stacked-bar per line — one row each, sharing a legend. Tally signals
 // directly from the per-line observations rather than going through
 // buildSignalsByLine (which is hardcoded to all 8 train lines).
 function CompareSignalMix({ kind, selected, perLine }) {
-  const sigTypes = kind === 'metra' ? METRA_SIGNAL_TYPES : SIGNAL_TYPES;
+  const sigTypes = kind === 'rail' ? RAIL_SIGNAL_TYPES : SIGNAL_TYPES;
   const rows = selected.map((key, idx) => {
     const counts = {};
     for (const sig of sigTypes) counts[sig] = 0;
@@ -364,7 +382,7 @@ function CompareSignalMix({ kind, selected, perLine }) {
               <div className="w-20 flex-shrink-0 text-right">
                 <span
                   className="text-xs font-semibold whitespace-nowrap"
-                  style={{ color: colorFor(kind, key, idx) }}
+                  style={{ color: colorFor(kind, key, idx, selected) }}
                 >
                   {labelFor(kind, key)}
                 </span>
@@ -436,7 +454,7 @@ function CompareHourHeatmaps({ kind, selected, perLine }) {
           <div key={key} className="space-y-1">
             <p
               className="text-xs font-semibold text-center"
-              style={{ color: colorFor(kind, key, idx) }}
+              style={{ color: colorFor(kind, key, idx, selected) }}
             >
               {labelFor(kind, key)}
             </p>
@@ -459,8 +477,8 @@ function ChipPicker({ kind, selected, available, onToggle, onClearAll }) {
         {available.map((key) => {
           const active = selected.includes(key);
           const disabled = !active && selected.length >= MAX_SELECTED;
-          if (kind === 'train' || kind === 'metra') {
-            const info = (kind === 'metra' ? METRA_LINES : TRAIN_LINES)[key];
+          if (kind === 'metro' || kind === 'rail') {
+            const info = (kind === 'rail' ? RAIL_LINES : METRO_LINES)[key];
             return (
               <button
                 type="button"
@@ -475,8 +493,9 @@ function ChipPicker({ kind, selected, available, onToggle, onClearAll }) {
                       : 'bg-slate-100 dark:bg-gh-subtle text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gh-border'
                 }`}
                 style={active ? { backgroundColor: info.color, color: info.textColor } : undefined}
+                title={labelFor(kind, key)}
               >
-                {info.label}
+                {kind === 'rail' ? info.code : info.label}
               </button>
             );
           }
@@ -494,7 +513,7 @@ function ChipPicker({ kind, selected, available, onToggle, onClearAll }) {
                     : 'bg-slate-100 dark:bg-gh-subtle text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gh-border'
               }`}
             >
-              #{key}
+              {busRouteDisplayId(key)}
             </button>
           );
         })}
@@ -530,9 +549,9 @@ export default function ComparePage() {
   const [selected, setSelected] = useState(initial.selected);
 
   useEffect(() => {
-    document.title = 'Compare · Chicago Transit Alerts';
+    document.title = `Compare · ${SITE_NAME}`;
     return () => {
-      document.title = 'Chicago Transit Alerts';
+      document.title = SITE_NAME;
     };
   }, []);
 
@@ -662,22 +681,22 @@ export default function ComparePage() {
           <Breadcrumb items={topLevelTrail('Compare')} className="mb-3" />
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Compare</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Side-by-side reliability and signal mix for up to {MAX_SELECTED} train lines, bus
-            routes, or Metra lines. Stats cover the last 90 days.
+            Side-by-side reliability and signal mix for up to {MAX_SELECTED} SEPTA Metro lines, bus
+            routes, or Regional Rail lines. Stats cover the last 90 days.
           </p>
         </div>
 
         {error && <p className="text-red-600 text-sm">Failed to load alert data.</p>}
 
-        {/* Mode toggle: trains-only or buses-only. Switching modes clears
+        {/* Mode toggle: Metro, bus, or Regional Rail only. Switching modes clears
             the current selection — mixing kinds isn't supported because
             the data shapes diverge enough that an apples-to-apples
             comparison wouldn't be meaningful. */}
         <div className="flex gap-1.5">
           {[
-            { value: 'train', label: 'Train lines' },
+            { value: 'metro', label: 'Metro lines' },
             { value: 'bus', label: 'Bus routes' },
-            { value: 'metra', label: 'Metra lines' },
+            { value: 'rail', label: 'Regional Rail lines' },
           ].map(({ value, label }) => (
             <button
               type="button"
@@ -700,9 +719,9 @@ export default function ComparePage() {
           available={
             kind === 'bus'
               ? availableBusRoutes
-              : kind === 'metra'
-                ? METRA_LINE_ORDER
-                : TRAIN_LINE_ORDER
+              : kind === 'rail'
+                ? RAIL_LINE_ORDER
+                : METRO_LINE_ORDER
           }
           onToggle={toggleKey}
           onClearAll={() => setSelected([])}
@@ -711,7 +730,11 @@ export default function ComparePage() {
         {selected.length === 0 && (
           <div className="bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border p-8 text-center text-slate-500 dark:text-slate-400 text-sm">
             Pick two or three{' '}
-            {kind === 'train' ? 'train lines' : kind === 'metra' ? 'Metra lines' : 'bus routes'}{' '}
+            {kind === 'metro'
+              ? 'Metro lines'
+              : kind === 'rail'
+                ? 'Regional Rail lines'
+                : 'bus routes'}{' '}
             above to compare.
           </div>
         )}

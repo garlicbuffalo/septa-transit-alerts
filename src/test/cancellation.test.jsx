@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import IncidentList from '../components/IncidentList.jsx';
-import MetraUpcomingCancellations from '../components/MetraUpcomingCancellations.jsx';
+import RailUpcomingCancellations from '../components/RailUpcomingCancellations.jsx';
 import {
   cancellationInfo,
   cancellationSchedulePhrase,
@@ -15,7 +15,7 @@ const NOW = 1_000_000_000_000;
 const cancelInc = (cancellation, over = {}) =>
   incident({
     id: 'metra1',
-    kind: 'metra',
+    kind: 'rail',
     routes: ['UP-W'],
     first_seen_ts: NOW - 20 * 60_000,
     resolved_ts: cancellation.state === 'cancelled' ? NOW - 10 * 60_000 : null,
@@ -50,8 +50,8 @@ const CANCELLED = {
 
 describe('cancellation helpers', () => {
   it('returns null for an incident with no cancellation block', () => {
-    expect(cancellationInfo(incident({ kind: 'metra', cta: { headline: 'x' } }))).toBeNull();
-    expect(cancellationInfo(incident({ kind: 'metra', cta: null }))).toBeNull();
+    expect(cancellationInfo(incident({ kind: 'rail', cta: { headline: 'x' } }))).toBeNull();
+    expect(cancellationInfo(incident({ kind: 'rail', cta: null }))).toBeNull();
     expect(cancellationInfo(undefined)).toBeNull();
   });
 
@@ -115,7 +115,7 @@ describe('IncidentList cancellation rendering', () => {
 describe('collectUpcomingCancellations', () => {
   const other = incident({
     id: 'x',
-    kind: 'metra',
+    kind: 'rail',
     routes: ['up-w'],
     cta: { headline: 'Signal problems' },
   });
@@ -144,16 +144,16 @@ describe('collectUpcomingCancellations', () => {
   });
 });
 
-describe('MetraUpcomingCancellations', () => {
+describe('RailUpcomingCancellations', () => {
   it('renders nothing when there are no upcoming cancellations', () => {
     const { container } = render(
-      <MetraUpcomingCancellations incidents={[cancelInc(CANCELLED)]} now={NOW} />,
+      <RailUpcomingCancellations incidents={[cancelInc(CANCELLED)]} now={NOW} />,
     );
     expect(container).toBeEmptyDOMElement();
   });
 
   it('lists upcoming cancellations with a count, train number, and origin', () => {
-    render(<MetraUpcomingCancellations incidents={[cancelInc(UPCOMING)]} now={NOW} />);
+    render(<RailUpcomingCancellations incidents={[cancelInc(UPCOMING)]} now={NOW} />);
     expect(screen.getByText(/1 upcoming cancellation/)).toBeInTheDocument();
     expect(screen.getByText('Train #67')).toBeInTheDocument();
     expect(screen.getByText(/Chicago OTC/)).toBeInTheDocument();

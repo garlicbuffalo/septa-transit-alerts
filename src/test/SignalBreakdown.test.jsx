@@ -8,7 +8,7 @@ describe('SignalBreakdown', () => {
   // threw while rendering the "Trends & history" section.
   it('renders when only some Metra lines have observations', () => {
     const observations = [
-      { kind: 'metra', line: 'UP-N', detection_source: 'cancellation', ts: Date.now() },
+      { kind: 'rail', line: 'UP-N', detection_source: 'cancellation', ts: Date.now() },
     ];
     expect(() => render(<SignalBreakdown observations={observations} />)).not.toThrow();
     expect(screen.getByText('Metra signal mix by line')).toBeInTheDocument();
@@ -22,7 +22,7 @@ describe('SignalBreakdown', () => {
   // present. Every Metra line probe then missed. ("All" hid the bug because
   // all 11 Metra lines happen to have signal data.)
   it('renders train rows when the agency filter excludes all Metra data', () => {
-    const observations = [{ kind: 'train', line: 'red', detection_source: 'gap', ts: Date.now() }];
+    const observations = [{ kind: 'metro', line: 'red', detection_source: 'gap', ts: Date.now() }];
     expect(() => render(<SignalBreakdown observations={observations} />)).not.toThrow();
     expect(screen.getByText('Signal mix by train line')).toBeInTheDocument();
     expect(screen.queryByText('Metra signal mix by line')).not.toBeInTheDocument();

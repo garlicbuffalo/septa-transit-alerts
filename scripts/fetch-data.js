@@ -1,133 +1,153 @@
-// Fetch the published data into public/data/ *before* the build, so the
+// Stage the published data into public/data/ *before* the build, so the
 // deployed snapshot + the postbuild steps (prerender-events, prerender-pages,
 // generate-feed, generate-sitemap, generate-csv) have current data without it
 // being committed to the repo. Runs automatically as the npm `prebuild` hook.
 //
-// alerts.json is no longer a published artifact — the data origin now serves the
-// bounded shards (alerts-recent.json + monthly alerts/<YYYY-MM>.json + the
-// index). The build still needs the *all-time* set (per-event OG cards, the
-// sitemap, the full CSV), so we reassemble it here from the shards: every
-// monthly archive shard is the complete partition of history by first_seen
-// month, unioned with any active-but-unarchived incident the recent slice
-// carries. The result is byte-compatible with the old alerts.json shape, so the
-// postbuild scripts read it unchanged.
+// Where the data comes from, first match wins:
+//   DATA_DIR=<path>         a local copy of the collector's output — in CI, a
+//                           checkout of the `data` branch. Every published file
+//                           is copied into public/data/ so the site serves it
+//                           same-origin at /data/.
+//   DATA_ORIGIN_URL=<url>   a deployed data origin. The core files are
+//                           downloaded into public/data/ (the per-line files
+//                           are not; point VITE_DATA_BASE_URL at the origin
+//                           when the site should read them from there).
+//   (neither)               whatever is already in public/data/ — e.g. from
+//                           `npm run collect` during local development.
 //
-// Resilience: if the origin is unreachable but a local copy already exists
-// (e.g. during local development, or a transient R2 hiccup), we keep the
-// existing file rather than failing the build — "slightly stale" beats "no
-// deploy". We only hard-fail if there's no alerts.json at all, since the
-// prerender can't run without it.
+// The site itself reads the bounded files (alerts-recent.json, monthly shards),
+// but the postbuild steps need the *all-time* set (per-event OG cards, the
+// sitemap, the full CSV). We reassemble it into public/data/alerts.json from
+// the monthly shards — they partition every incident by first-seen month —
+// unioned with anything the recent slice carries that the shards miss.
 //
-// Env:
-//   DATA_ORIGIN_URL   override the origin (default: the prod R2 custom domain)
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+// If no data exists at all (a fresh clone, or the collector hasn't run yet) we
+// write an empty dataset so the build still succeeds; the site then shows no
+// incidents until the collector publishes. When DATA_DIR / DATA_ORIGIN_URL was
+// set explicitly and fails with no local copy to fall back on, we abort instead
+// — deploying an empty archive over a real one is worse than not deploying.
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ORIGIN = (process.env.DATA_ORIGIN_URL || 'https://data.chicagotransitalerts.app').replace(
-  /\/$/,
-  '',
-);
 const OUT_DIR = resolve(__dirname, '..', 'public', 'data');
-// Files still published verbatim by the producer.
-const PLAIN_FILES = ['daily-counts.json', 'accessibility.json'];
+const DATA_DIR = process.env.DATA_DIR ? resolve(process.env.DATA_DIR) : null;
+const ORIGIN = process.env.DATA_ORIGIN_URL ? process.env.DATA_ORIGIN_URL.replace(/\/+$/, '') : null;
+// Published files fetched from a remote origin besides the shards.
+const REMOTE_FILES = [
+  'alerts-recent.json',
+  'alerts-index.json',
+  'daily-counts.json',
+  'aggregates.json',
+  'accessibility.json',
+];
 
 mkdirSync(OUT_DIR, { recursive: true });
 
-async function getJson(file) {
+function readLocalJson(file) {
+  const path = resolve(OUT_DIR, file);
+  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+}
+
+async function fetchJson(file) {
   const res = await fetch(`${ORIGIN}/${file}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
   return res.json();
 }
 
-// Reassemble the all-time alerts.json from the published shards. The monthly
-// shards partition every archived incident by first_seen month; the recent
-// slice supplies any active incident that has no first_seen (so isn't archived).
-async function assembleAlerts() {
-  const index = await getJson('alerts-index.json');
-  const months = index.months ?? [];
-  const shards = await Promise.all(months.map((m) => getJson(m.url)));
+function writeJson(file, value) {
+  const path = resolve(OUT_DIR, file);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(value)}\n`);
+}
 
+// Copy a local data directory wholesale. Skips the repo's own CHANGELOG.md so
+// the documented changelog always comes from the site source.
+function copyFromDir(dir) {
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+    throw new Error(`DATA_DIR ${dir} is not a directory`);
+  }
+  if (!existsSync(resolve(dir, 'alerts-recent.json'))) {
+    throw new Error(`DATA_DIR ${dir} has no alerts-recent.json`);
+  }
+  cpSync(dir, OUT_DIR, {
+    recursive: true,
+    filter: (src) => !/(^|[/\\])(\.git|CHANGELOG\.md|README\.md)$/.test(src),
+  });
+  console.log(`fetch-data: copied ${dir} -> ${OUT_DIR}`);
+}
+
+async function downloadFromOrigin() {
+  const index = await fetchJson('alerts-index.json');
+  const shards = await Promise.all((index.months ?? []).map((m) => fetchJson(m.url)));
+  (index.months ?? []).forEach((m, i) => {
+    writeJson(m.url, shards[i]);
+  });
+  for (const file of REMOTE_FILES) {
+    writeJson(file, file === 'alerts-index.json' ? index : await fetchJson(file));
+  }
+  console.log(`fetch-data: downloaded ${REMOTE_FILES.length + shards.length} files from ${ORIGIN}`);
+}
+
+// Rebuild the all-time alerts.json from whatever is now in public/data/.
+function assembleAlerts() {
+  const index = readLocalJson('alerts-index.json');
+  const recent = readLocalJson('alerts-recent.json');
+  if (!index && !recent) return null;
   const incidents = [];
   const seen = new Set();
-  // index.months is newest-first and each shard preserves first_seen-DESC order,
-  // so concatenating in index order reproduces the old global newest-first order.
-  for (const shard of shards) {
-    for (const inc of shard.incidents ?? []) {
+  // index.months is newest-first and each shard preserves first_seen-DESC
+  // order, so concatenating in index order yields a global newest-first list.
+  for (const month of index?.months ?? []) {
+    for (const inc of readLocalJson(month.url)?.incidents ?? []) {
+      if (seen.has(inc.id)) continue;
       incidents.push(inc);
       seen.add(inc.id);
     }
   }
-  // Active-but-unarchived incidents (no first_seen) ride only the recent slice.
-  const recent = await getJson('alerts-recent.json');
-  for (const inc of recent.incidents ?? []) {
+  for (const inc of recent?.incidents ?? []) {
     if (!seen.has(inc.id)) incidents.unshift(inc);
   }
-
   return {
-    schema_version: index.schema_version ?? recent.schema_version ?? 2,
-    generated_at: index.generated_at ?? recent.generated_at ?? Date.now(),
-    data_start_ts: index.data_start_ts ?? null,
+    schema_version: index?.schema_version ?? recent?.schema_version ?? 2,
+    generated_at: index?.generated_at ?? recent?.generated_at ?? Date.now(),
+    data_start_ts: index?.data_start_ts ?? recent?.data_start_ts ?? null,
     incidents,
   };
 }
 
-const alertsDest = resolve(OUT_DIR, 'alerts.json');
+let explicitSourceFailed = false;
 try {
-  const assembled = await assembleAlerts();
-  writeFileSync(alertsDest, `${JSON.stringify(assembled)}\n`);
-  console.log(
-    `fetch-data: assembled alerts.json from shards (${assembled.incidents.length} incidents)`,
-  );
+  if (DATA_DIR) copyFromDir(DATA_DIR);
+  else if (ORIGIN) await downloadFromOrigin();
 } catch (err) {
-  if (existsSync(alertsDest)) {
-    console.warn(
-      `fetch-data: shard assembly failed (${err.message}); using existing ${alertsDest}`,
-    );
-  } else {
-    console.error(`fetch-data: shard assembly failed (${err.message}) and no local copy`);
-  }
+  explicitSourceFailed = true;
+  console.warn(`fetch-data: ${err.message}`);
 }
 
-for (const file of PLAIN_FILES) {
-  const dest = resolve(OUT_DIR, file);
-  try {
-    const res = await fetch(`${ORIGIN}/${file}`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = Buffer.from(await res.arrayBuffer());
-    writeFileSync(dest, body);
-    console.log(`fetch-data: ${file} <- ${ORIGIN}/${file} (${body.length} bytes)`);
-  } catch (err) {
-    if (existsSync(dest)) {
-      console.warn(`fetch-data: ${file} fetch failed (${err.message}); using existing ${dest}`);
-    } else {
-      console.warn(`fetch-data: ${file} fetch failed (${err.message}) and no local copy`);
-    }
-  }
-}
-
-if (!existsSync(alertsDest)) {
-  console.error(
-    'fetch-data: no alerts.json available (origin down, no local copy) — aborting build',
-  );
+const assembled = assembleAlerts();
+if (assembled) {
+  writeJson('alerts.json', assembled);
+  console.log(`fetch-data: assembled alerts.json (${assembled.incidents.length} incidents)`);
+} else if (explicitSourceFailed) {
+  console.error('fetch-data: no data available (source failed, no local copy) — aborting build');
   process.exit(1);
+} else {
+  // Nothing collected yet: publish an empty but well-formed dataset.
+  const empty = { schema_version: 2, generated_at: Date.now(), data_start_ts: null, incidents: [] };
+  writeJson('alerts.json', empty);
+  writeJson('alerts-recent.json', empty);
+  console.warn('fetch-data: no collected data found — building with an empty dataset');
 }
 
 if (!existsSync(resolve(OUT_DIR, 'accessibility.json'))) {
-  writeFileSync(
-    resolve(OUT_DIR, 'accessibility.json'),
-    `${JSON.stringify(
-      {
-        schema_version: 1,
-        generated_at: Date.now(),
-        data_start_ts: null,
-        window_days: 180,
-        outages: [],
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  writeJson('accessibility.json', {
+    schema_version: 1,
+    generated_at: Date.now(),
+    data_start_ts: null,
+    window_days: 180,
+    outages: [],
+  });
   console.warn('fetch-data: wrote empty accessibility.json fallback');
 }

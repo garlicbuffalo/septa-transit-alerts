@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildEventSummaryText,
+  computeAgencyEstimate,
+  computeAgencyPlanned,
   computeBotLead,
-  computeCtaEstimate,
-  computeCtaPlanned,
   findIncidentNeighbors,
   formatLeadTime,
 } from '../components/event/callouts.js';
@@ -30,7 +30,7 @@ describe('computeBotLead', () => {
   it('reports how far the earliest observation predates the CTA post', () => {
     const out = computeBotLead({
       isMerged: true,
-      ctaFirstSeenTs: NOW,
+      agencyFirstSeenTs: NOW,
       observations: [{ ts: NOW - 5 * MIN }, { onset_ts: NOW - 20 * MIN, ts: NOW - 10 * MIN }],
     });
     expect(out).toEqual({ phrase: '20 min', onsetTs: NOW - 20 * MIN });
@@ -40,57 +40,61 @@ describe('computeBotLead', () => {
     expect(
       computeBotLead({
         isMerged: true,
-        ctaFirstSeenTs: NOW,
+        agencyFirstSeenTs: NOW,
         observations: [{ ts: NOW - 1 * MIN }],
       }),
     ).toBeNull();
   });
 
   it('returns null for non-merged incidents or missing CTA time', () => {
-    expect(computeBotLead({ isMerged: false, ctaFirstSeenTs: NOW, observations: [] })).toBeNull();
     expect(
-      computeBotLead({ isMerged: true, ctaFirstSeenTs: null, observations: [{ ts: NOW }] }),
+      computeBotLead({ isMerged: false, agencyFirstSeenTs: NOW, observations: [] }),
+    ).toBeNull();
+    expect(
+      computeBotLead({ isMerged: true, agencyFirstSeenTs: null, observations: [{ ts: NOW }] }),
     ).toBeNull();
   });
 });
 
-describe('computeCtaPlanned', () => {
+describe('computeAgencyPlanned', () => {
   it('returns null when CTA fired within 10 minutes (effectively live)', () => {
-    expect(computeCtaPlanned({ ctaStartTs: NOW - 5 * MIN, startTs: NOW })).toBeNull();
+    expect(computeAgencyPlanned({ agencyStartTs: NOW - 5 * MIN, startTs: NOW })).toBeNull();
   });
 
   it('formats a minutes-ahead gap', () => {
-    expect(computeCtaPlanned({ ctaStartTs: NOW - 45 * MIN, startTs: NOW })).toBe('45 min ahead');
+    expect(computeAgencyPlanned({ agencyStartTs: NOW - 45 * MIN, startTs: NOW })).toBe(
+      '45 min ahead',
+    );
   });
 
   it('formats an hours-ahead gap', () => {
-    expect(computeCtaPlanned({ ctaStartTs: NOW - (2 * HOUR + 30 * MIN), startTs: NOW })).toBe(
+    expect(computeAgencyPlanned({ agencyStartTs: NOW - (2 * HOUR + 30 * MIN), startTs: NOW })).toBe(
       '2h 30m ahead',
     );
   });
 
   it('formats a days-ahead gap', () => {
-    expect(computeCtaPlanned({ ctaStartTs: NOW - (3 * DAY + 2 * HOUR), startTs: NOW })).toBe(
+    expect(computeAgencyPlanned({ agencyStartTs: NOW - (3 * DAY + 2 * HOUR), startTs: NOW })).toBe(
       '3d 2h ahead',
     );
   });
 
   it('returns null for a stale EventStart beyond 14 days', () => {
-    expect(computeCtaPlanned({ ctaStartTs: NOW - 20 * DAY, startTs: NOW })).toBeNull();
+    expect(computeAgencyPlanned({ agencyStartTs: NOW - 20 * DAY, startTs: NOW })).toBeNull();
   });
 });
 
-describe('computeCtaEstimate', () => {
+describe('computeAgencyEstimate', () => {
   it('flags resolving after the stated end as "late"', () => {
     expect(
-      computeCtaEstimate({ ctaEndTs: NOW, resolvedTs: NOW + 20 * MIN, dateOnly: false }),
+      computeAgencyEstimate({ agencyEndTs: NOW, resolvedTs: NOW + 20 * MIN, dateOnly: false }),
     ).toEqual({ sameMinute: false, phrase: '20 min late' });
   });
 
   it('flags resolving before the stated end as "early", with hour formatting', () => {
     expect(
-      computeCtaEstimate({
-        ctaEndTs: NOW,
+      computeAgencyEstimate({
+        agencyEndTs: NOW,
         resolvedTs: NOW - (1 * HOUR + 5 * MIN),
         dateOnly: false,
       }),
@@ -98,7 +102,7 @@ describe('computeCtaEstimate', () => {
   });
 
   it('reports "right on schedule" within the same minute', () => {
-    expect(computeCtaEstimate({ ctaEndTs: NOW, resolvedTs: NOW, dateOnly: false })).toEqual({
+    expect(computeAgencyEstimate({ agencyEndTs: NOW, resolvedTs: NOW, dateOnly: false })).toEqual({
       sameMinute: true,
       phrase: 'cleared right on schedule',
     });
@@ -106,19 +110,19 @@ describe('computeCtaEstimate', () => {
 
   it('skips date-only EventEnd and gaps beyond a week', () => {
     expect(
-      computeCtaEstimate({ ctaEndTs: NOW, resolvedTs: NOW + 20 * MIN, dateOnly: true }),
+      computeAgencyEstimate({ agencyEndTs: NOW, resolvedTs: NOW + 20 * MIN, dateOnly: true }),
     ).toBeNull();
     expect(
-      computeCtaEstimate({ ctaEndTs: NOW, resolvedTs: NOW + 8 * DAY, dateOnly: false }),
+      computeAgencyEstimate({ agencyEndTs: NOW, resolvedTs: NOW + 8 * DAY, dateOnly: false }),
     ).toBeNull();
   });
 });
 
 describe('findIncidentNeighbors', () => {
   const incidents = [
-    incident({ id: 'a', kind: 'train', routes: ['blue'], first_seen_ts: NOW - 3 * HOUR }),
-    incident({ id: 'b', kind: 'train', routes: ['red'], first_seen_ts: NOW - 2 * HOUR }),
-    incident({ id: 'c', kind: 'train', routes: ['blue'], first_seen_ts: NOW - 1 * HOUR }),
+    incident({ id: 'a', kind: 'metro', routes: ['blue'], first_seen_ts: NOW - 3 * HOUR }),
+    incident({ id: 'b', kind: 'metro', routes: ['red'], first_seen_ts: NOW - 2 * HOUR }),
+    incident({ id: 'c', kind: 'metro', routes: ['blue'], first_seen_ts: NOW - 1 * HOUR }),
     incident({ id: 'd', kind: 'bus', routes: ['66'], first_seen_ts: NOW }),
   ];
 

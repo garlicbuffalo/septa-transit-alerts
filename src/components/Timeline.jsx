@@ -2,25 +2,25 @@ import { useEffect, useMemo, useRef } from 'react';
 import {
   buildBusIncidentsByDay,
   buildIncidentsByDay,
-  buildMetraIncidentsByDay,
+  buildRailIncidentsByDay,
   computeLineReliability,
 } from '../lib/aggregate.js';
-import { busRouteName } from '../lib/busRoutes.js';
-import { TRAIN_LINE_ORDER, TRAIN_LINES } from '../lib/ctaLines.js';
-import { chicagoDayUTC, hexToRgba } from '../lib/format.js';
-import { METRA_LINE_ORDER, METRA_LINES } from '../lib/metraLines.js';
+import { busRouteName, formatBusRoute } from '../lib/busRoutes.js';
+import { hexToRgba, phillyDayUTC } from '../lib/format.js';
+import { METRO_LINE_ORDER, METRO_LINES } from '../lib/metroLines.js';
+import { RAIL_LINE_ORDER, RAIL_LINES } from '../lib/railLines.js';
 
-const CHICAGO_TZ = 'America/Chicago';
-const chicagoDayMonthFmt = new Intl.DateTimeFormat('en-US', {
+const CHICAGO_TZ = 'America/New_York';
+const phillyDayMonthFmt = new Intl.DateTimeFormat('en-US', {
   timeZone: CHICAGO_TZ,
   month: 'short',
   day: 'numeric',
 });
-function chicagoDateLabel(ts) {
-  return chicagoDayMonthFmt.format(new Date(ts));
+function phillyDateLabel(ts) {
+  return phillyDayMonthFmt.format(new Date(ts));
 }
-function chicagoDateBits(ts) {
-  const parts = chicagoDayMonthFmt.formatToParts(new Date(ts));
+function phillyDateBits(ts) {
+  const parts = phillyDayMonthFmt.formatToParts(new Date(ts));
   return {
     day: Number(parts.find((p) => p.type === 'day').value),
     month: parts.find((p) => p.type === 'month').value,
@@ -43,12 +43,12 @@ const NO_DATA_STYLE = {
 };
 
 function DayCell({ dayIdx, dayUTC, incidents, color, dataStartTs, inRange, isPinned, onClick }) {
-  // dayUTC marks the start of this Chicago calendar day (as a UTC midnight).
+  // dayUTC marks the start of this Philadelphia calendar day (as a UTC midnight).
   // Treat the day as "no data" if it ended on/before the cutoff.
   const dayEnd = dayUTC + DAY_MS;
   const noData = dataStartTs != null && dayEnd <= dataStartTs;
   const count = incidents[dayIdx] || 0;
-  const dateStr = chicagoDateLabel(dayUTC);
+  const dateStr = phillyDateLabel(dayUTC);
   const label = noData
     ? `${dateStr}: no data`
     : `${dateStr}: ${count} incident${count !== 1 ? 's' : ''}`;
@@ -122,9 +122,9 @@ export default function Timeline({
   // meaningless across N≥6 routes lumped together.
   const reliabilityByLine = useMemo(() => {
     const out = {};
-    for (const line of TRAIN_LINE_ORDER) {
-      const lineAlerts = alerts.filter((a) => a.kind === 'train' && a.routes?.includes(line));
-      const lineObs = observations.filter((o) => o.kind === 'train' && o.line === line);
+    for (const line of METRO_LINE_ORDER) {
+      const lineAlerts = alerts.filter((a) => a.kind === 'metro' && a.routes?.includes(line));
+      const lineObs = observations.filter((o) => o.kind === 'metro' && o.line === line);
       out[line] = computeLineReliability(lineAlerts, lineObs, { now, windowDays: numDays });
     }
     return out;
@@ -135,27 +135,27 @@ export default function Timeline({
     [alerts, observations, numDays, now],
   );
 
-  const metraIncidentsByDay = useMemo(
-    () => buildMetraIncidentsByDay(alerts, observations, numDays, now),
+  const railIncidentsByDay = useMemo(
+    () => buildRailIncidentsByDay(alerts, observations, numDays, now),
     [alerts, observations, numDays, now],
   );
 
-  // col 0 = oldest day, col numDays-1 = today (Chicago calendar)
+  // col 0 = oldest day, col numDays-1 = today (Philadelphia calendar)
   const days = useMemo(() => {
-    const todayUTC = chicagoDayUTC(now);
+    const todayUTC = phillyDayUTC(now);
     return Array.from({ length: numDays }, (_, col) => {
       const dayIdx = numDays - 1 - col;
       const dayUTC = todayUTC - dayIdx * DAY_MS;
-      return { col, dayIdx, dayUTC, ...chicagoDateBits(dayUTC) };
+      return { col, dayIdx, dayUTC, ...phillyDateBits(dayUTC) };
     });
   }, [numDays, now]);
 
   const linesToShow =
     selectedLines !== null && selectedLines.length > 0
-      ? TRAIN_LINE_ORDER.filter((l) => selectedLines.includes(l))
+      ? METRO_LINE_ORDER.filter((l) => selectedLines.includes(l))
       : selectedLines !== null && selectedLines.length === 0
         ? []
-        : TRAIN_LINE_ORDER;
+        : METRO_LINE_ORDER;
 
   // Bus rows: per-route when routes are selected; otherwise top-5 most-affected
   // routes + an "Other" aggregate for the long tail. The single all-routes
@@ -165,14 +165,14 @@ export default function Timeline({
       ? selectedBusRoutes.map((r) => ({
           key: r,
           routeId: r,
-          label: `#${r}`,
+          label: formatBusRoute(r),
           incidents: busIncidentsByDay.byRoute[r] || {},
         }))
       : [
           ...busIncidentsByDay.topRoutes.map((r) => ({
             key: r,
             routeId: r,
-            label: `#${r}`,
+            label: formatBusRoute(r),
             incidents: busIncidentsByDay.byRoute[r] || {},
           })),
           ...(Object.keys(busIncidentsByDay.otherAggregate).length > 0
@@ -188,15 +188,15 @@ export default function Timeline({
         ]
     : [];
 
-  // Metra rows: only lines that actually had activity in the window (avoids a
-  // wall of 11 mostly-empty rows). Order follows METRA_LINE_ORDER.
-  const metraRowsToShow = METRA_LINE_ORDER.filter(
-    (line) => Object.keys(metraIncidentsByDay[line] || {}).length > 0,
+  // Regional Rail rows: only lines that actually had activity in the window (avoids a
+  // wall of 11 mostly-empty rows). Order follows RAIL_LINE_ORDER.
+  const railRowsToShow = RAIL_LINE_ORDER.filter(
+    (line) => Object.keys(railIncidentsByDay[line] || {}).length > 0,
   );
 
   const hasBusRows = busRowsToShow.length > 0;
-  const hasTrainRows = linesToShow.length > 0;
-  const hasMetraRows = metraRowsToShow.length > 0;
+  const hasMetroRows = linesToShow.length > 0;
+  const hasRailRows = railRowsToShow.length > 0;
 
   return (
     <section>
@@ -214,8 +214,8 @@ export default function Timeline({
         <div ref={scrollRef} className="overflow-x-auto pt-1 pb-4">
           <table className="border-collapse">
             <caption className="sr-only">
-              Incident timeline. Rows are train lines, bus routes, and Metra lines; columns are
-              days. Each cell links to that day's incidents.
+              Incident timeline. Rows are Metro lines, bus routes, and Regional Rail lines; columns
+              are days. Each cell links to that day's incidents.
             </caption>
             <thead>
               <tr>
@@ -242,9 +242,9 @@ export default function Timeline({
               </tr>
             </thead>
             <tbody>
-              {/* Train rows */}
+              {/* Metro rows */}
               {linesToShow.map((lineKey) => {
-                const info = TRAIN_LINES[lineKey];
+                const info = METRO_LINES[lineKey];
                 const incidents = incidentsByDay[lineKey] || {};
                 const rel = reliabilityByLine[lineKey];
                 const pctClean =
@@ -299,7 +299,7 @@ export default function Timeline({
               })}
 
               {/* Thin separator between trains and bus */}
-              {hasTrainRows && hasBusRows && (
+              {hasMetroRows && hasBusRows && (
                 <tr>
                   <td colSpan={numDays + 1} className="py-1" />
                 </tr>
@@ -351,22 +351,22 @@ export default function Timeline({
                 );
               })}
 
-              {/* Separator before the Metra block */}
-              {(hasTrainRows || hasBusRows) && hasMetraRows && (
+              {/* Separator before the Regional Rail block */}
+              {(hasMetroRows || hasBusRows) && hasRailRows && (
                 <tr>
                   <td colSpan={numDays + 1} className="py-1" />
                 </tr>
               )}
 
-              {/* Metra rows — one per Metra line with activity in the window */}
-              {metraRowsToShow.map((lineKey) => {
-                const info = METRA_LINES[lineKey];
-                const incidents = metraIncidentsByDay[lineKey] || {};
+              {/* Regional Rail rows — one per line with activity in the window */}
+              {railRowsToShow.map((lineKey) => {
+                const info = RAIL_LINES[lineKey];
+                const incidents = railIncidentsByDay[lineKey] || {};
                 return (
-                  <tr key={`metra-${lineKey}`}>
+                  <tr key={`rail-${lineKey}`}>
                     <td className="sticky left-0 bg-white dark:bg-gh-surface z-10 pr-2 sm:pr-3 align-middle min-w-[3rem] sm:min-w-[4rem]">
                       <a
-                        href={`/metra/line/${lineKey}`}
+                        href={`/rail/line/${lineKey}`}
                         title={`Open ${info.label} page`}
                         className="text-xs font-semibold w-full text-right hover:opacity-70 transition-opacity inline-block leading-tight"
                         style={{ color: info.color }}

@@ -6,7 +6,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const makeObs = (overrides = {}) => ({
   id: 1,
-  kind: 'train',
+  kind: 'metro',
   line: 'red',
   from_station: 'Howard',
   to_station: 'Jarvis',
@@ -18,7 +18,7 @@ const makeObs = (overrides = {}) => ({
 
 const makeAlert = (overrides = {}) => ({
   alert_id: 1,
-  kind: 'train',
+  kind: 'metro',
   routes: ['red'],
   affected_from_station: 'Howard',
   affected_to_station: null,

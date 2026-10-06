@@ -1,17 +1,17 @@
 import { useMemo } from 'react';
 import { collectUpcomingCancellations } from '../lib/cancellation.js';
 import { formatTime } from '../lib/format.js';
-import { METRA_LINES } from '../lib/metraLines.js';
+import { RAIL_LINES } from '../lib/railLines.js';
 
-// Forward-looking strip of Metra trains announced as cancelled but not yet past
+// Forward-looking strip of Regional Rail trains announced as cancelled but not yet past
 // their scheduled departure — the capability the schedule-anchored cancellation
 // lifecycle adds that the retrospective bot detector can't (it only sees a train
-// didn't run after the fact). Shown on the Metra line page (one line) and system-
+// didn't run after the fact). Shown on the Regional Rail line page (one line) and system-
 // health page (all lines, with a line pill). Renders nothing when none are upcoming.
 //
 // `incidents` are nested incidents; `showLine` adds a per-row line pill (system
 // page, where rows span lines). Reads incident.cancellation via the shared helper.
-export default function MetraUpcomingCancellations({ incidents, now, showLine = false }) {
+export default function RailUpcomingCancellations({ incidents, now, showLine = false }) {
   const items = useMemo(() => collectUpcomingCancellations(incidents, { now }), [incidents, now]);
   if (items.length === 0) return null;
 
@@ -22,11 +22,11 @@ export default function MetraUpcomingCancellations({ incidents, now, showLine = 
         {items.length} upcoming cancellation{items.length === 1 ? '' : 's'}
       </h2>
       <p className="text-xs text-amber-700/80 dark:text-amber-300/80 mb-3">
-        Trains Metra has announced won't run, not yet past their scheduled departure.
+        Trains SEPTA has marked cancelled that haven't reached their scheduled departure yet.
       </p>
       <ul className="space-y-1">
         {items.map((it) => {
-          const info = it.line ? METRA_LINES[it.line] : null;
+          const info = it.line ? RAIL_LINES[it.line] : null;
           return (
             <li key={it.id}>
               <a

@@ -1,31 +1,32 @@
-// Geographic line-map geometry for Metra — the commuter-rail parallel of the
-// CTA builder in lineMap.js. Projects a Metra line's track polylines + ordered
-// stations (lat/lon) into SVG space so the rendered map keeps real metro-area
-// shape. Shares the exact projection math (projectInto / sliceTrackBetween) with
-// the train side; what differs is the data source and the lack of a downtown
-// inset — Metra has no dense Loop cluster, its lines fan out across the suburbs,
-// so a single projection reads fine end-to-end.
+// Geographic line-map geometry for Regional Rail — the commuter-rail parallel
+// of the SEPTA Metro builder in lineMap.js. Projects a Regional Rail line's
+// track polylines + ordered stations (lat/lon) into SVG space so the rendered
+// map keeps real metro-area shape. Shares the exact projection math
+// (projectInto / sliceTrackBetween) with the Metro side; what differs is the
+// data source and the lack of a downtown inset — Regional Rail's Center City
+// stops are few, and its lines fan out across the suburbs, so a single
+// projection reads fine end-to-end.
 
 import { projectInto, sliceTrackBetween } from './lineMap.js';
-import lineShapes from './metraLineShapes.json' with { type: 'json' };
-import { METRA_LINE_ORDER, normalizeMetraLine } from './metraLines.js';
-import metraStations from './metraStations.json' with { type: 'json' };
+import lineShapes from './railLineShapes.json' with { type: 'json' };
+import { normalizeRailLine, RAIL_LINE_ORDER } from './railLines.js';
+import railStations from './railStations.json' with { type: 'json' };
 import { slugifyStation } from './stations.js';
 
-// metraStations.json is keyed by the GTFS route_id (UPPERCASE: 'UP-N'); the web
-// keys are the lowercase form. Build a lowercase-keyed lookup once.
+// railStations.json is keyed by the lowercase line key; normalize anyway so a
+// hand-edited roster in SEPTA's uppercase codes still resolves.
 const STATIONS_BY_KEY = new Map(
-  Object.entries(metraStations).map(([route, list]) => [normalizeMetraLine(route), list]),
+  Object.entries(railStations).map(([route, list]) => [normalizeRailLine(route), list]),
 );
 
 export { sliceTrackBetween };
 
 /**
- * Build the projected geometry for a single Metra line. Same return shape as
+ * Build the projected geometry for a single Regional Rail line. Same return shape as
  * buildLineMap (lineMap.js) so the shared LineMap/EventMap renderers can consume
- * either — except `downtown` is always null (no Metra inset).
+ * either — except `downtown` is always null (no Regional Rail inset).
  *
- * @param {string} lineKey lowercase Metra web key ('up-n', 'bnsf', …)
+ * @param {string} lineKey lowercase Regional Rail key ('pao', 'wtr', …)
  * @param {Map<string, {count:number}> | null} [stationIndex] slug → record
  * @param {object} [options]
  * @returns {{
@@ -37,20 +38,20 @@ export { sliceTrackBetween };
  *   downtown: null,
  * } | null}
  */
-export function buildMetraLineMap(
+export function buildRailLineMap(
   lineKey,
   stationIndex = null,
   { maxWidth = 720, maxHeight = 540, margin = 24, preferPortrait = false } = {},
 ) {
-  const key = normalizeMetraLine(lineKey);
-  if (!METRA_LINE_ORDER.includes(key)) return null;
+  const key = normalizeRailLine(lineKey);
+  if (!RAIL_LINE_ORDER.includes(key)) return null;
   const segments = lineShapes[key];
   const lineStations = STATIONS_BY_KEY.get(key);
   if (!segments || !lineStations || lineStations.length === 0) return null;
 
   // Terminals = the first and last station in the line's GTFS stop order
-  // (metraStations.json preserves it), which is all we label — naming every
-  // suburban stop would crowd the map the way labeling every L stop would.
+  // (railStations.json preserves it), which is all we label — naming every
+  // suburban stop would crowd the map.
   const lastIdx = lineStations.length - 1;
   const enriched = lineStations.map((s, i) => {
     const slug = slugifyStation(s.name);
@@ -65,7 +66,7 @@ export function buildMetraLineMap(
     };
   });
 
-  // Orientation — same rule as the train builder: rotate a very vertical line
+  // Orientation — same rule as the Metro builder: rotate a very vertical line
   // 90° CCW on desktop so a tall N-S corridor doesn't render as a thin strip;
   // in portrait, stand the line's long axis up to use screen height.
   let minLat = Number.POSITIVE_INFINITY;

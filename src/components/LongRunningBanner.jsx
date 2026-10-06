@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TRAIN_LINES } from '../lib/ctaLines.js';
+import { formatBusRoute } from '../lib/busRoutes.js';
 import { formatDuration, formatEstimatedEnd } from '../lib/format.js';
 import {
   incidentHeadlineText,
@@ -8,7 +8,8 @@ import {
   officialAlert,
   splitObservations,
 } from '../lib/incidents.js';
-import { METRA_LINES } from '../lib/metraLines.js';
+import { METRO_LINES } from '../lib/metroLines.js';
+import { RAIL_LINES } from '../lib/railLines.js';
 import { displayStationName } from '../lib/stations.js';
 import LinePill from './LinePill.jsx';
 
@@ -21,7 +22,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const LONG_RUNNING_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 
 // Cap on how many route pills render inline before collapsing into a "+N".
-// A CTA "Temporary Reroute" alert can touch a dozen bus routes; rendering
+// A SEPTA "Temporary Reroute" alert can touch a dozen bus routes; rendering
 // all of them blows the row vertically and pushes the headline off-screen.
 // Mirrors the same cap used by ActiveRow in ActiveAlerts.jsx.
 const COMPACT_PILL_LIMIT = 1;
@@ -43,7 +44,7 @@ const HEADER_PILL_LIMIT = 4;
 // expanded Day-N rows carry the full LinePill labels.
 function SummaryPill({ kind, routeKey }) {
   const info =
-    kind === 'train' ? TRAIN_LINES[routeKey] : kind === 'metra' ? METRA_LINES[routeKey] : null;
+    kind === 'metro' ? METRO_LINES[routeKey] : kind === 'rail' ? RAIL_LINES[routeKey] : null;
   if (info) {
     return (
       <span
@@ -56,7 +57,7 @@ function SummaryPill({ kind, routeKey }) {
   }
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-700 text-white">
-      {kind === 'bus' ? `#${routeKey}` : routeKey}
+      {kind === 'bus' ? formatBusRoute(routeKey) : routeKey}
     </span>
   );
 }
@@ -182,7 +183,7 @@ export default function LongRunningBanner({ incidents, now = Date.now() }) {
               // biome-ignore lint/correctness/useJsxKeyInIterable: returned wrapper (<a> / <div>) carries the key for each iteration
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 mt-2 rounded-md border border-slate-200 dark:border-gh-border bg-white dark:bg-gh-surface hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
                 {/* Meta cluster wraps internally on narrow screens so the
-                  CTA estimated-end chip doesn't push the row off-screen.
+                  SEPTA posted-end chip doesn't push the row off-screen.
                   Headline sits in its own flex item with flex-1 so it
                   drops to a second visual line on small viewports. */}
                 <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -204,9 +205,9 @@ export default function LongRunningBanner({ incidents, now = Date.now() }) {
                   {estimatedEndText && (
                     <span
                       className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap"
-                      title="CTA tagged this alert with an estimated end time when it was posted."
+                      title="SEPTA posted an end time for this alert."
                     >
-                      · CTA estimated end {estimatedEndText}
+                      · SEPTA expects it to end {estimatedEndText}
                     </span>
                   )}
                 </div>

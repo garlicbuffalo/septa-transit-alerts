@@ -91,7 +91,7 @@ describe('affectedLineSegments', () => {
     const T = 1_000_000_000_000;
     const incident = v2Incident({
       id: '115102',
-      kind: 'train',
+      kind: 'metro',
       routes: ['purple', 'pink', 'green', 'brown', 'orange'],
       cta: {
         alert_id: '115102',
@@ -131,7 +131,7 @@ describe('affectedLineSegments', () => {
   it('uses the alert-level segment (line null) for a pure CTA alert', () => {
     const incident = v2Incident({
       id: 'a1',
-      kind: 'train',
+      kind: 'metro',
       routes: ['red', 'purple'],
       cta: { alert_id: 'a1', affected_from_station: 'Belmont', affected_to_station: 'Howard' },
       observations: [],
@@ -142,7 +142,7 @@ describe('affectedLineSegments', () => {
   it('returns the single segment for a standalone observation', () => {
     const incident = v2Incident({
       id: 'o1',
-      kind: 'train',
+      kind: 'metro',
       routes: ['red'],
       cta: null,
       observations: [{ line: 'red', from_station: 'Howard', to_station: 'Loyola', ts: 1 }],
@@ -153,7 +153,7 @@ describe('affectedLineSegments', () => {
   it('skips segments with no endpoints', () => {
     const incident = v2Incident({
       id: 'm1',
-      kind: 'train',
+      kind: 'metro',
       routes: ['red'],
       cta: { alert_id: 'm1', affected_from_station: null, affected_to_station: null },
       observations: [{ line: 'red', from_station: null, to_station: null, ts: 1 }],

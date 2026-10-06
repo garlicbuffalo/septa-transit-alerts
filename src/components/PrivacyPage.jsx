@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useDarkMode } from '../hooks/useDarkMode.js';
 import { topLevelTrail } from '../lib/breadcrumbs.js';
+import { SITE_NAME } from '../lib/site.js';
 import Breadcrumb from './Breadcrumb.jsx';
 import Footer from './Footer.jsx';
 import Header from './Header.jsx';
@@ -12,9 +13,9 @@ export default function PrivacyPage() {
   const [dark, toggleDark] = useDarkMode();
 
   useEffect(() => {
-    document.title = 'Privacy · Chicago Transit Alerts';
+    document.title = `Privacy · ${SITE_NAME}`;
     return () => {
-      document.title = 'Chicago Transit Alerts';
+      document.title = SITE_NAME;
     };
   }, []);
 
@@ -36,34 +37,14 @@ export default function PrivacyPage() {
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-4">Privacy</h1>
           <div className="bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border p-6 space-y-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
             <p>
-              Chicago Transit Alerts is a static website with no accounts, no backend, and no
-              database of visitors. The short version: it doesn't collect personal data about you.
+              {SITE_NAME} is a static website with no accounts, no backend, and no database of
+              visitors. The short version: it doesn't collect personal data about you.
             </p>
 
             <h2 className={H2}>What we collect</h2>
             <p>
-              Almost nothing. There are no sign-ups, no forms that send anything anywhere, no
-              cookies, and no advertising. The site never asks for your name, email, or location.
-              The one exception is privacy-preserving, cookieless analytics, described below.
-            </p>
-
-            <h2 className={H2}>Analytics</h2>
-            <p>
-              To get a rough sense of how many people use the site and which pages they visit, we
-              use{' '}
-              <a
-                className={LINK}
-                href="https://www.cloudflare.com/web-analytics/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Cloudflare Web Analytics
-              </a>
-              . It's privacy-first: it sets no cookies, uses no client-side storage or
-              fingerprinting, and doesn't track you across sites or over time. It records aggregate
-              page-view data — things like the URL visited, the referring page, browser type, and
-              country — but it doesn't build a profile of you or store anything that identifies you
-              personally.
+              Nothing. There are no sign-ups, no forms that send anything anywhere, no cookies, no
+              analytics, and no advertising. The site never asks for your name, email, or location.
             </p>
 
             <h2 className={H2}>Stored in your browser</h2>
@@ -77,10 +58,8 @@ export default function PrivacyPage() {
 
             <h2 className={H2}>Third parties</h2>
             <p>
-              The only third-party script on the site is the Cloudflare Web Analytics beacon
-              described above, and it's cookieless and doesn't profile you. Aside from that, no
-              trackers, fonts, or embeds run here. Links out to Bluesky, GitHub, the CTA, or Metra
-              only load when you choose to click them, and those sites have their own privacy
+              No third-party scripts, trackers, fonts, or embeds run here. Links out to SEPTA or
+              GitHub only load when you choose to click them, and those sites have their own privacy
               policies.
             </p>
 
@@ -110,8 +89,8 @@ export default function PrivacyPage() {
 
             <h2 className={H2}>The data shown on the site</h2>
             <p>
-              The incidents shown here are built from public CTA and Metra service alerts and public
-              posts by the project's Bluesky bots. None of it is personal information about site
+              The incidents shown here are built from SEPTA's public service alerts and real-time
+              train, elevator, and schedule feeds. None of it is personal information about site
               visitors.
             </p>
 
@@ -120,7 +99,7 @@ export default function PrivacyPage() {
               Questions or concerns? Reach out via the{' '}
               <a
                 className={LINK}
-                href="https://github.com/cailinpitt/chicago-transit-alerts"
+                href="https://github.com/garlicbuffalo/septa-transit-alerts"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -130,7 +109,7 @@ export default function PrivacyPage() {
             </p>
 
             <p className="pt-2 text-xs text-slate-500 dark:text-slate-400">
-              Last updated June 10, 2026.
+              Last updated October 6, 2026.
             </p>
           </div>
         </div>

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   __resetStoreCaches,
-  chicagoMonthKey,
   getIncidentById,
   getIncidentWithContext,
   loadIndex,
@@ -9,11 +8,12 @@ import {
   loadMonth,
   loadRange,
   loadRecent,
+  phillyMonthKey,
 } from '../lib/incidentStore.js';
 
 // Build a minimal v2 incident. The store only touches id/mode/routes for
 // gating + id resolution; lifecycle is enough for the rest.
-function incident(id, { mode = 'train', routes = ['red'] } = {}) {
+function incident(id, { mode = 'metro', routes = ['red'] } = {}) {
   return {
     id,
     mode,
@@ -45,11 +45,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('chicagoMonthKey', () => {
+describe('phillyMonthKey', () => {
   it('honors the Chicago timezone boundary', () => {
     // 2026-06-01T03:00Z is still 2026-05-31 22:00 in Chicago (CDT, -5).
-    expect(chicagoMonthKey(Date.parse('2026-06-01T03:00:00Z'))).toBe('2026-05');
-    expect(chicagoMonthKey(Date.parse('2026-06-01T06:00:00Z'))).toBe('2026-06');
+    expect(phillyMonthKey(Date.parse('2026-06-01T03:00:00Z'))).toBe('2026-05');
+    expect(phillyMonthKey(Date.parse('2026-06-01T06:00:00Z'))).toBe('2026-06');
   });
 });
 
@@ -85,7 +85,7 @@ describe('loadMonth', () => {
   });
 
   it('revalidates the current month and does not memoize it', async () => {
-    const key = chicagoMonthKey(Date.now());
+    const key = phillyMonthKey(Date.now());
     const calls = mockFiles({
       [`alerts/${key}.json`]: { month: key, incidents: [incident('cur')] },
     });
@@ -136,7 +136,7 @@ describe('getIncidentById', () => {
   it('resolves an archived non-canonical post rkey via rkey_month', async () => {
     const canon = {
       id: 'canon',
-      mode: 'train',
+      mode: 'metro',
       routes: ['red'],
       lifecycle: { first_seen_ts: 0, resolved_ts: 0, active: false },
       detections: [{ post_url: 'https://bsky.app/profile/did/post/botrkey' }],
@@ -170,7 +170,7 @@ describe('getIncidentWithContext', () => {
     const may = Date.parse('2026-05-10T12:00:00Z');
     const e2 = {
       id: 'e2',
-      mode: 'train',
+      mode: 'metro',
       routes: ['red'],
       lifecycle: { first_seen_ts: may, resolved_ts: may, active: false },
       detections: [],
@@ -204,7 +204,7 @@ describe('getIncidentWithContext', () => {
     const jun = Date.parse('2026-06-10T12:00:00Z');
     const e3 = {
       id: 'e3',
-      mode: 'train',
+      mode: 'metro',
       routes: ['red'],
       lifecycle: { first_seen_ts: jun, resolved_ts: jun, active: false },
       detections: [],

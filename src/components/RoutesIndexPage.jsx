@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useBrowseData } from '../hooks/useBrowseData.js';
 import { useDarkMode } from '../hooks/useDarkMode.js';
 import { topLevelTrail } from '../lib/breadcrumbs.js';
-import { BUS_ROUTE_NAMES, compareBusRoutes } from '../lib/busRoutes.js';
-import { TRAIN_LINE_ORDER, TRAIN_LINES } from '../lib/ctaLines.js';
-import { METRA_LINE_ORDER, METRA_LINES } from '../lib/metraLines.js';
+import { BUS_ROUTE_NAMES, busRouteDisplayId, compareBusRoutes } from '../lib/busRoutes.js';
+import { METRO_LINE_ORDER, METRO_LINES } from '../lib/metroLines.js';
+import { RAIL_LINE_ORDER, RAIL_LINES } from '../lib/railLines.js';
+import { SITE_NAME } from '../lib/site.js';
 import Breadcrumb from './Breadcrumb.jsx';
 import Footer from './Footer.jsx';
 import Header from './Header.jsx';
@@ -23,9 +24,9 @@ export default function RoutesIndexPage() {
   );
 
   useEffect(() => {
-    document.title = 'All routes · Chicago Transit Alerts';
+    document.title = `All routes · ${SITE_NAME}`;
     return () => {
-      document.title = 'Chicago Transit Alerts';
+      document.title = SITE_NAME;
     };
   }, []);
 
@@ -41,27 +42,28 @@ export default function RoutesIndexPage() {
     if (next !== current) window.history.replaceState(null, '', next);
   }, [search]);
 
-  const { lines, routes, metra } = useMemo(() => {
+  const { lines, routes, rail } = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return { lines: TRAIN_LINE_ORDER, routes: BUS_ROUTES, metra: METRA_LINE_ORDER };
+    if (!q) return { lines: METRO_LINE_ORDER, routes: BUS_ROUTES, rail: RAIL_LINE_ORDER };
     return {
-      lines: TRAIN_LINE_ORDER.filter((line) => {
-        const info = TRAIN_LINES[line];
-        return line.includes(q) || (info?.label.toLowerCase().includes(q) ?? false);
+      lines: METRO_LINE_ORDER.filter((line) => {
+        const info = METRO_LINES[line];
+        const names = [info?.label, info?.name, ...(info?.formerly ?? [])];
+        return line.includes(q) || names.some((n) => n?.toLowerCase().includes(q));
       }),
       routes: BUS_ROUTES.filter(
         (id) =>
           id.toLowerCase().includes(q) || (BUS_ROUTE_NAMES[id] ?? '').toLowerCase().includes(q),
       ),
-      metra: METRA_LINE_ORDER.filter((line) => {
-        const info = METRA_LINES[line];
+      rail: RAIL_LINE_ORDER.filter((line) => {
+        const info = RAIL_LINES[line];
         return line.includes(q) || (info?.label.toLowerCase().includes(q) ?? false);
       }),
     };
   }, [search]);
 
   const searching = search.trim() !== '';
-  const nothingMatches = lines.length === 0 && routes.length === 0 && metra.length === 0;
+  const nothingMatches = lines.length === 0 && routes.length === 0 && rail.length === 0;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-gh-canvas flex flex-col">
@@ -80,12 +82,12 @@ export default function RoutesIndexPage() {
           <Breadcrumb items={topLevelTrail('Routes')} className="mb-3" />
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">All routes</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
-            Every CTA train line, bus route, and Metra line. Pick one for its alert and disruption
-            history.
+            Every SEPTA Metro line, bus route, and Regional Rail line. Pick one for its alert and
+            disruption history.
           </p>
 
-          {/* Search by route number or name — the fast path through 140+ bus
-              routes; also narrows the train lines by name. */}
+          {/* Search by route number or name — the fast path through 150+ bus
+              routes; also narrows the Metro and Regional Rail lines by name. */}
           <div className="relative w-full sm:w-72 mb-4">
             <input
               type="search"
@@ -117,19 +119,20 @@ export default function RoutesIndexPage() {
                 {lines.length > 0 && (
                   <section>
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
-                      Train lines
+                      SEPTA Metro
                     </h2>
                     <div className="flex flex-wrap gap-1.5">
                       {lines.map((line) => {
-                        const info = TRAIN_LINES[line];
+                        const info = METRO_LINES[line];
                         return (
                           <a
                             key={line}
                             href={`/line/${line}`}
                             className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold hover:opacity-80 transition-opacity"
                             style={{ backgroundColor: info.color, color: info.textColor }}
+                            title={info.name}
                           >
-                            {info.label}
+                            {info.label} <span className="font-normal">{info.name}</span>
                           </a>
                         );
                       })}
@@ -137,18 +140,18 @@ export default function RoutesIndexPage() {
                   </section>
                 )}
 
-                {metra.length > 0 && (
+                {rail.length > 0 && (
                   <section>
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
-                      Metra lines
+                      Regional Rail
                     </h2>
                     <div className="flex flex-wrap gap-1.5">
-                      {metra.map((line) => {
-                        const info = METRA_LINES[line];
+                      {rail.map((line) => {
+                        const info = RAIL_LINES[line];
                         return (
                           <a
                             key={line}
-                            href={`/metra/line/${line}`}
+                            href={`/rail/line/${line}`}
                             className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold hover:opacity-80 transition-opacity"
                             style={{ backgroundColor: info.color, color: info.textColor }}
                           >
@@ -174,7 +177,7 @@ export default function RoutesIndexPage() {
                             className="flex items-center gap-2 px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-gh-border transition-colors"
                           >
                             <span className="shrink-0 min-w-[2.75rem] text-center px-1.5 py-0.5 rounded text-xs font-semibold tabular-nums bg-slate-100 dark:bg-gh-subtle text-slate-600 dark:text-slate-300">
-                              {id}
+                              {busRouteDisplayId(id)}
                             </span>
                             <span className="truncate text-sm text-slate-700 dark:text-slate-200">
                               {BUS_ROUTE_NAMES[id]}

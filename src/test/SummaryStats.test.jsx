@@ -8,7 +8,7 @@ import SummaryStats from '../components/SummaryStats.jsx';
 const baseProps = {
   activeCount: 2,
   weeklyCount: 5,
-  mostAffectedKind: 'train',
+  mostAffectedKind: 'metro',
   mostAffectedId: 'red',
   quietestLineId: 'yellow',
   quietestLineDays: 10,
@@ -54,9 +54,9 @@ describe('SummaryStats', () => {
     render(
       <SummaryStats
         {...baseProps}
-        metraMostAffectedId="bnsf"
-        metraQuietestLineId="up-n"
-        metraQuietestLineDays={9}
+        railMostAffectedId="bnsf"
+        railQuietestLineId="up-n"
+        railQuietestLineDays={9}
       />,
     );
     expect(screen.getAllByRole('link', { name: /Red Line/ })[0]).toHaveAttribute(
@@ -69,11 +69,11 @@ describe('SummaryStats', () => {
     );
     expect(screen.getAllByRole('link', { name: /BNSF/ })[0]).toHaveAttribute(
       'href',
-      '/metra/line/bnsf',
+      '/rail/line/bnsf',
     );
     expect(screen.getAllByRole('link', { name: /Union Pacific North/ })[0]).toHaveAttribute(
       'href',
-      '/metra/line/up-n',
+      '/rail/line/up-n',
     );
   });
 
@@ -81,9 +81,9 @@ describe('SummaryStats', () => {
     render(
       <SummaryStats
         {...baseProps}
-        metraMostAffectedId="bnsf"
-        metraQuietestLineId="up-n"
-        metraQuietestLineDays={9}
+        railMostAffectedId="bnsf"
+        railQuietestLineId="up-n"
+        railQuietestLineDays={9}
       />,
     );
     expect(screen.getAllByText(/Red Line/).length).toBeGreaterThan(0);
@@ -95,15 +95,15 @@ describe('SummaryStats', () => {
   it('gates the per-agency lines on the agency filter', () => {
     const props = {
       ...baseProps,
-      metraMostAffectedId: 'bnsf',
-      metraQuietestLineId: 'up-n',
-      metraQuietestLineDays: 9,
+      railMostAffectedId: 'bnsf',
+      railQuietestLineId: 'up-n',
+      railQuietestLineDays: 9,
     };
     const { rerender } = render(<SummaryStats {...props} agency="cta" />);
     expect(screen.getAllByText(/Red Line/).length).toBeGreaterThan(0);
     expect(screen.queryAllByText(/BNSF/)).toHaveLength(0);
 
-    rerender(<SummaryStats {...props} agency="metra" />);
+    rerender(<SummaryStats {...props} agency="rail" />);
     expect(screen.queryAllByText(/Red Line/)).toHaveLength(0);
     expect(screen.getAllByText(/BNSF/).length).toBeGreaterThan(0);
   });
@@ -114,7 +114,7 @@ describe('SummaryStats', () => {
   });
 
   it('labels CTA train disruption hours explicitly', () => {
-    render(<SummaryStats {...baseProps} observations={[railObservation('train', 'red')]} />);
+    render(<SummaryStats {...baseProps} observations={[railObservation('metro', 'red')]} />);
     expect(screen.getAllByText(/CTA trains disrupted in last 7 days/i).length).toBeGreaterThan(0);
   });
 
@@ -123,7 +123,7 @@ describe('SummaryStats', () => {
       <SummaryStats
         {...baseProps}
         agency="cta"
-        observations={[railObservation('train', 'red'), railObservation('metra', 'me')]}
+        observations={[railObservation('metro', 'red'), railObservation('rail', 'me')]}
       />,
     );
     expect(screen.getAllByText(/CTA trains disrupted in last 7 days/i).length).toBeGreaterThan(0);
@@ -134,8 +134,8 @@ describe('SummaryStats', () => {
     render(
       <SummaryStats
         {...baseProps}
-        agency="metra"
-        observations={[railObservation('train', 'red'), railObservation('metra', 'me')]}
+        agency="rail"
+        observations={[railObservation('metro', 'red'), railObservation('rail', 'me')]}
       />,
     );
     expect(screen.queryAllByText(/CTA trains disrupted in last 7 days/i)).toHaveLength(0);

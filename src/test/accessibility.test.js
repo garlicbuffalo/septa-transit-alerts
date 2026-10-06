@@ -34,9 +34,9 @@ describe('accessibility helpers', () => {
     expect(stationHref(outage())).toBe('/station/belmont-red-brown-purple');
     expect(
       stationHref(
-        outage({ agency: 'metra', station: { slug: 'aurora', name: 'Aurora', lines: ['bnsf'] } }),
+        outage({ agency: 'rail', station: { slug: 'aurora', name: 'Aurora', lines: ['bnsf'] } }),
       ),
-    ).toBe('/metra/station/aurora');
+    ).toBe('/rail/station/aurora');
   });
 
   it('matches CTA line aliases when filtering outages', () => {
@@ -87,12 +87,12 @@ describe('accessibility helpers', () => {
       outage({ id: 'cta-2' }),
       outage({
         id: 'metra-1',
-        agency: 'metra',
+        agency: 'rail',
         station: { slug: 'aurora', name: 'Aurora', lines: ['bnsf'] },
       }),
     ];
     // two outages share the Belmont station, so it counts once.
-    expect(summarizeOutages(rows)).toEqual({ total: 3, stations: 2, cta: 2, metra: 1 });
+    expect(summarizeOutages(rows)).toEqual({ total: 3, stations: 2, cta: 2, rail: 1 });
   });
 
   it('collapses multiple units at one station into a single group', () => {

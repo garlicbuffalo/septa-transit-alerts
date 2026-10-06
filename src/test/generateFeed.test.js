@@ -17,7 +17,7 @@ const HOUR = 60 * MIN;
 
 // A merged/alert-backed train incident (carries a headline + post_url).
 const alertInc = (over = {}) => ({
-  kind: 'train',
+  kind: 'metro',
   routes: ['red'],
   headline: 'Red Line Delays',
   alert_id: 'a1',
@@ -30,7 +30,7 @@ const alertInc = (over = {}) => ({
 
 // A standalone bot observation (no headline/alert_id).
 const obsInc = (over = {}) => ({
-  kind: 'train',
+  kind: 'metro',
   line: 'blue',
   detection_source: 'gap',
   post_url: 'https://bsky.app/profile/x/post/o1',
@@ -161,7 +161,7 @@ describe('scopedRecords', () => {
   ];
 
   it('selects only incidents on the scoped train line and preserves pool order', () => {
-    const ids = scopedRecords(pool, 'train', 'red').map((r) => r.id);
+    const ids = scopedRecords(pool, 'metro', 'red').map((r) => r.id);
     expect(ids).toEqual([
       'tag:chicagotransitalerts.app,2026:event/red-new',
       'tag:chicagotransitalerts.app,2026:event/redpurple', // multi-route red+purple still matches
@@ -169,7 +169,7 @@ describe('scopedRecords', () => {
   });
 
   it('matches a multi-route incident from any of its routes', () => {
-    const ids = scopedRecords(pool, 'train', 'purple').map((r) => r.id);
+    const ids = scopedRecords(pool, 'metro', 'purple').map((r) => r.id);
     expect(ids).toEqual(['tag:chicagotransitalerts.app,2026:event/redpurple']);
   });
 
@@ -207,8 +207,8 @@ describe('emitAtom', () => {
 
 // A Metra cancellation/delay: website-data-first, so NO Bluesky post, and a
 // zero-duration point event (resolved_ts == first_seen_ts).
-const metraInc = (over = {}) => ({
-  kind: 'metra',
+const railInc = (over = {}) => ({
+  kind: 'rail',
   id: 'metra-678',
   routes: ['md-n'],
   detection_source: 'delay',
@@ -223,27 +223,27 @@ const metraInc = (over = {}) => ({
 
 describe('Metra incidents in the feed', () => {
   it('links a postless Metra record to its SPA event page by id', () => {
-    const rec = buildEntryRecord(metraInc());
-    expect(rec.link).toBe('https://chicagotransitalerts.app/event/metra-678');
+    const rec = buildEntryRecord(railInc());
+    expect(rec.link).toBe('https://chicagotransitalerts.app/event/rail-678');
     expect(rec.id).toBe('tag:chicagotransitalerts.app,2026:obs-metra-678');
     expect(rec.thumb).toBe(null); // no OG card for postless Metra
   });
 
   it('is never treated as a detector blip despite zero duration', () => {
-    expect(isLikelyDetectorBlip(metraInc())).toBe(false);
+    expect(isLikelyDetectorBlip(railInc())).toBe(false);
   });
 
   it('tags a Metra entry with the Metra mode + line category', () => {
-    const rec = buildEntryRecord(metraInc());
+    const rec = buildEntryRecord(railInc());
     const terms = rec.categories.map((c) => c.term);
-    expect(terms).toContain('metra');
-    expect(terms).toContain('metra-line-md-n');
+    expect(terms).toContain('rail');
+    expect(terms).toContain('rail-line-md-n');
   });
 
   it('scopes per-line Metra feeds by the lowercase line key', () => {
-    const pool = [metraInc(), metraInc({ id: 'metra-9', routes: ['up-n'] })];
-    expect(scopedRecords(pool, 'metra', 'md-n')).toHaveLength(1);
-    expect(scopedRecords(pool, 'metra', 'up-n')).toHaveLength(1);
-    expect(scopedRecords(pool, 'metra', 'bnsf')).toHaveLength(0);
+    const pool = [railInc(), railInc({ id: 'metra-9', routes: ['up-n'] })];
+    expect(scopedRecords(pool, 'rail', 'md-n')).toHaveLength(1);
+    expect(scopedRecords(pool, 'rail', 'up-n')).toHaveLength(1);
+    expect(scopedRecords(pool, 'rail', 'bnsf')).toHaveLength(0);
   });
 });

@@ -9,11 +9,21 @@ export default function Footer() {
       }}
     >
       <div className="max-w-5xl mx-auto px-4 pt-6 sm:pt-4 text-xs text-slate-500 dark:text-slate-400">
-        Data provided by CTA and Metra. Unofficial — not affiliated with, endorsed by, or sponsored
-        by the Chicago Transit Authority or Metra.
+        Data from SEPTA's public APIs. Unofficial — not affiliated with, endorsed by, or sponsored
+        by the Southeastern Pennsylvania Transportation Authority (SEPTA).
       </div>
       <div className="max-w-5xl mx-auto px-4 py-6 sm:py-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
-        <span>Built by Cailin</span>
+        <span>
+          Adapted from{' '}
+          <a
+            href="https://github.com/cailinpitt/chicago-transit-alerts"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-slate-600 dark:hover:text-slate-300 underline transition-colors"
+          >
+            Chicago Transit Alerts
+          </a>
+        </span>
         <a
           href="/about"
           className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
@@ -39,7 +49,7 @@ export default function Footer() {
           Privacy
         </a>
         <a
-          href="https://github.com/cailinpitt/chicago-transit-alerts"
+          href="https://github.com/garlicbuffalo/septa-transit-alerts"
           target="_blank"
           rel="noopener noreferrer"
           className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors"

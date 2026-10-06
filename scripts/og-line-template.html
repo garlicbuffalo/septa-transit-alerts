@@ -89,7 +89,7 @@
       /* Optional headline below the pill — empty on train cards (the pill
          already says "Red Line"), populated on bus cards where the pill
          carries just "#10" and the route name is too long to live inside
-         it. Clamp to 2 lines for the longest CTA bus names. */
+         it. Clamp to 2 lines for the longest SEPTA bus route names. */
       .title {
         font-size: 56px;
         line-height: 1.05;
@@ -137,15 +137,15 @@
     <div class="card" style="--accent: __ACCENT__; --accent-soft: __ACCENT_SOFT__; --accent-text: __ACCENT_TEXT__;">
       <div class="accent-bar"></div>
       __ACTIVE_RIBBON__
-      <p class="eyebrow">Chicago Transit Alerts</p>
+      <p class="eyebrow">SEPTA Transit Alerts</p>
       <div class="pill">__LABEL__</div>
       <h1 class="title">__TITLE__</h1>
       <p class="subtitle">__SUBTITLE__</p>
       <div class="footer">
         <div class="url">
-          <span class="scheme">https://</span>chicagotransitalerts.app<span class="path">__PATH__</span>
+          <span class="scheme">https://</span>__SITE_HOST__<span class="path">__PATH__</span>
         </div>
-        <div class="tag">Unofficial · Not affiliated with the CTA</div>
+        <div class="tag">Unofficial · Not affiliated with SEPTA</div>
       </div>
     </div>
   </body>
