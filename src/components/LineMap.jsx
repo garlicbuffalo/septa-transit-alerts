@@ -207,10 +207,10 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
               padding turns that negative offset into a positive one inside
               the padding-box (where `overflow-x: auto` is coerced to clip
               both axes). */}
-          <div
-            ref={scrollRef}
-            className={`relative overflow-x-auto flex-1 min-w-0 rounded-md ${onMap ? '' : 'py-6'}`}
-          >
+          {/* The fade is a sibling of the scroller, not a child: an absolutely
+              positioned child of a scroller scrolls with its content, which left
+              the fade stranded mid-map (a hard seam) once scrolled sideways. */}
+          <div className="relative flex-1 min-w-0 rounded-md">
             <div
               aria-hidden="true"
               className={`pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l ${
@@ -219,89 +219,94 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
                 showRightFade ? 'opacity-100' : 'opacity-0'
               }`}
             />
-            {/* SVG sized container — labels are HTML siblings of the SVG,
+            <div
+              ref={scrollRef}
+              className={`relative overflow-x-auto rounded-md ${onMap ? '' : 'py-6'}`}
+            >
+              {/* SVG sized container — labels are HTML siblings of the SVG,
                 positioned in % of this container so they scale with the
                 SVG and aren't clipped by viewBox bounds. */}
-            <div
-              className="relative rounded-md"
-              style={{ minWidth: Math.min(map.width, 560), width: '100%' }}
-            >
-              <BasemapTiles basemap={map.basemap} />
-              <svg
-                viewBox={`0 0 ${map.width} ${map.height}`}
-                preserveAspectRatio="xMidYMid meet"
-                role="img"
-                aria-label={`${mapLabel} stations heatmap`}
-                className="relative block w-full h-auto"
+              <div
+                className="relative rounded-md"
+                style={{ minWidth: Math.min(map.width, 560), width: '100%' }}
               >
-                <title>{`${mapLabel} stations`}</title>
-                {onMap &&
-                  trackPaths.map((d) => (
+                <BasemapTiles basemap={map.basemap} />
+                <svg
+                  viewBox={`0 0 ${map.width} ${map.height}`}
+                  preserveAspectRatio="xMidYMid meet"
+                  role="img"
+                  aria-label={`${mapLabel} stations heatmap`}
+                  className="relative block w-full h-auto"
+                >
+                  <title>{`${mapLabel} stations`}</title>
+                  {onMap &&
+                    trackPaths.map((d) => (
+                      <path
+                        key={`edge:${d}`}
+                        d={d}
+                        fill="none"
+                        stroke="#0b0f14"
+                        strokeWidth={7}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity={0.6}
+                      />
+                    ))}
+                  {trackPaths.map((d) => (
                     <path
-                      key={`edge:${d}`}
+                      key={d}
                       d={d}
                       fill="none"
-                      stroke="#0b0f14"
-                      strokeWidth={7}
+                      stroke={hexToRgba(accent, trackAlpha)}
+                      strokeWidth={4}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      opacity={0.6}
                     />
                   ))}
-                {trackPaths.map((d) => (
-                  <path
-                    key={d}
-                    d={d}
-                    fill="none"
-                    stroke={hexToRgba(accent, trackAlpha)}
-                    strokeWidth={4}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                ))}
-                {map.stations.map((s) => (
-                  <StationDot
-                    key={s.name}
-                    station={s}
-                    maxCount={map.maxCount}
-                    accent={accent}
-                    radius={6}
-                    hrefBase={hrefBase}
-                    onMap={onMap}
-                  />
-                ))}
-                {/* Marker rectangle on the main map showing where the
+                  {map.stations.map((s) => (
+                    <StationDot
+                      key={s.name}
+                      station={s}
+                      maxCount={map.maxCount}
+                      accent={accent}
+                      radius={6}
+                      hrefBase={hrefBase}
+                      onMap={onMap}
+                    />
+                  ))}
+                  {/* Marker rectangle on the main map showing where the
                     downtown inset zooms in. Dashed slate so it reads as a
                     reference frame, not part of the data. */}
-                {inset && (
-                  <rect
-                    x={map.downtown.mainBoxRect.x}
-                    y={map.downtown.mainBoxRect.y}
-                    width={map.downtown.mainBoxRect.width}
-                    height={map.downtown.mainBoxRect.height}
-                    fill="none"
-                    stroke={onMap ? '#e2e8f0' : '#94a3b8'}
-                    strokeWidth={1.5}
-                    strokeDasharray="4 3"
-                    rx={3}
-                  />
-                )}
-              </svg>
-              {/* Terminal labels — HTML overlays positioned by the same
+                  {inset && (
+                    <rect
+                      x={map.downtown.mainBoxRect.x}
+                      y={map.downtown.mainBoxRect.y}
+                      width={map.downtown.mainBoxRect.width}
+                      height={map.downtown.mainBoxRect.height}
+                      fill="none"
+                      stroke={onMap ? '#e2e8f0' : '#94a3b8'}
+                      strokeWidth={1.5}
+                      strokeDasharray="4 3"
+                      rx={3}
+                    />
+                  )}
+                </svg>
+                {/* Terminal labels — HTML overlays positioned by the same
                   relative container, so they overflow naturally into the
                   card padding without SVG clipping. */}
-              {map.stations
-                .filter((s) => s.isTerminal)
-                .map((s) => (
-                  <TerminalLabel
-                    key={`label-${s.name}`}
-                    station={s}
-                    mapWidth={map.width}
-                    mapHeight={map.height}
-                    radius={6}
-                    onMap={onMap}
-                  />
-                ))}
+                {map.stations
+                  .filter((s) => s.isTerminal)
+                  .map((s) => (
+                    <TerminalLabel
+                      key={`label-${s.name}`}
+                      station={s}
+                      mapWidth={map.width}
+                      mapHeight={map.height}
+                      radius={6}
+                      onMap={onMap}
+                    />
+                  ))}
+              </div>
             </div>
           </div>
 

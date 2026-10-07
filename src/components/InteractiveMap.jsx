@@ -28,6 +28,9 @@ import { SourceCredit } from './Basemap.jsx';
 
 const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? '');
 const EDGE = '#0b0f14';
+// Defaults are shared, not built per render: a new array each time would look
+// like new lines to the effects below.
+const NONE = [];
 const HINT_MS = 1600;
 // A wheel's notch is about 100 pixels; a notch zooms by about half a level.
 const WHEEL_ZOOM_PER_PX = 1 / 200;
@@ -45,8 +48,8 @@ const wheelPixels = (e) => (e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY);
 export default function InteractiveMap({
   label,
   fit,
-  lines = [],
-  dots = [],
+  lines = NONE,
+  dots = NONE,
   className = 'h-[360px] sm:h-[480px]',
   children,
 }) {
@@ -138,7 +141,8 @@ export default function InteractiveMap({
     };
   }, [showHint]);
 
-  // The lines and dots, redrawn when they change, and the view fitted to them.
+  // The lines and dots, redrawn when they change. This leaves the view alone: a
+  // redraw must never undo where the reader has panned and zoomed to.
   useEffect(() => {
     const map = mapRef.current;
     const group = layerRef.current;
@@ -173,8 +177,15 @@ export default function InteractiveMap({
         interactive: false,
       }).addTo(group);
     }
+  }, [lines, dots]);
+
+  // The view is fitted when the points to fit change (a new route, or the other
+  // direction), and when the reader asks for it. `fit` is compared by identity,
+  // so callers pass one that only changes with the data.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fit is the trigger
+  useEffect(() => {
     resetView();
-  }, [lines, dots, resetView]);
+  }, [fit, resetView]);
 
   return (
     <div>

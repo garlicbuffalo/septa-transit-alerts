@@ -107,8 +107,11 @@ describe('InteractiveMap', () => {
     expect(zoomOf(container)).toBeGreaterThan(start);
   });
 
-  it('redraws and refits when its lines change', () => {
+  it('redraws new lines without moving the view', async () => {
     const { container, rerender } = render(<InteractiveMap {...props} />);
+    await userEvent.click(screen.getByTitle('Zoom in'));
+    await userEvent.click(screen.getByTitle('Zoom in'));
+    const zoomed = zoomOf(container);
     rerender(
       <InteractiveMap
         {...props}
@@ -117,6 +120,47 @@ describe('InteractiveMap', () => {
       />,
     );
     expect(container.querySelectorAll('.leaflet-overlay-pane path')).toHaveLength(2);
+    expect(zoomOf(container)).toBe(zoomed);
+  });
+
+  it('refits when the points to fit change, as when the other direction is chosen', async () => {
+    const { container, rerender } = render(<InteractiveMap {...props} />);
+    const start = zoomOf(container);
+    await userEvent.click(screen.getByTitle('Zoom in'));
+    await userEvent.click(screen.getByTitle('Zoom in'));
+    expect(zoomOf(container)).toBeGreaterThan(start);
+    // A different, much shorter route: fitted at a different zoom than before.
+    const short = [
+      [39.95, -75.19],
+      [39.951, -75.189],
+    ];
+    rerender(
+      <InteractiveMap {...props} fit={short} lines={[{ id: 'c', points: short, color: '#fff' }]} />,
+    );
+    expect(zoomOf(container)).not.toBe(start);
+    expect(zoomOf(container)).toBeGreaterThan(start);
+  });
+
+  it('keeps the reader’s view when it re-renders for its own reasons', async () => {
+    // Showing and hiding the scroll hint re-renders the map; with no dots passed,
+    // that must not look like new dots and reset a view the reader has zoomed.
+    vi.useFakeTimers();
+    const { container } = render(<InteractiveMap {...props} dots={undefined} />);
+    act(() => {
+      screen.getByTitle('Zoom in').click();
+      screen.getByTitle('Zoom in').click();
+    });
+    const zoomed = zoomOf(container);
+    const map = screen.getByRole('region', { name: /Interactive map/ });
+    act(() => {
+      map.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+    });
+    expect(screen.getByText(/scroll to zoom the map/)).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.queryByText(/scroll to zoom the map/)).not.toBeInTheDocument();
+    expect(zoomOf(container)).toBe(zoomed);
   });
 
   it('moves to the fallback tiles when the primary can’t serve any', () => {

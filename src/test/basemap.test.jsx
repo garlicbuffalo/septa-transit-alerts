@@ -350,4 +350,16 @@ describe('the maps on tiles', () => {
     // One credit line for the card, not one per map.
     expect(screen.getAllByText('© OpenStreetMap contributors')).toHaveLength(1);
   });
+
+  it('LineMap keeps its scroll-for-more fade outside the box that scrolls', () => {
+    // A fade inside the scroller scrolls with it, and ends up as a hard seam
+    // mid-map once the map is scrolled sideways.
+    const { container } = render(<LineMap lineKey="l1" stationIndex={new Map()} />);
+    const scroller = container.querySelector('.overflow-x-auto');
+    const fade = container.querySelector('.bg-gradient-to-l');
+    expect(scroller).not.toBeNull();
+    expect(fade).not.toBeNull();
+    expect(scroller.contains(fade)).toBe(false);
+    expect(fade.parentElement).toBe(scroller.parentElement);
+  });
 });
