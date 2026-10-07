@@ -58,9 +58,12 @@ export default function PrivacyPage() {
 
             <h2 className={H2}>Third parties</h2>
             <p>
-              No third-party scripts, trackers, fonts, or embeds run here. Links out to Bluesky,
-              SEPTA, or GitHub only load when you choose to click them, and those sites have their
-              own privacy policies.
+              No third-party scripts, trackers, fonts, or embeds run here. The one thing loaded from
+              outside is the map tiles behind the maps on event and line pages: your browser fetches
+              those images from OpenStreetMap or, where configured, from a relay serving CARTO's
+              map, so that host sees your IP address, which tiles you view, and this site's address.
+              Links out to Bluesky, SEPTA, or GitHub only load when you choose to click them, and
+              those sites have their own privacy policies.
             </p>
 
             <h2 className={H2}>Hosting and server logs</h2>

@@ -6,6 +6,7 @@
 // Bus is excluded by design — the data files cover SEPTA Metro only, and a bus
 // route's stop count makes a per-stop heatmap noisy at this scale.
 
+import { fitMercator } from './basemap.js';
 import lines from './metroLineShapes.json' with { type: 'json' };
 import { METRO_LINE_ORDER, METRO_LINES, normalizeMetroLine } from './metroLines.js';
 import stations from './metroStations.json' with { type: 'json' };
@@ -65,8 +66,16 @@ function inBox(lat, lon, bbox) {
 // south → right. Used for very vertical lines (B1, Lansdale/Doylestown) so the SVG
 // stays landscape-ish rather than becoming a tall narrow strip that demands
 // page scroll to get past.
-function makeProjection(points, { maxWidth, maxHeight, margin, minHeight = 200, rotate = false }) {
+//
+// `basemap: true` projects in Web Mercator onto a fixed-size canvas instead, so
+// map tiles can sit under the SVG (see basemap.js); it never rotates, and the
+// result carries `basemap` ({ z, tiles }) for <BasemapTiles>.
+function makeProjection(
+  points,
+  { maxWidth, maxHeight, margin, minHeight = 200, rotate = false, basemap = false },
+) {
   if (points.length === 0) return null;
+  if (basemap) return fitMercator(points, { maxWidth, maxHeight, margin, minHeight });
 
   let minLat = Number.POSITIVE_INFINITY;
   let maxLat = Number.NEGATIVE_INFINITY;
@@ -231,6 +240,7 @@ export function projectInto(rawStations, segments, opts) {
     stations: projectedStations,
     tracks: projectedTracks,
     project: proj.project,
+    basemap: proj.basemap ?? null,
   };
 }
 
@@ -247,6 +257,8 @@ export function projectInto(rawStations, segments, opts) {
  * @param {number} [options.maxWidth]
  * @param {number} [options.maxHeight]
  * @param {number} [options.margin]
+ * @param {boolean} [options.basemap] project onto map tiles (Web Mercator, never
+ *   rotated); the result's `basemap` (and `downtown.basemap`) say which tiles
  * @returns {{
  *   width: number,
  *   height: number,
@@ -265,7 +277,7 @@ export function projectInto(rawStations, segments, opts) {
 export function buildLineMap(
   lineKey,
   stationIndex = null,
-  { maxWidth = 720, maxHeight = 540, margin = 24, preferPortrait = false } = {},
+  { maxWidth = 720, maxHeight = 540, margin = 24, preferPortrait = false, basemap = false } = {},
 ) {
   if (!METRO_LINE_ORDER.includes(lineKey)) return null;
   const segments = lines[lineKey];
@@ -308,7 +320,9 @@ export function buildLineMap(
   const cosCorrection = Math.cos((meanLat * Math.PI) / 180);
   const naturalAspect =
     (Math.max(maxLon - minLon, 1e-6) * cosCorrection) / Math.max(maxLat - minLat, 1e-6);
-  const rotate = preferPortrait ? naturalAspect > 1 : naturalAspect < 0.5;
+  // Tiles can't be turned (their street names would run sideways), so a
+  // basemap never rotates.
+  const rotate = !basemap && (preferPortrait ? naturalAspect > 1 : naturalAspect < 0.5);
 
   const main = projectInto(enriched, segments, {
     maxWidth,
@@ -317,6 +331,7 @@ export function buildLineMap(
     maxHeight: rotate && !preferPortrait ? 240 : maxHeight,
     margin,
     rotate,
+    basemap,
   });
   if (!main) return null;
 
@@ -369,6 +384,7 @@ export function buildLineMap(
       // the main lines up with the inset's geometry — if main is rotated
       // sideways, the inset should be too.
       rotate,
+      basemap,
     });
     if (inset) {
       // Marker rect on the main map showing the area the inset zooms into.
@@ -380,6 +396,7 @@ export function buildLineMap(
         tracks: inset.tracks,
         width: inset.width,
         height: inset.height,
+        basemap: inset.basemap,
         mainBoxRect: {
           x: Math.min(c1.x, c2.x),
           y: Math.min(c1.y, c2.y),
@@ -399,6 +416,7 @@ export function buildLineMap(
     // exposed so callers can drop arbitrary points (e.g. live vehicle positions
     // for event replay) onto the schematic in the same coordinate space.
     project: main.project,
+    basemap: main.basemap,
     maxCount,
     downtown,
   };
@@ -470,6 +488,7 @@ function normalizeStationKey(name) {
  * @param {number} [options.maxWidth]
  * @param {number} [options.maxHeight]
  * @param {number} [options.margin]
+ * @param {boolean} [options.basemap] project onto map tiles (see buildLineMap)
  * @param {string[]} [options.cropToStationNames] When provided, the projection's
  *   bounding box is computed from these stations + a buffer instead of the full
  *   line geometries. Tracks/stations outside this box still get projected (and
@@ -480,11 +499,12 @@ function normalizeStationKey(name) {
  *   height: number,
  *   tracksByLine: Array<{ key: string, label: string, color: string, tracks: Array<Array<{x:number,y:number}>> }>,
  *   stations: Array<{ name: string, slug: string|null, lines: string[], x: number, y: number }>,
+ *   basemap: { z: number, tiles: Array<object> } | null,
  * } | null}
  */
 export function buildMultiLineMap(
   lineKeys,
-  { maxWidth = 720, maxHeight = 420, margin = 24, cropToStationNames = null } = {},
+  { maxWidth = 720, maxHeight = 420, margin = 24, cropToStationNames = null, basemap = false } = {},
 ) {
   const keys = [...new Set((lineKeys || []).filter((k) => METRO_LINE_ORDER.includes(k)))];
   if (keys.length === 0) return null;
@@ -519,7 +539,13 @@ export function buildMultiLineMap(
       }
     }
   }
-  const proj = makeProjection(projectionPoints, { maxWidth, maxHeight, margin, rotate: false });
+  const proj = makeProjection(projectionPoints, {
+    maxWidth,
+    maxHeight,
+    margin,
+    rotate: false,
+    basemap,
+  });
   if (!proj) return null;
 
   const projectedStations = lineStations.map((s) => ({
@@ -536,5 +562,11 @@ export function buildMultiLineMap(
     tracks: d.segs.map((seg) => seg.map(([lat, lon]) => proj.project(lat, lon))),
   }));
 
-  return { width: proj.width, height: proj.height, tracksByLine, stations: projectedStations };
+  return {
+    width: proj.width,
+    height: proj.height,
+    tracksByLine,
+    stations: projectedStations,
+    basemap: proj.basemap ?? null,
+  };
 }

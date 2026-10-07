@@ -34,6 +34,7 @@ export { sliceTrackBetween };
  *   tracks: Array<Array<{x:number,y:number}>>,
  *   stations: Array<{name:string, slug:string, count:number, isTerminal:boolean, x:number, y:number}>,
  *   project: (lat:number, lon:number) => {x:number,y:number},
+ *   basemap: { z: number, tiles: Array<object> } | null,
  *   maxCount: number,
  *   downtown: null,
  * } | null}
@@ -41,7 +42,7 @@ export { sliceTrackBetween };
 export function buildRailLineMap(
   lineKey,
   stationIndex = null,
-  { maxWidth = 720, maxHeight = 540, margin = 24, preferPortrait = false } = {},
+  { maxWidth = 720, maxHeight = 540, margin = 24, preferPortrait = false, basemap = false } = {},
 ) {
   const key = normalizeRailLine(lineKey);
   if (!RAIL_LINE_ORDER.includes(key)) return null;
@@ -83,13 +84,15 @@ export function buildRailLineMap(
   const cosCorrection = Math.cos((meanLat * Math.PI) / 180);
   const naturalAspect =
     (Math.max(maxLon - minLon, 1e-6) * cosCorrection) / Math.max(maxLat - minLat, 1e-6);
-  const rotate = preferPortrait ? naturalAspect > 1 : naturalAspect < 0.5;
+  // A basemap's tiles can't be turned, so it never rotates (see buildLineMap).
+  const rotate = !basemap && (preferPortrait ? naturalAspect > 1 : naturalAspect < 0.5);
 
   const main = projectInto(enriched, segments, {
     maxWidth,
     maxHeight: rotate && !preferPortrait ? 240 : maxHeight,
     margin,
     rotate,
+    basemap,
   });
   if (!main) return null;
 
@@ -104,6 +107,7 @@ export function buildRailLineMap(
     tracks: main.tracks,
     stations: main.stations,
     project: main.project,
+    basemap: main.basemap,
     maxCount,
     downtown: null,
   };

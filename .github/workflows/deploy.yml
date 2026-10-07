@@ -155,6 +155,11 @@ jobs:
       #   DATA_BASE_URL  optional: serve data from another origin instead of
       #                  /data (e.g. raw.githubusercontent.com for the data
       #                  branch, so the live site updates without a redeploy)
+      #   TILES_URL      optional: the map tiles' address, the septa-tracker
+      #                  relay's /api/tiles (https://<its domain>/api/tiles),
+      #                  which serves CARTO's dark map with a key kept in
+      #                  Cloudflare. Without it, the maps use OpenStreetMap's
+      #                  tiles, darkened
       #   BLUESKY_HANDLES optional: the bot accounts' handles, which turns on
       #                  the site's "Follow on Bluesky" links, as
       #                  "alerts=handle,metro=handle,bus=handle,rail=handle"
@@ -164,6 +169,7 @@ jobs:
           SITE_URL: ${{ vars.SITE_URL }}
           VITE_SITE_URL: ${{ vars.SITE_URL }}
           VITE_DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+          VITE_TILES_URL: ${{ vars.TILES_URL }}
           BLUESKY_HANDLES: ${{ vars.BLUESKY_HANDLES }}
           VITE_BLUESKY_HANDLES: ${{ vars.BLUESKY_HANDLES }}
 
