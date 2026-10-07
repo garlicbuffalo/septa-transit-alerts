@@ -82,7 +82,7 @@ export default function RightNow({
     <section className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Right now
+          Active alerts
         </h2>
         {burstActive && (
           <span
