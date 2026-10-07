@@ -85,23 +85,28 @@ describe('buildSpeedMap', () => {
       [3, 22, SPEED_BANDS.road[3].color],
     ]);
     expect(map.stretches[0].readings).toBe(30);
-    expect(map.base).toMatch(/^M/);
-    expect(map.basemap.tiles.length).toBeGreaterThan(0);
+    expect(map.base).toEqual(LINE);
+    expect(map.fit).toEqual(LINE);
   });
 
-  it('keeps every stretch inside the map', () => {
+  it('puts each stretch along the route, one after another', () => {
     const map = buildSpeedMap(speedFile().directions[0]);
+    // The route runs north along one meridian; the first stretch is its first 556.6 m.
+    const [first, third] = [map.stretches[0], map.stretches[1]];
+    expect(first.points[0]).toEqual([40.0, -75.17]);
+    expect(first.points.at(-1)[0]).toBeCloseTo(40.0 + 556.6 / 111_320, 4);
+    expect(third.points[0][0]).toBeCloseTo(40.0 + (2 * 556.6) / 111_320, 4);
     for (const s of map.stretches) {
-      for (const [x, y] of s.d
-        .slice(1)
-        .split('L')
-        .map((p) => p.split(',').map(Number))) {
-        expect(x).toBeGreaterThanOrEqual(0);
-        expect(x).toBeLessThanOrEqual(map.width);
-        expect(y).toBeGreaterThanOrEqual(0);
-        expect(y).toBeLessThanOrEqual(map.height);
+      for (const [lat, lon] of s.points) {
+        expect(lat).toBeGreaterThanOrEqual(40.0);
+        expect(lat).toBeLessThanOrEqual(40.02);
+        expect(lon).toBeCloseTo(-75.17, 6);
       }
     }
+  });
+
+  it('has no map without a line', () => {
+    expect(buildSpeedMap({ shape: [], mph: [], n: [], bin_m: 100 })).toBeNull();
   });
 });
 
@@ -129,8 +134,9 @@ describe('summarizeSpeeds', () => {
 describe('buildRouteMap', () => {
   it('draws each direction and marks the ends once', () => {
     const map = buildRouteMap({ 0: LINE, 1: [...LINE].reverse() });
-    expect(map.paths).toHaveLength(2);
-    expect(map.ends).toHaveLength(2);
+    expect(map.lines.map((l) => l.id)).toEqual(['0', '1']);
+    expect(map.ends).toEqual([LINE[0], LINE[2]]);
+    expect(map.fit).toHaveLength(6);
   });
 
   it('has no map without a line', () => {

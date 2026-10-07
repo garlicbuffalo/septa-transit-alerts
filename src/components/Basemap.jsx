@@ -54,12 +54,9 @@ export function BasemapTiles({ basemap }) {
   );
 }
 
-// The tiles' credit (their licences ask for it), a quiet line under the map.
-// It sits outside the map's scroller, so on a phone it stays in view instead of
-// at the far edge of a map wider than the screen.
-export function BasemapCredit({ basemap }) {
+// The tiles' credit (their licences ask for it): the line under a map.
+export function SourceCredit() {
   const source = useSyncExternalStore(subscribeSource, activeSource, activeSource);
-  if (!basemap) return null;
   return (
     <p className="mt-1.5 text-right text-[10px] leading-tight text-slate-400 dark:text-slate-500">
       {source.credits.map((c, i) => (
@@ -72,4 +69,12 @@ export function BasemapCredit({ basemap }) {
       ))}
     </p>
   );
+}
+
+// The same under a line map's tiles, which are only drawn when it has some:
+// it sits outside the map's scroller, so on a phone it stays in view instead of
+// at the far edge of a map wider than the screen.
+export function BasemapCredit({ basemap }) {
+  if (!basemap) return null;
+  return <SourceCredit />;
 }

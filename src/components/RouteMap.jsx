@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { buildRouteMap, loadRouteShapes } from '../lib/routeMaps.js';
-import { BasemapCredit, BasemapTiles } from './Basemap.jsx';
+import MapPlaceholder from './MapPlaceholder.jsx';
 
-const pathProps = { fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' };
+// Leaflet is heavy; it loads only for a page that has a map to show.
+const InteractiveMap = lazy(() => import('./InteractiveMap.jsx'));
 
 // A bus route drawn on a street map, both directions. Left out when the
 // collector hasn't published the route's shape (a route with no scheduled
@@ -20,6 +21,11 @@ export default function RouteMap({ route, label, accent = '#60a5fa' }) {
     };
   }, [route]);
   const map = useMemo(() => (shapes ? buildRouteMap(shapes.directions) : null), [shapes]);
+  const lines = useMemo(
+    () => map?.lines.map((l) => ({ id: l.id, points: l.points, color: accent, weight: 4.5 })),
+    [map, accent],
+  );
+  const dots = useMemo(() => map?.ends.map((point) => ({ id: point.join(), point })), [map]);
   if (!map) return null;
   return (
     <section>
@@ -27,43 +33,9 @@ export default function RouteMap({ route, label, accent = '#60a5fa' }) {
         Route map
       </h2>
       <div className="bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border p-4">
-        <div className="relative rounded-md overflow-hidden">
-          <BasemapTiles basemap={map.basemap} />
-          <svg
-            viewBox={`0 0 ${map.width} ${map.height}`}
-            preserveAspectRatio="xMidYMid meet"
-            role="img"
-            aria-label={`Map of ${label}`}
-            className="relative block w-full h-auto"
-          >
-            <title>{`${label} route map`}</title>
-            {map.paths.map((d) => (
-              <path
-                key={`edge:${d}`}
-                d={d}
-                stroke="#0b0f14"
-                strokeWidth={8}
-                opacity={0.6}
-                {...pathProps}
-              />
-            ))}
-            {map.paths.map((d) => (
-              <path key={d} d={d} stroke={accent} strokeWidth={4.5} opacity={0.95} {...pathProps} />
-            ))}
-            {map.ends.map((p) => (
-              <circle
-                key={`${p.x}:${p.y}`}
-                cx={p.x}
-                cy={p.y}
-                r={6}
-                fill="#f8fafc"
-                stroke="#0b0f14"
-                strokeWidth={2}
-              />
-            ))}
-          </svg>
-        </div>
-        <BasemapCredit basemap={map.basemap} />
+        <Suspense fallback={<MapPlaceholder />}>
+          <InteractiveMap label={`Map of ${label}`} fit={map.fit} lines={lines} dots={dots} />
+        </Suspense>
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           Both directions of the route · dots mark where it starts and ends
         </p>
