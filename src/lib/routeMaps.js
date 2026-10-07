@@ -1,7 +1,8 @@
 // Route and speed maps for the bus route and line pages. The data comes from
 // the files the collector and the bot server publish with the rest of the data:
 //
-//   shapes/<route>.json   a bus route's shape in each direction (collector)
+//   shapes/<route>.json   a bus or Metro route's shape in each direction, and its
+//                         stops (collector)
 //   speeds/<route>.json   the past week's average speeds along each direction
 //                         of a bus route, trolley line, or the M1 (bot server;
 //                         see bot/features/speedhistory.js)
@@ -13,7 +14,9 @@
 // pages simply leave the map out.
 
 import { dataUrl } from './dataSource.js';
+import railStationsByLine from './railStations.json' with { type: 'json' };
 import { bandFor, SPEED_BANDS } from './speedBands.js';
+import { displayStationName } from './stations.js';
 
 const SUPPORTED_VERSION = 1;
 // Speeds older than this are from a bot server that's gone quiet.
@@ -31,7 +34,10 @@ async function loadJson(file) {
   }
 }
 
-/** A bus route's shapes: `{ route, directions: { [id]: [[lat, lon], …] } }`, or null. */
+/**
+ * A route's shapes: `{ route, directions: { [id]: [[lat, lon], …] },
+ * stops?: { [id]: [[lat, lon, name], …] } }`, or null.
+ */
 export async function loadRouteShapes(route) {
   const file = await loadJson(`shapes/${encodeURIComponent(route)}.json`);
   return file?.directions && Object.keys(file.directions).length > 0 ? file : null;
@@ -46,6 +52,38 @@ export async function loadRouteSpeeds(route, { rail = false, now = Date.now() } 
   if (!file || !Array.isArray(file.directions) || file.directions.length === 0) return null;
   if (now - file.generated_at > SPEEDS_STALE_MS) return null;
   return file;
+}
+
+/**
+ * The stops of a shapes file for the map: those of one direction, or, with no
+ * direction given, of all of them (a stop both directions serve, listed twice
+ * by GTFS, is drawn once).
+ * @param {{ stops?: Record<string, Array<[number, number, string]>> } | null} file
+ * @param {string} [directionId]
+ * @returns {Array<{ id: string, point: number[], name: string }>}
+ */
+export function stopsOf(file, directionId) {
+  const seen = new Set();
+  const out = [];
+  for (const [id, list] of Object.entries(file?.stops ?? {})) {
+    if (directionId != null && id !== String(directionId)) continue;
+    list.forEach(([lat, lon, name], i) => {
+      const key = `${name}|${lat.toFixed(4)}|${lon.toFixed(4)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ id: `${id}:${i}`, point: [lat, lon], name });
+    });
+  }
+  return out;
+}
+
+/** A Regional Rail line's stations, from the site's bundled data. */
+export function railStopsOf(lineKey) {
+  return (railStationsByLine[lineKey] ?? []).map((s) => ({
+    id: s.id,
+    point: [s.lat, s.lon],
+    name: displayStationName(s.name),
+  }));
 }
 
 const toRad = (d) => (d * Math.PI) / 180;

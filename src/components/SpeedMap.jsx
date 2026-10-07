@@ -1,8 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   buildSpeedMap,
+  loadRouteShapes,
   loadRouteSpeeds,
+  railStopsOf,
   speedWindowLabel,
+  stopsOf,
   summarizeSpeeds,
 } from '../lib/routeMaps.js';
 import { NO_DATA_COLOR, SPEED_BANDS } from '../lib/speedBands.js';
@@ -23,6 +26,20 @@ export default function SpeedMap({ route, label, mode = 'bus' }) {
   const noun = rail ? 'trains' : mode === 'metro' ? 'vehicles' : 'buses';
   const [file, setFile] = useState(null);
   const [directionId, setDirectionId] = useState(null);
+  // The route's shapes file, for its stops (Regional Rail's come with the site).
+  const [shapes, setShapes] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    setShapes(null);
+    if (!rail) {
+      loadRouteShapes(route).then((f) => {
+        if (!cancelled) setShapes(f);
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [route, rail]);
   useEffect(() => {
     let cancelled = false;
     setFile(null);
@@ -43,6 +60,12 @@ export default function SpeedMap({ route, label, mode = 'bus' }) {
   const map = useMemo(
     () => (direction ? buildSpeedMap(direction, bands) : null),
     [direction, bands],
+  );
+  // The stops of the direction on show; zoomed in to, they sit over the colors.
+  const directionKey = direction?.id;
+  const stops = useMemo(
+    () => (rail ? railStopsOf(route) : stopsOf(shapes, directionKey)),
+    [rail, route, shapes, directionKey],
   );
   // Gray under everything; each stretch with data over it in its band's color.
   const lines = useMemo(
@@ -130,7 +153,13 @@ export default function SpeedMap({ route, label, mode = 'bus' }) {
 
         <p className="sr-only">{alt}</p>
         <Suspense fallback={<MapPlaceholder />}>
-          <InteractiveMap label={`${label}${dirLabel} average speeds`} fit={map.fit} lines={lines}>
+          <InteractiveMap
+            label={`${label}${dirLabel} average speeds`}
+            fit={map.fit}
+            lines={lines}
+            stops={stops}
+            stopZoom={rail ? 0 : undefined}
+          >
             <ul className="absolute left-2 bottom-2 z-[1000] rounded-md bg-black/70 px-2 py-1.5 text-[11px] leading-tight text-slate-100 space-y-0.5">
               {[...bands].reverse().map((b) => (
                 <li key={b.label} className="flex items-center gap-1.5">

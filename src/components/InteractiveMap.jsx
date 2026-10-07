@@ -24,10 +24,20 @@ import { SourceCredit } from './Basemap.jsx';
 // `lines`: [{ id, points: [[lat, lon], …], color, weight?, opacity?, tip? }],
 // drawn in order over their casings (a dark edge that sets them off the tiles).
 // `dots`: [{ id, point: [lat, lon] }]. `fit`: the points the first view shows.
-// `children` are overlays (a legend) drawn over the map.
+// `stops`: [{ id, point: [lat, lon], name }], small dots over the lines that
+// appear once the map is zoomed to `stopZoom` (a bus route's stops would crowd
+// the whole-route view; zoom 15 is about where they stop touching) and show
+// their name on hover or tap. `children` are overlays (a legend) drawn over the map.
 
 const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? '');
 const EDGE = '#0b0f14';
+// Defaults are shared, not built per render: a new array each time would look
+// like new lines to the effects below.
+const NONE = [];
+// Stops sit in their own pane, above the lines and their dark edges.
+const STOP_PANE = 'stops';
+const STOP_PANE_Z = 450;
+export const STOP_ZOOM = 15;
 const HINT_MS = 1600;
 // A wheel's notch is about 100 pixels; a notch zooms by about half a level.
 const WHEEL_ZOOM_PER_PX = 1 / 200;
@@ -45,8 +55,10 @@ const wheelPixels = (e) => (e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY);
 export default function InteractiveMap({
   label,
   fit,
-  lines = [],
-  dots = [],
+  lines = NONE,
+  dots = NONE,
+  stops = NONE,
+  stopZoom = STOP_ZOOM,
   className = 'h-[360px] sm:h-[480px]',
   children,
 }) {
@@ -55,7 +67,12 @@ export default function InteractiveMap({
   const layerRef = useRef(null);
   const fitRef = useRef(fit);
   fitRef.current = fit;
+  const stopsRef = useRef(null);
+  const stopZoomRef = useRef(stopZoom);
+  stopZoomRef.current = stopZoom;
   const [hint, setHint] = useState(null);
+  // Whether there are stops that the map isn't zoomed in enough to show yet.
+  const [stopsHidden, setStopsHidden] = useState(false);
   const hintTimer = useRef(null);
 
   const showHint = useCallback((text) => {
@@ -64,13 +81,26 @@ export default function InteractiveMap({
     hintTimer.current = setTimeout(() => setHint(null), HINT_MS);
   }, []);
 
+  // Show the stops when the map is zoomed in far enough, else take them off.
+  const syncStops = useCallback(() => {
+    const map = mapRef.current;
+    const group = stopsRef.current;
+    if (!map || !group) return;
+    const has = group.getLayers().length > 0;
+    const show = has && map.getZoom() >= stopZoomRef.current;
+    if (show && !map.hasLayer(group)) group.addTo(map);
+    if (!show && map.hasLayer(group)) group.remove();
+    setStopsHidden(has && !show);
+  }, []);
+
   // Fit the view to the points it was given.
   const resetView = useCallback(() => {
     const map = mapRef.current;
     const points = fitRef.current;
     if (!map || !points?.length) return;
     map.fitBounds(L.latLngBounds(points), { padding: [28, 28], animate: false });
-  }, []);
+    syncStops();
+  }, [syncStops]);
 
   // The map itself, made once.
   useEffect(() => {
@@ -90,6 +120,9 @@ export default function InteractiveMap({
     });
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
+    map.createPane(STOP_PANE).style.zIndex = String(STOP_PANE_Z);
+    stopsRef.current = L.layerGroup();
+    map.on('zoomend', syncStops);
 
     const tiles = new SourceTiles('', { maxZoom: 18, crossOrigin: true, className: 'map-tiles' });
     tiles.on('tileload', noteTileLoaded);
@@ -135,10 +168,12 @@ export default function InteractiveMap({
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
+      stopsRef.current = null;
     };
-  }, [showHint]);
+  }, [showHint, syncStops]);
 
-  // The lines and dots, redrawn when they change, and the view fitted to them.
+  // The lines and dots, redrawn when they change. This leaves the view alone: a
+  // redraw must never undo where the reader has panned and zoomed to.
   useEffect(() => {
     const map = mapRef.current;
     const group = layerRef.current;
@@ -173,8 +208,43 @@ export default function InteractiveMap({
         interactive: false,
       }).addTo(group);
     }
+  }, [lines, dots]);
+
+  // The stops, redrawn when they change; each is a dot, with a larger invisible
+  // circle around it so a fingertip can hit it.
+  useEffect(() => {
+    const group = stopsRef.current;
+    if (!group) return;
+    group.clearLayers();
+    for (const stop of stops) {
+      L.circleMarker(stop.point, {
+        pane: STOP_PANE,
+        radius: 3.5,
+        color: EDGE,
+        weight: 1.5,
+        fillColor: '#f8fafc',
+        fillOpacity: 1,
+        interactive: false,
+      }).addTo(group);
+      L.circleMarker(stop.point, {
+        pane: STOP_PANE,
+        radius: 12,
+        stroke: false,
+        fillOpacity: 0,
+      })
+        .bindTooltip(stop.name, { direction: 'top', offset: [0, -4] })
+        .addTo(group);
+    }
+    syncStops();
+  }, [stops, syncStops]);
+
+  // The view is fitted when the points to fit change (a new route, or the other
+  // direction), and when the reader asks for it. `fit` is compared by identity,
+  // so callers pass one that only changes with the data.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fit is the trigger
+  useEffect(() => {
     resetView();
-  }, [lines, dots, resetView]);
+  }, [fit, resetView]);
 
   return (
     <div>
@@ -197,6 +267,14 @@ export default function InteractiveMap({
             className="pointer-events-none absolute inset-0 z-[1000] flex items-center justify-center bg-black/45 text-sm font-medium text-white"
           >
             {hint}
+          </div>
+        )}
+        {stopsHidden && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-2 right-2 z-[1000] rounded-md bg-black/70 px-2 py-1 text-[11px] text-slate-100"
+          >
+            Zoom in to see stops
           </div>
         )}
         {children}

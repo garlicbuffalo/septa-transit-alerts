@@ -9,6 +9,16 @@ syndication feeds (`/feed.xml` and the per-line/route feeds under `/feed/`).
 Newest first. If you build on this data, watch this file before pinning to the
 format.
 
+## 2026-10-07 — Stops on route shapes
+
+- **`shapes/<route>.json`** now also covers SEPTA Metro routes (trolleys and the
+  M1; also L1 and B1–B3), not just buses, and gains an optional **`stops`**
+  object keyed by direction id like `directions`:
+  `stops: { "<direction id>": [[lat, lon, name], …] }`, in route order, from a
+  trip that runs the direction's shape (names without boarding-position
+  suffixes). It is absent from a file until the collector next rebuilds its GTFS
+  cache (daily), and for a route with no stop data.
+
 ## 2026-10-07 — Route shapes and weekly speeds
 
 - New **`shapes/<route>.json`** (bus routes; the route id is URL-encoded):
