@@ -310,7 +310,7 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
             // it stops short of the full width rather than blow them up.
             <div className={`lg:w-[280px] flex-shrink-0 ${onMap ? 'w-full max-w-[360px]' : ''}`}>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                Downtown
+                Center City
               </p>
               <div
                 className={`rounded-md border border-slate-200 dark:border-gh-border bg-slate-50 dark:bg-gh-canvas ${
@@ -323,10 +323,10 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
                     viewBox={`0 0 ${inset.width} ${inset.height}`}
                     preserveAspectRatio="xMidYMid meet"
                     role="img"
-                    aria-label={`${info?.label ?? lineKey} Line downtown stations zoom`}
+                    aria-label={`${info?.label ?? lineKey} Line Center City stations zoom`}
                     className="relative block w-full h-auto"
                   >
-                    <title>{`${info?.label ?? lineKey} Line downtown stations`}</title>
+                    <title>{`${info?.label ?? lineKey} Line Center City stations`}</title>
                     {onMap &&
                       insetTracks.map((d) => (
                         <path
@@ -395,7 +395,7 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
           </div>
           <span className="text-xs text-slate-300 dark:text-slate-600">
             · Each dot = one station · Click for the station's incident history
-            {inset ? ' · Dashed box marks the downtown zoom panel' : ''}
+            {inset ? ' · Dashed box marks the Center City zoom panel' : ''}
           </span>
         </div>
       </div>
