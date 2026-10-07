@@ -22,7 +22,7 @@ You need:
 
 - an Ubuntu 22.04 or 24.04 server (1 vCPU and 2 GB of RAM is plenty, e.g. Hetzner CX22 or a DigitalOcean $6 droplet);
 - the four Bluesky accounts, each with an app password and a verified email address (Bluesky only takes videos from verified accounts);
-- the map tiles: the address of the [septa-tracker](https://github.com/garlicbuffalo/septa-tracker) relay's `/api/tiles` (the same `TILES_URL` the site uses), or a CARTO API key — see [Maps](#maps). A Mapbox public token still works as a fallback;
+- a CARTO API key for the maps (free), or the address of the [septa-tracker](https://github.com/garlicbuffalo/septa-tracker) relay's `/api/tiles` — see [Maps](#maps). A Mapbox public token still works as a fallback;
 - a fine-grained GitHub token for this repository with **Contents: read and write** and **Actions: read and write**.
 
 1. **Install.** SSH in and run:
@@ -58,12 +58,12 @@ You need:
 
 ## Maps
 
-The maps in the posts are the CARTO dark map the site and the septa-tracker board use. CARTO wants an API key, and the bots can get tiles one of two ways:
+The maps in the posts are the CARTO dark map the site uses. CARTO wants an API key, and the bots can get tiles one of two ways:
 
-- **`TILES_URL`** (recommended): the tracker's tile relay, `https://<the tracker's domain>/api/tiles`, the same address as the site's `TILES_URL` repository variable. The relay holds the key as a Cloudflare secret, so this server needs no key, and the relay's cache means a map's tiles are usually already warm.
-- **`CARTO_KEY`**: a CARTO key, to fetch from CARTO directly. A key limited to a domain also wants `CARTO_REFERER` (the address it's limited to, e.g. `https://example.org/`), which the bots send as the Referer.
+- **`CARTO_KEY`**: a CARTO key, to fetch from CARTO directly. It can be the same key as the site's `CARTO_KEY` repository variable, or a key of its own for this server (get one free at [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/); one limited to the server's IP never has to leave it). A key limited to a domain is sent the Referer a browser on that domain would send: the site's `SITE_URL`, or `CARTO_REFERER` if you set it.
+- **`TILES_URL`**: instead of a key, the septa-tracker's tile relay, `https://<the tracker's domain>/api/tiles`, which holds a key as a Cloudflare secret.
 
-Each map's tiles are fetched (@2x), stitched to the map's own projection with sharp, and cropped to the image; a credit is drawn in the corner. If CARTO can't be reached and `MAPBOX_TOKEN` is set, that map comes from Mapbox instead; a map that can't get a basemap at all is posted without its image, as before. With none of the three settings, maps render on a plain background. `sudo septa-bots check` fetches one tile and says what it got, and the service logs which source it's using when it starts.
+Each map's tiles are fetched (@2x), stitched to the map's own projection with sharp, and cropped to the image; a credit is drawn in the corner. If CARTO can't be reached and `MAPBOX_TOKEN` is set, that map comes from Mapbox instead; a map that can't get a basemap at all is posted without its image, as before. With none of the three settings, maps render on a plain background. `sudo septa-bots check` fetches one tile, and the service logs which source it's using when it starts. CARTO answers a key it doesn't accept with an ordinary image stamped "API KEY REQUIRED", which `check` can't tell from a good tile: look at a map (`sudo septa-bots map alert-136615`) after setting a key.
 
 ## Operating it
 

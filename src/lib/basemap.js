@@ -7,16 +7,26 @@
 // tiles cover it, and <BasemapTiles> lays those tiles behind the SVG.
 //
 // Where the tiles come from. CARTO has wanted an API key since August 2026
-// and a key can't sit in a static site's files, so the tiles come from the
-// tracker's relay (septa-tracker/worker/index.js), which adds the key from a
-// Cloudflare secret:
+// (without one every tile is stamped "API KEY REQUIRED"). Two ways to give the
+// page one, set at build time from repository variables in deploy.yml:
+//
+//   VITE_CARTO_KEY=<a CARTO key limited to the site's domain>
+//       The browser asks CARTO directly, with the key in the tile address. A
+//       static site has nowhere to hide a key, so it is visible in the page;
+//       what makes that acceptable is the limit to the site's domain, which
+//       CARTO checks against the Referer the browser sends (index.html's
+//       referrer policy sends the site's origin). Keep it a key of its own.
 //
 //   VITE_TILES_URL=https://<the tracker's domain>/api/tiles
+//       The tracker's relay (septa-tracker/worker/index.js) serves
+//       /{z}/{x}/{y}[@2x].png, adding its own key from a Cloudflare secret, so
+//       none is in the page. Wins over a key if both are set.
 //
-// (deploy.yml sets it from the repository variable TILES_URL). The relay
-// serves /{z}/{x}/{y}.png and /{z}/{x}/{y}@2x.png. Without it, or if it
-// can't answer (no key set there, or it's down), the maps use OpenStreetMap's
-// own tiles, darkened by a CSS filter, the way the tracker does.
+// Without either, or if the tiles can't be had (a bad address, the relay down),
+// the maps use OpenStreetMap's own tiles, darkened by a CSS filter, the way the
+// tracker does. CARTO answers a missing or unaccepted key with an ordinary
+// image carrying a watermark, which can't be told from a good tile in code:
+// look at a map after setting a key.
 
 const TILE_TARGET = 300; // SVG units a tile should span; the zoom is chosen near it
 const MIN_ZOOM = 1;
@@ -116,29 +126,48 @@ const OSM_CREDIT = {
   href: 'https://www.openstreetmap.org/copyright',
 };
 
+const CARTO_CREDIT = { label: '© CARTO', href: 'https://carto.com/attributions' };
+const CARTO_DIRECT = 'https://{s}.basemaps.cartocdn.com/dark_all';
+
 /**
  * The tile sources, in order of preference: CARTO through the tracker's relay
- * when `tilesUrl` is set, then OpenStreetMap.
+ * when `tilesUrl` is set, else CARTO directly when `cartoKey` is, then
+ * OpenStreetMap (the only one with no fallback).
  * @param {string} [tilesUrl] the relay's /api/tiles address
+ * @param {string} [cartoKey] a CARTO key limited to this site's domain
  */
-export function tileSources(tilesUrl) {
+export function tileSources(tilesUrl, cartoKey) {
   const base = String(tilesUrl || '').replace(/\/+$/, '');
+  const key = String(cartoKey || '').trim();
   const osm = {
     id: 'osm',
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     filter: OSM_DARK,
     credits: [OSM_CREDIT],
   };
-  if (!base) return { primary: osm, fallback: null };
-  return {
-    primary: {
-      id: 'carto',
-      url: `${base}/{z}/{x}/{y}{r}.png`,
-      filter: null,
-      credits: [OSM_CREDIT, { label: '© CARTO', href: 'https://carto.com/attributions' }],
-    },
-    fallback: osm,
-  };
+  if (base) {
+    return {
+      primary: {
+        id: 'carto',
+        url: `${base}/{z}/{x}/{y}{r}.png`,
+        filter: null,
+        credits: [OSM_CREDIT, CARTO_CREDIT],
+      },
+      fallback: osm,
+    };
+  }
+  if (key) {
+    return {
+      primary: {
+        id: 'carto',
+        url: `${CARTO_DIRECT}/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(key)}`,
+        filter: null,
+        credits: [OSM_CREDIT, CARTO_CREDIT],
+      },
+      fallback: osm,
+    };
+  }
+  return { primary: osm, fallback: null };
 }
 
 /** A tile's address; `retina` asks for the @2x image where the source has one. */
@@ -147,13 +176,14 @@ export function tileUrl(source, tile, z, retina) {
     .replace('{z}', z)
     .replace('{x}', tile.x)
     .replace('{y}', tile.y)
+    .replace('{s}', 'abcd'[(tile.x + tile.y) % 4])
     .replace('{r}', retina ? '@2x' : '');
 }
 
 // One source for the whole page: the first time the primary shows it can't
 // serve (two tiles fail before any has loaded), every map moves to the
 // fallback together instead of each discovering it separately.
-const sources = tileSources(import.meta.env?.VITE_TILES_URL);
+const sources = tileSources(import.meta.env?.VITE_TILES_URL, import.meta.env?.VITE_CARTO_KEY);
 let active = sources.primary;
 let loaded = 0;
 let failed = 0;
@@ -177,8 +207,11 @@ export function noteTileFailed(source) {
 }
 
 // For tests: start over.
-export function resetSource(tilesUrl) {
-  const next = tileSources(tilesUrl ?? import.meta.env?.VITE_TILES_URL);
+export function resetSource(tilesUrl, cartoKey) {
+  const next = tileSources(
+    tilesUrl ?? import.meta.env?.VITE_TILES_URL,
+    cartoKey ?? import.meta.env?.VITE_CARTO_KEY,
+  );
   sources.primary = next.primary;
   sources.fallback = next.fallback;
   active = next.primary;

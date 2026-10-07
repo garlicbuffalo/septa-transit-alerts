@@ -60,10 +60,10 @@ export default function PrivacyPage() {
             <p>
               No third-party scripts, trackers, fonts, or embeds run here. The one thing loaded from
               outside is the map tiles behind the maps on event and line pages: your browser fetches
-              those images from OpenStreetMap or, where configured, from a relay serving CARTO's
-              map, so that host sees your IP address, which tiles you view, and this site's address.
-              Links out to Bluesky, SEPTA, or GitHub only load when you choose to click them, and
-              those sites have their own privacy policies.
+              those images from CARTO's map servers (directly, or through a relay) or, if those
+              aren't set up, from OpenStreetMap, so that host sees your IP address, which tiles you
+              view, and this site's address. Links out to Bluesky, SEPTA, or GitHub only load when
+              you choose to click them, and those sites have their own privacy policies.
             </p>
 
             <h2 className={H2}>Hosting and server logs</h2>

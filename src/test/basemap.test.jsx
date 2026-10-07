@@ -180,6 +180,45 @@ describe('tile sources', () => {
     expect(fallback.filter).toContain('invert');
   });
 
+  it('asks CARTO directly when there is a key and no relay', () => {
+    const { primary, fallback } = tileSources('', 'abc123');
+    expect(primary.id).toBe('carto');
+    expect(primary.url).toBe(
+      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=abc123',
+    );
+    expect(primary.filter).toBeNull();
+    expect(primary.credits.map((c) => c.label)).toContain('© CARTO');
+    expect(fallback.id).toBe('osm');
+  });
+
+  it('encodes the key, and trims it', () => {
+    expect(tileSources('', '  a b/c  ').primary.url).toContain('?key=a%20b%2Fc');
+    // A blank key is no key.
+    expect(tileSources('', '   ').primary.id).toBe('osm');
+  });
+
+  it('prefers the relay over a key when both are set', () => {
+    const { primary } = tileSources('https://tracker.example/api/tiles', 'abc123');
+    expect(primary.url).toBe('https://tracker.example/api/tiles/{z}/{x}/{y}{r}.png');
+    expect(primary.url).not.toContain('abc123');
+  });
+
+  it('spreads direct tiles across CARTO’s four hosts, and asks for @2x on retina', () => {
+    const { primary } = tileSources('', 'k');
+    const hosts = new Set();
+    for (let x = 0; x < 4; x++) {
+      const url = tileUrl(primary, { x: 1192 + x, y: 1551 }, 12, true);
+      hosts.add(new URL(url).host);
+      expect(url).toMatch(/\/12\/119\d\/1551@2x\.png\?key=k$/);
+    }
+    expect([...hosts].sort()).toEqual([
+      'a.basemaps.cartocdn.com',
+      'b.basemaps.cartocdn.com',
+      'c.basemaps.cartocdn.com',
+      'd.basemaps.cartocdn.com',
+    ]);
+  });
+
   it('uses darkened OpenStreetMap alone with no relay', () => {
     const { primary, fallback } = tileSources('');
     expect(primary.id).toBe('osm');
@@ -220,6 +259,15 @@ describe('falling back from the relay', () => {
     noteTileFailed(carto);
     noteTileFailed(carto);
     expect(activeSource().id).toBe('carto');
+  });
+
+  it('falls back from a direct key the same way', () => {
+    resetSource('', 'abc123');
+    const carto = activeSource();
+    expect(carto.id).toBe('carto');
+    noteTileFailed(carto);
+    noteTileFailed(carto);
+    expect(activeSource().id).toBe('osm');
   });
 
   it('has nowhere to go without a relay', () => {

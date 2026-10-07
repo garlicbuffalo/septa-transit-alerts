@@ -6,10 +6,11 @@
 // covering the view are fetched (@2x, 512 px), placed where the view's own
 // projection (projection.js) says they go, and cropped to the image. Tiles come
 //
-//   - from the tracker's relay (TILES_URL=https://<its domain>/api/tiles), which
-//     holds CARTO's API key as a Cloudflare secret, so this server needs none; or
 //   - from CARTO directly with a key (CARTO_KEY), sent with a Referer
-//     (CARTO_REFERER) for a key limited to a domain.
+//     (CARTO_REFERER, by default the site's address) for a key limited to a
+//     domain; or
+//   - from the tracker's relay (TILES_URL=https://<its domain>/api/tiles), which
+//     holds CARTO's API key as a Cloudflare secret, so this server needs none.
 //
 // If CARTO can't be reached and a Mapbox token is set, Mapbox's static dark map
 // is used instead (the bots' first basemap, kept as a fallback); with neither,

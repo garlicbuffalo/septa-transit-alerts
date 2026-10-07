@@ -390,6 +390,20 @@ describe('config', () => {
     expect(c.mapboxToken).toBe('pk.x');
   });
 
+  it('sends the site as the Referer for a key, unless told otherwise', () => {
+    const base = { CARTO_KEY: 'k', SITE_URL: 'https://site.example/' };
+    expect(loadConfig(base).cartoReferer).toBe('https://site.example/');
+    expect(loadConfig({ ...base, SITE_URL: 'https://site.example' }).cartoReferer).toBe(
+      'https://site.example/',
+    );
+    expect(loadConfig({ ...base, CARTO_REFERER: 'https://other.example/' }).cartoReferer).toBe(
+      'https://other.example/',
+    );
+    // No key, or no site: nothing to send.
+    expect(loadConfig({ SITE_URL: 'https://site.example/' }).cartoReferer).toBeNull();
+    expect(loadConfig({ CARTO_KEY: 'k' }).cartoReferer).toBeNull();
+  });
+
   it('has none of them by default', () => {
     const c = loadConfig({});
     expect([c.tilesUrl, c.cartoKey, c.cartoReferer, c.mapboxToken]).toEqual([
