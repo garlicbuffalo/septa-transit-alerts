@@ -713,15 +713,13 @@ export default function LinePage({ kind, lineId }) {
                 above. */}
             {!isLine && <RouteMap route={lineId} label={heading} />}
 
-            {/* The past week's speeds along the route — buses, trolleys, and the
-                M1 (the subway lines and Regional Rail don't have them here). */}
-            {!isRail && (
-              <SpeedMap
-                route={effectiveLineId}
-                label={isMetro ? `${heading} line` : heading}
-                noun={isMetro ? 'vehicles' : 'buses'}
-              />
-            )}
+            {/* The past week's speeds along the route or line. Subway lines (L1,
+                B1–B3) don't report positions, so they never have any. */}
+            <SpeedMap
+              route={effectiveLineId}
+              label={isMetro ? `${heading} line` : heading}
+              mode={isRail ? 'rail' : isMetro ? 'metro' : 'bus'}
+            />
 
             {isLine && <AccessibilityOutagesSection outages={lineOutages} />}
 

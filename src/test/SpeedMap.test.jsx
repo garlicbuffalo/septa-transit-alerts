@@ -53,7 +53,7 @@ describe('SpeedMap', () => {
     serve({
       'speeds/17.json': speeds([direction()]),
     });
-    render(<SpeedMap route="17" label="Route 17" noun="buses" />);
+    render(<SpeedMap route="17" label="Route 17" />);
     expect(await screen.findByText('Average speeds, past 7 days')).toBeInTheDocument();
     expect(screen.getByText('9.1 mph')).toBeInTheDocument();
     expect(screen.getByText('3.2 mph')).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe('SpeedMap', () => {
         direction({ id: '1', label: 'Northbound', avg_mph: 14.2, readings: 900 }),
       ]),
     });
-    render(<SpeedMap route="17" label="Route 17" noun="buses" />);
+    render(<SpeedMap route="17" label="Route 17" />);
     expect(await screen.findByText('14.2 mph')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Northbound' })).toHaveAttribute(
       'aria-pressed',
@@ -88,6 +88,31 @@ describe('SpeedMap', () => {
     const { container } = render(<SpeedMap route="17" label="Route 17" />);
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('SpeedMap for Regional Rail', () => {
+  it('reads the line’s file under speeds/rail/ and uses the rail speed bands', async () => {
+    serve({
+      'speeds/rail/pao.json': {
+        ...speeds([
+          direction({ label: 'Both directions', avg_mph: 38.4, mph: [12, null, 41, 52] }),
+        ]),
+        mode: 'regional_rail',
+        route: 'pao',
+      },
+    });
+    render(<SpeedMap route="pao" label="Paoli/Thorndale Line" mode="rail" />);
+    expect(await screen.findByText('38.4 mph')).toBeInTheDocument();
+    expect(fetch.mock.calls[0][0]).toMatch(/speeds\/rail\/pao\.json$/);
+    expect(screen.getByText('45+ mph')).toBeInTheDocument();
+    expect(screen.getByText('35–45')).toBeInTheDocument();
+    expect(screen.getByText('Both directions')).toBeInTheDocument();
+    expect(screen.getByText(/TrainView/)).toBeInTheDocument();
+    expect(screen.getByText(/Trains in both directions are combined/)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /how fast trains moved/ })).toBeInTheDocument();
+    // The rail bands call 15 mph slow: one of three stretches shown.
+    expect(screen.getByRole('img', { name: /1 of 3 stretches under 15 mph/ })).toBeInTheDocument();
   });
 });
 

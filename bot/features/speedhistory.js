@@ -1,10 +1,16 @@
 // A week of speeds for the site's route and line pages (bus routes, trolleys,
-// the M1). The observations are kept only a few days, so the rollup folds
+// the M1, and Regional Rail lines). The observations are kept only a few days, so the rollup folds
 // them into per-day tallies as they arrive: for each stretch of a route's
 // shape, how far its vehicles went and how long it took, per Philadelphia
 // day. The site's maps are the past seven days' tallies added together (total
 // distance over total time, as the posted speed maps do), published as one
-// JSON file per route under speeds/ in the data directory.
+// JSON file per route under speeds/ in the data directory (Regional Rail
+// lines under speeds/rail/, so a line's key can't clash with a bus route's).
+//
+// A bus, trolley, or M1 route has a shape for each direction, told apart by
+// the direction SEPTA reports. TrainView reports none, so a Regional Rail line
+// is one map of both directions along its main alignment (the longest of its
+// bundled shapes), in half-mile stretches.
 //
 // Each observation pair is counted once: a run takes the observations since
 // the last run (plus a few minutes before them, for each vehicle's previous
@@ -15,6 +21,8 @@ import { join } from 'node:path';
 import { simplify } from '../../collector/lib/shapes.js';
 import { easternDateKey } from '../../collector/lib/time.js';
 import { METRO_LINES } from '../../src/lib/metroLines.js';
+import railShapes from '../../src/lib/railLineShapes.json' with { type: 'json' };
+import { RAIL_LINES } from '../../src/lib/railLines.js';
 import { getMeta, setMeta } from '../lib/db.js';
 import { locateAlong, measureShape } from '../lib/geo.js';
 import { inService, MPH_PER_MPS, SPEED_CONFIG, speedPairs } from './speedmaps.js';
@@ -45,7 +53,14 @@ export const HISTORY = {
   dir: 'speeds',
   version: 1,
 };
-const MODES = { bus: SPEED_CONFIG.bus, metro: SPEED_CONFIG.metro };
+const MODES = {
+  bus: SPEED_CONFIG.bus,
+  metro: SPEED_CONFIG.metro,
+  regional_rail: SPEED_CONFIG.rail,
+};
+const RAIL = 'regional_rail';
+// What a Regional Rail line's one direction is called.
+const RAIL_TEXT = 'Both directions';
 const SAMPLE_POINTS = 100;
 const ROLLUP_KEY = 'speed_rollup_ts';
 const PUBLISHED_KEY = 'speed_published_ts';
@@ -55,18 +70,27 @@ const round = (x, digits) => Math.round(x * 10 ** digits) / 10 ** digits;
 
 // The measured, simplified directions of each route, built once per shapes load.
 const preparedByShapes = new WeakMap();
-function directionsOf(shapes, route) {
+const preparedRail = new Map();
+function prepare(directions) {
+  return directions
+    .filter(([, points]) => points?.length >= 2)
+    .map(([id, points]) => ({ id, measured: measureShape(simplifyShape(points)) }));
+}
+function directionsOf(shapes, mode, route) {
+  if (mode === RAIL) {
+    if (!preparedRail.has(route)) {
+      const [main] = (railShapes[route] ?? [])
+        .map((points) => prepare([['0', points]])[0])
+        .filter(Boolean)
+        .sort((a, b) => b.measured.length - a.measured.length);
+      preparedRail.set(route, main ? [main] : []);
+    }
+    return preparedRail.get(route);
+  }
+  if (!shapes) return [];
   if (!preparedByShapes.has(shapes)) preparedByShapes.set(shapes, new Map());
   const cache = preparedByShapes.get(shapes);
-  if (!cache.has(route)) {
-    cache.set(
-      route,
-      shapes
-        .directions(route)
-        .filter(([, points]) => points?.length >= 2)
-        .map(([id, points]) => ({ id, measured: measureShape(simplifyShape(points)) })),
-    );
-  }
+  if (!cache.has(route)) cache.set(route, prepare(shapes.directions(route)));
   return cache.get(route);
 }
 
@@ -176,7 +200,7 @@ function resolveDirections(db, mode, route, byText, directions, ts) {
     const taken = new Set([...resolved.values()].map((r) => r.dir));
     for (const [text, dir] of assignDirections(unknown, directions, taken)) {
       const { measured } = byId.get(dir);
-      const { binM } = stretchesFor(measured.length);
+      const binM = mode === RAIL ? MODES[mode].binM : stretchesFor(measured.length).binM;
       // A shape that changed length starts its tallies over.
       db.prepare('DELETE FROM speed_bins WHERE mode = ? AND route = ? AND dir = ?').run(
         mode,
@@ -197,20 +221,21 @@ function tallySlice(db, shapes, from, to) {
   const rows = db
     .prepare(
       `SELECT ts, mode, route, vehicle_id, direction, lat, lon, report_ts FROM observations
-       WHERE ts > ? AND ts <= ? AND mode IN ('bus', 'metro')`,
+       WHERE ts > ? AND ts <= ? AND mode IN ('bus', 'metro', 'regional_rail')`,
     )
     .all(from - HISTORY.lookbackMs, to);
   const byRoute = new Map();
   for (const r of rows) {
-    if (!r.direction) continue;
-    if (r.mode === 'metro' && !METRO_LINES[r.route]) continue;
+    if (r.mode === RAIL) {
+      if (!RAIL_LINES[r.route]) continue;
+    } else if (!r.direction || (r.mode === 'metro' && !METRO_LINES[r.route])) continue;
     const key = `${r.mode}|${r.route}`;
     if (!byRoute.has(key)) byRoute.set(key, { mode: r.mode, route: r.route, rows: [] });
     byRoute.get(key).rows.push(r);
   }
   const tallies = new Map();
   for (const { mode, route, rows: routeRows } of byRoute.values()) {
-    const directions = directionsOf(shapes, route);
+    const directions = directionsOf(shapes, mode, route);
     if (!directions.length) continue;
     const byText = new Map();
     const seen = new Set();
@@ -220,8 +245,9 @@ function tallySlice(db, shapes, from, to) {
       const id = `${r.vehicle_id}|${t}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      if (!byText.has(r.direction)) byText.set(r.direction, []);
-      byText.get(r.direction).push({
+      const text = mode === RAIL ? RAIL_TEXT : r.direction;
+      if (!byText.has(text)) byText.set(text, []);
+      byText.get(text).push({
         vehicle_id: r.vehicle_id,
         t,
         ts: r.ts,
@@ -253,10 +279,10 @@ function tallySlice(db, shapes, from, to) {
  * Fold the observations since the last run into the per-day tallies. The
  * first run goes back to the oldest observation kept.
  * @param {import('better-sqlite3').Database} db
- * @param {{ shapes: object | null, now: number }} opts
+ * @param {{ shapes: object | null, now: number }} opts shapes are the bus and Metro
+ *   route shapes; without them only Regional Rail is rolled up
  */
 export async function rollupSpeeds(db, { shapes, now }) {
-  if (!shapes) return { skipped: 'no-shapes' };
   let from = Number(getMeta(db, ROLLUP_KEY));
   if (!Number.isFinite(from) || from <= 0) {
     from = db.prepare('SELECT MIN(ts) AS ts FROM observations').get().ts ?? now;
@@ -319,7 +345,7 @@ export function buildSpeedFiles(db, { shapes, now }) {
   const files = new Map();
   for (const [key, bins] of grouped) {
     const [mode, route, dir] = key.split('|');
-    const shape = directionsOf(shapes, route).find((d) => d.id === dir);
+    const shape = directionsOf(shapes, mode, route).find((d) => d.id === dir);
     const texts = db
       .prepare(
         'SELECT text, len, bin_m FROM speed_dirs WHERE mode = ? AND route = ? AND dir = ? ORDER BY ts DESC',
@@ -383,20 +409,25 @@ export function buildSpeedFiles(db, { shapes, now }) {
  * with no data this week). Returns how many were written.
  */
 export async function publishSpeeds(db, { dataDir, shapes, now }) {
-  if (!shapes) return { skipped: 'no-shapes' };
   const files = buildSpeedFiles(db, { shapes, now });
-  const dir = join(dataDir, HISTORY.dir);
-  await mkdir(dir, { recursive: true });
-  const names = new Set();
+  const written = new Map(); // directory → file names
   for (const file of files.values()) {
+    const sub = file.mode === RAIL ? join(HISTORY.dir, 'rail') : HISTORY.dir;
+    const dir = join(dataDir, sub);
+    await mkdir(dir, { recursive: true });
     const name = `${encodeURIComponent(file.route)}.json`;
-    names.add(name);
+    if (!written.has(dir)) written.set(dir, new Set());
+    written.get(dir).add(name);
     const path = join(dir, name);
     await writeFile(`${path}.tmp`, `${JSON.stringify(file)}\n`);
     await rename(`${path}.tmp`, path);
   }
-  for (const name of await readdir(dir)) {
-    if (!names.has(name)) await rm(join(dir, name), { force: true });
+  for (const dir of [join(dataDir, HISTORY.dir), join(dataDir, HISTORY.dir, 'rail')]) {
+    const names = written.get(dir) ?? new Set();
+    for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+      if (entry.isFile() && !names.has(entry.name))
+        await rm(join(dir, entry.name), { force: true });
+    }
   }
   setMeta(db, PUBLISHED_KEY, now);
   return { routes: files.size };

@@ -5,6 +5,8 @@
 //   speeds/<route>.json   the past week's average speeds along each direction
 //                         of a bus route, trolley line, or the M1 (bot server;
 //                         see bot/features/speedhistory.js)
+//   speeds/rail/<line>.json  the same for a Regional Rail line, both directions
+//                         together
 //
 // Either can be missing (a route with no vehicles on SEPTA's tracker has no
 // speeds; the GitHub Actions collector publishes no speeds at all), and the
@@ -36,9 +38,12 @@ export async function loadRouteShapes(route) {
   return file?.directions && Object.keys(file.directions).length > 0 ? file : null;
 }
 
-/** A route's week of speeds (see speedhistory.js for the shape), or null. */
-export async function loadRouteSpeeds(route, { now = Date.now() } = {}) {
-  const file = await loadJson(`speeds/${encodeURIComponent(route)}.json`);
+/**
+ * A route's or line's week of speeds (see speedhistory.js for the shape), or null.
+ * @param {{ rail?: boolean, now?: number }} [opts] rail: a Regional Rail line
+ */
+export async function loadRouteSpeeds(route, { rail = false, now = Date.now() } = {}) {
+  const file = await loadJson(`speeds/${rail ? 'rail/' : ''}${encodeURIComponent(route)}.json`);
   if (!file || !Array.isArray(file.directions) || file.directions.length === 0) return null;
   if (now - file.generated_at > SPEEDS_STALE_MS) return null;
   return file;
@@ -145,15 +150,18 @@ export function buildSpeedMap(direction, bands = SPEED_BANDS.road) {
   };
 }
 
-/** The headline numbers of a direction: its average, slowest and fastest stretch. */
-export function summarizeSpeeds(direction) {
+/**
+ * The headline numbers of a direction: its average, slowest and fastest stretch.
+ * @param {Array<{ below: number }>} [bands] the slowest band's limit counts as slow
+ */
+export function summarizeSpeeds(direction, bands = SPEED_BANDS.road) {
   const shown = direction.mph.filter((v) => v != null);
   if (shown.length === 0) return null;
   return {
     avgMph: direction.avg_mph,
     slowestMph: Math.min(...shown),
     fastestMph: Math.max(...shown),
-    slowCount: shown.filter((v) => v < SPEED_BANDS.road[0].below).length,
+    slowCount: shown.filter((v) => v < bands[0].below).length,
     shownCount: shown.length,
     readings: direction.readings,
   };

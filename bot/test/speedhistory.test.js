@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { RouteShapes } from '../../collector/lib/shapes.js';
+import railShapes from '../../src/lib/railLineShapes.json' with { type: 'json' };
 import {
   assignDirections,
   buildSpeedFiles,
@@ -13,7 +14,7 @@ import {
   stretchesFor,
 } from '../features/speedhistory.js';
 import { openDb, pruneDb } from '../lib/db.js';
-import { measureShape } from '../lib/geo.js';
+import { measureShape, sliceAlong } from '../lib/geo.js';
 import { recordObservations } from '../lib/observations.js';
 import { NOW, vehicle } from './helpers.js';
 
@@ -261,10 +262,79 @@ describe('the week of speeds', () => {
     expect(buildSpeedFiles(db, { shapes, now: NOW }).size).toBe(0);
   });
 
-  it('does nothing without shapes', async () => {
+  it('leaves out bus and Metro routes without shapes', async () => {
     const db = openDb(':memory:');
     drive(db, { mph: 10, minutes: 30, start: NOW - 40 * MIN });
-    expect(await rollupSpeeds(db, { shapes: null, now: NOW })).toEqual({ skipped: 'no-shapes' });
+    await rollupSpeeds(db, { shapes: null, now: NOW });
+    expect(buildSpeedFiles(db, { shapes: null, now: NOW }).size).toBe(0);
+  });
+});
+
+/** Trains on the Paoli/Thorndale at `mph`, one report a minute, end to end. */
+function runTrains(
+  db,
+  { mph, start, trains = 6, line = 'Paoli/Thorndale', shape = railShapes.pao[0] },
+) {
+  const measured = measureShape(shape);
+  const perMin = mph * 26.8224;
+  for (let m = 0; m * perMin < measured.length; m++) {
+    const [lat, lon] = sliceAlong(measured, m * perMin, m * perMin + 1)[0];
+    recordObservations(db, start + m * MIN, {
+      trains: Array.from({ length: trains }, (_, i) => ({
+        lat: String(lat),
+        lon: String(lon),
+        line,
+        trainno: `${500 + i}`,
+        dest: 'Philadelphia',
+        late: 0,
+        heading: 90,
+        nextstop: 'Wayne',
+      })),
+    });
+  }
+}
+
+describe('Regional Rail', () => {
+  it('maps a line’s trains, both directions together, in half-mile stretches', async () => {
+    const db = openDb(':memory:');
+    runTrains(db, { mph: 40, start: NOW - 90 * MIN });
+    await rollupSpeeds(db, { shapes: null, now: NOW });
+    const file = buildSpeedFiles(db, { shapes: null, now: NOW }).get('regional_rail|pao');
+    expect(file.directions).toHaveLength(1);
+    const [all] = file.directions;
+    expect(all.label).toBe('Both directions');
+    expect(Math.abs(all.avg_mph - 40)).toBeLessThan(1.5);
+    expect(all.bin_m).toBeCloseTo(805, -1);
+    expect(all.coverage).toBeGreaterThan(0.5);
+    // Trains only run along the shape's own length; no layover is trimmed.
+    expect(all.mph[0]).not.toBeNull();
+  });
+
+  it('ignores trains on a line the site doesn’t know', async () => {
+    const db = openDb(':memory:');
+    runTrains(db, { mph: 40, start: NOW - 90 * MIN, line: 'Not A Line' });
+    await rollupSpeeds(db, { shapes: null, now: NOW });
+    expect(buildSpeedFiles(db, { shapes: null, now: NOW }).size).toBe(0);
+  });
+
+  it('publishes under speeds/rail/, apart from the bus routes', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'speeds-'));
+    const db = openDb(':memory:');
+    runTrains(db, { mph: 40, start: NOW - 90 * MIN });
+    drive(db, { mph: 10, minutes: 30, start: NOW - 40 * MIN });
+    const shapes = shapesFor();
+    await rollupSpeeds(db, { shapes, now: NOW });
+    await publishSpeeds(db, { dataDir, shapes, now: NOW });
+    expect(await readdir(join(dataDir, 'speeds'))).toEqual(
+      expect.arrayContaining(['23.json', 'rail']),
+    );
+    expect(await readdir(join(dataDir, 'speeds', 'rail'))).toEqual(['pao.json']);
+    const file = JSON.parse(await readFile(join(dataDir, 'speeds', 'rail', 'pao.json'), 'utf8'));
+    expect(file).toMatchObject({ mode: 'regional_rail', route: 'pao' });
+    // A line with nothing this week loses its file.
+    const later = NOW + 20 * DAY;
+    await publishSpeeds(db, { dataDir, shapes, now: later });
+    expect(await readdir(join(dataDir, 'speeds', 'rail'))).toEqual([]);
   });
 });
 

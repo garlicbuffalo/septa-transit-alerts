@@ -117,6 +117,10 @@ describe('summarizeSpeeds', () => {
     });
   });
 
+  it('counts the stretches under the slowest band of the bands it’s given', () => {
+    expect(summarizeSpeeds(speedFile().directions[0], SPEED_BANDS.rail).slowCount).toBe(2);
+  });
+
   it('has nothing for a direction with no stretches', () => {
     expect(summarizeSpeeds({ mph: [null, null], avg_mph: 0, readings: 0 })).toBeNull();
   });
@@ -169,6 +173,13 @@ describe('loading the files', () => {
   ])('has no speeds for %s', async (_, make) => {
     vi.stubGlobal('fetch', make());
     expect(await loadRouteSpeeds('17', { now: NOW })).toBeNull();
+  });
+
+  it('reads a Regional Rail line’s speeds from speeds/rail/<line>.json', async () => {
+    const fetchFn = respond(speedFile({ mode: 'regional_rail', route: 'pao' }));
+    vi.stubGlobal('fetch', fetchFn);
+    expect(await loadRouteSpeeds('pao', { rail: true, now: NOW })).not.toBeNull();
+    expect(fetchFn.mock.calls[0][0]).toMatch(/speeds\/rail\/pao\.json$/);
   });
 
   it('has no speeds from a server that has gone quiet', async () => {

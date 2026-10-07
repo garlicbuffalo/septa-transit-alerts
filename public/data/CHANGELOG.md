@@ -4,7 +4,7 @@ Breaking and notable changes to the published data under `/data/` —
 `alerts-recent.json`, the monthly `alerts/<YYYY-MM>.json` shards,
 `incidents/by-line/<key>.json`, `alerts-index.json`, `aggregates.json`,
 `daily-counts.json`, `accessibility.json`, `shapes/<route>.json`,
-`speeds/<route>.json`, and `alerts.csv` — and to the
+`speeds/<route>.json`, `speeds/rail/<line>.json`, and `alerts.csv` — and to the
 syndication feeds (`/feed.xml` and the per-line/route feeds under `/feed/`).
 Newest first. If you build on this data, watch this file before pinning to the
 format.
@@ -15,8 +15,10 @@ format.
   `{ schema_version, route, directions: { "<direction id>": [[lat, lon], …] } }`.
   Each direction's shape from SEPTA's GTFS, simplified to about 15 m. Written by
   the collector whenever it rebuilds its GTFS cache.
-- New **`speeds/<route>.json`** (bus routes, trolley lines, and the M1; written
-  by the bot server only, so absent when the GitHub Actions collector is
+- New **`speeds/<route>.json`** (bus routes, trolley lines, and the M1; and
+  **`speeds/rail/<line>.json`** for Regional Rail lines, with one direction,
+  "Both directions", along the line's main alignment in half-mile stretches;
+  written by the bot server only, so absent when the GitHub Actions collector is
   running alone, and for routes with too little tracker data):
   `{ schema_version, mode, route, generated_at, window_days, from_day, to_day,
   days_with_data, directions: [{ id, label, avg_mph, coverage, readings, bin_m,

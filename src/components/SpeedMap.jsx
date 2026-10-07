@@ -9,21 +9,23 @@ import { NO_DATA_COLOR, SPEED_BANDS } from '../lib/speedBands.js';
 import { BasemapCredit, BasemapTiles } from './Basemap.jsx';
 
 const pathProps = { fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' };
-const BANDS = SPEED_BANDS.road;
 const plural = (n, word) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
 
 // A route's or line's path colored by how fast its vehicles moved along each
 // stretch, averaged over the past 7 days (the bot server's speed history).
 // One map per direction. Left out when there are no speeds for it: Metro's
 // subway lines don't report positions, and some routes are too thinly tracked.
-export default function SpeedMap({ route, label, noun = 'vehicles' }) {
+export default function SpeedMap({ route, label, mode = 'bus' }) {
+  const rail = mode === 'rail';
+  const bands = rail ? SPEED_BANDS.rail : SPEED_BANDS.road;
+  const noun = rail ? 'trains' : mode === 'metro' ? 'vehicles' : 'buses';
   const [file, setFile] = useState(null);
   const [directionId, setDirectionId] = useState(null);
   useEffect(() => {
     let cancelled = false;
     setFile(null);
     setDirectionId(null);
-    loadRouteSpeeds(route).then((f) => {
+    loadRouteSpeeds(route, { rail }).then((f) => {
       if (cancelled) return;
       setFile(f);
       // The direction with the most readings first.
@@ -33,11 +35,17 @@ export default function SpeedMap({ route, label, noun = 'vehicles' }) {
     return () => {
       cancelled = true;
     };
-  }, [route]);
+  }, [route, rail]);
 
   const direction = file?.directions.find((d) => d.id === directionId) ?? null;
-  const map = useMemo(() => (direction ? buildSpeedMap(direction, BANDS) : null), [direction]);
-  const summary = useMemo(() => (direction ? summarizeSpeeds(direction) : null), [direction]);
+  const map = useMemo(
+    () => (direction ? buildSpeedMap(direction, bands) : null),
+    [direction, bands],
+  );
+  const summary = useMemo(
+    () => (direction ? summarizeSpeeds(direction, bands) : null),
+    [direction, bands],
+  );
   if (!file || !direction || !map || !summary) return null;
 
   const window = speedWindowLabel(file);
@@ -46,7 +54,7 @@ export default function SpeedMap({ route, label, noun = 'vehicles' }) {
     `Map of ${label}${dirLabel} colored by how fast ${noun} moved along it, ${window}, ` +
     `averaging ${summary.avgMph.toFixed(1)} mph` +
     (summary.slowCount
-      ? `, with ${summary.slowCount} of ${summary.shownCount} stretches under ${BANDS[0].below} mph.`
+      ? `, with ${summary.slowCount} of ${summary.shownCount} stretches under ${bands[0].below} mph.`
       : '.') +
     ' Gray stretches had too little data.';
 
@@ -123,7 +131,7 @@ export default function SpeedMap({ route, label, noun = 'vehicles' }) {
             ))}
           </svg>
           <ul className="absolute left-2 bottom-2 rounded-md bg-black/70 px-2 py-1.5 text-[11px] leading-tight text-slate-100 space-y-0.5">
-            {[...BANDS].reverse().map((b) => (
+            {[...bands].reverse().map((b) => (
               <li key={b.label} className="flex items-center gap-1.5">
                 <span
                   aria-hidden="true"
@@ -147,10 +155,13 @@ export default function SpeedMap({ route, label, noun = 'vehicles' }) {
 
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           Each stretch is the total distance {noun} covered there over the total time, from{' '}
-          {plural(summary.readings, 'position pair')} on SEPTA's vehicle tracker over{' '}
-          {plural(file.days_with_data, 'day')}. Stops, traffic, and signals all count — this is trip
-          speed, not top speed. The ends of the route are left out, where {noun} layover. Gray
-          stretches had too little data.
+          {plural(summary.readings, 'position pair')} on SEPTA's{' '}
+          {rail ? 'TrainView' : 'vehicle tracker'} over {plural(file.days_with_data, 'day')}. Stops,
+          traffic, and signals all count — this is trip speed, not top speed.{' '}
+          {rail
+            ? 'Trains in both directions are combined.'
+            : `The ends of the route are left out, where ${noun} layover.`}{' '}
+          Gray stretches had too little data.
         </p>
       </div>
     </section>
