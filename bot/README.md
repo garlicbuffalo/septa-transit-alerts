@@ -22,7 +22,7 @@ You need:
 
 - an Ubuntu 22.04 or 24.04 server (1 vCPU and 2 GB of RAM is plenty, e.g. Hetzner CX22 or a DigitalOcean $6 droplet);
 - the four Bluesky accounts, each with an app password and a verified email address (Bluesky only takes videos from verified accounts);
-- a Mapbox public token;
+- a CARTO API key for the maps (free), or the address of the [septa-tracker](https://github.com/garlicbuffalo/septa-tracker) relay's `/api/tiles` — see [Maps](#maps). A Mapbox public token still works as a fallback;
 - a fine-grained GitHub token for this repository with **Contents: read and write** and **Actions: read and write**.
 
 1. **Install.** SSH in and run:
@@ -41,7 +41,7 @@ You need:
 
    Every setting is explained in [`septa-bots.env.example`](deploy/septa-bots.env.example).
 
-3. **Check.** `sudo septa-bots check` logs in to each Bluesky account and tests the Mapbox and GitHub tokens.
+3. **Check.** `sudo septa-bots check` logs in to each Bluesky account and tests the map tiles (it fetches one) and the GitHub token.
 
 4. **Apply and watch.**
 
@@ -55,6 +55,15 @@ You need:
 5. **Review dry-run posts.** Would-be posts collect in `/var/lib/septa-bots/assets/<date>/`: a `.json` with the text, plus the image or video. Alerts that were already up when posting started are never posted, so expect only new ones. `sudo septa-bots snapshot 3` records a 3-minute system timelapse right away, to check videos render.
 
 6. **Go live.** Set `BOT_MODE=live` and `PUBLISH=1` in `/etc/septa-bots.env`, then restart.
+
+## Maps
+
+The maps in the posts are the CARTO dark map the site uses. CARTO wants an API key, and the bots can get tiles one of two ways:
+
+- **`CARTO_KEY`**: a CARTO key, to fetch from CARTO directly. It can be the same key as the site's `CARTO_KEY` repository variable, or a key of its own for this server (get one free at [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/); one limited to the server's IP never has to leave it). A key limited to a domain is sent the Referer a browser on that domain would send: the site's `SITE_URL`, or `CARTO_REFERER` if you set it.
+- **`TILES_URL`**: instead of a key, the septa-tracker's tile relay, `https://<the tracker's domain>/api/tiles`, which holds a key as a Cloudflare secret.
+
+Each map's tiles are fetched (@2x), stitched to the map's own projection with sharp, and cropped to the image; a credit is drawn in the corner. If CARTO can't be reached and `MAPBOX_TOKEN` is set, that map comes from Mapbox instead; a map that can't get a basemap at all is posted without its image, as before. With none of the three settings, maps render on a plain background. `sudo septa-bots check` fetches one tile, and the service logs which source it's using when it starts. CARTO answers a key it doesn't accept with an ordinary image stamped "API KEY REQUIRED", which `check` can't tell from a good tile: look at a map (`sudo septa-bots map alert-136615`) after setting a key.
 
 ## Operating it
 
@@ -107,7 +116,7 @@ features/speedmaps.js   past-hour speeds binned along a route, round-robin
 features/recaps.js      weekly and monthly bunching hotspots and gap charts
 features/cancellations.js  twice-daily cancelled-trip roundups
 features/insights.js    the insights account: reposts, rough hours, daily and weekly digests
-map/               Mapbox basemap + SVG overlay rendering (projection, drawing, line, route,
+map/               CARTO basemap (tiles stitched in basemap.js) + SVG overlay rendering (projection, drawing, line, route,
                    speed and hotspot maps, bar charts)
 video/             timelapses: vehicle tracks, scenes, frame rendering, ffmpeg encoding
 lib/shapes.js      route shapes from GTFS (built with the collector's daily schedule)
@@ -187,4 +196,4 @@ cta-insights is licensed under the ISC license:
 >
 > THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-Map tiles: © Mapbox © OpenStreetMap contributors.
+Map tiles: © OpenStreetMap contributors © CARTO (each map carries the credit); Mapbox's maps, if used as the fallback, carry theirs.

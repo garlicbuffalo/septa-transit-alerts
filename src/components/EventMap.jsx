@@ -5,6 +5,7 @@ import { METRO_LINES } from '../lib/metroLines.js';
 import { buildRailLineMap } from '../lib/railLineMap.js';
 import { RAIL_LINES } from '../lib/railLines.js';
 import { displayStationName } from '../lib/stations.js';
+import { BasemapCredit, BasemapTiles, LABEL_ON_MAP } from './Basemap.jsx';
 
 // Light-touch event-scoped map: full line track in muted color, with the
 // stations involved in this incident highlighted as bold dots with labels.
@@ -32,6 +33,10 @@ export default function EventMap({
       (isRail ? buildRailLineMap : buildLineMap)(lineKey, null, {
         maxWidth: 720,
         maxHeight: 320,
+        // Street tiles under the line. The margin keeps the HTML station labels
+        // inside the map rather than past its edge.
+        basemap: true,
+        margin: 40,
       }),
     [lineKey, isRail],
   );
@@ -53,6 +58,7 @@ export default function EventMap({
   // the map's minWidth (480px) exceeds the viewport.
   const affectedCenterX = affected.reduce((sum, s) => sum + s.x, 0) / affected.length;
 
+  const onMap = Boolean(map.basemap);
   const info = isRail ? RAIL_LINES[lineKey] : METRO_LINES[lineKey];
   const accent = info?.color ?? '#475569';
   // SEPTA reads "L1"; Regional Rail lines are named outright ("Rock Island").
@@ -80,14 +86,19 @@ export default function EventMap({
           mapWidth={map.width}
           affectedCenterX={affectedCenterX}
           affectedKey={affected.map((s) => s.name).join('|')}
+          padded={!onMap}
         >
-          <div className="relative" style={{ minWidth: Math.min(map.width, 480), width: '100%' }}>
+          <div
+            className="relative rounded-md"
+            style={{ minWidth: Math.min(map.width, 480), width: '100%' }}
+          >
+            <BasemapTiles basemap={map.basemap} />
             <svg
               viewBox={`0 0 ${map.width} ${map.height}`}
               preserveAspectRatio="xMidYMid meet"
               role="img"
               aria-label={`Affected stretch on the ${mapLabel}`}
-              className="block w-full h-auto"
+              className="relative block w-full h-auto"
             >
               <title>{`Affected stretch on the ${mapLabel}`}</title>
               {/* Track — dimmed compared to LinePage's map so the affected
@@ -97,12 +108,25 @@ export default function EventMap({
                   key={d}
                   d={d}
                   fill="none"
-                  stroke={hexToRgba(accent, 0.25)}
+                  stroke={hexToRgba(accent, onMap ? 0.6 : 0.25)}
                   strokeWidth={3}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
               ))}
+              {/* A dark edge under the highlight so it stands off the street
+                  map's own lines. */}
+              {onMap && highlightPath && (
+                <path
+                  d={highlightPath}
+                  fill="none"
+                  stroke="#0b0f14"
+                  strokeWidth={9}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.7}
+                />
+              )}
               {highlightPath && (
                 <path
                   d={highlightPath}
@@ -111,7 +135,7 @@ export default function EventMap({
                   strokeWidth={5}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity={0.85}
+                  opacity={onMap ? 1 : 0.85}
                 />
               )}
               {/* Quiet dots for context — every other station on the line
@@ -126,7 +150,9 @@ export default function EventMap({
                     cy={s.y}
                     r={2.5}
                     fill="#cbd5e1"
-                    className="dark:[fill:#475569]"
+                    stroke={onMap ? '#0b0f14' : undefined}
+                    strokeWidth={onMap ? 1 : undefined}
+                    className={onMap ? undefined : 'dark:[fill:#475569]'}
                   >
                     <title>{displayStationName(s.name)}</title>
                   </circle>
@@ -142,7 +168,7 @@ export default function EventMap({
                     fill={accent}
                     stroke="white"
                     strokeWidth={2}
-                    className="dark:[stroke:#0d1117]"
+                    className={onMap ? undefined : 'dark:[stroke:#0d1117]'}
                   >
                     <title>{displayStationName(s.name)}</title>
                   </circle>
@@ -255,7 +281,11 @@ export default function EventMap({
                 return (
                   <span
                     key={`label-${s.name}`}
-                    className="absolute pointer-events-none whitespace-nowrap text-[11px] font-semibold text-slate-700 dark:text-slate-200 [text-shadow:0_0_3px_white,0_0_3px_white,0_0_3px_white] dark:[text-shadow:0_0_3px_#161b22,0_0_3px_#161b22,0_0_3px_#161b22]"
+                    className={`absolute pointer-events-none whitespace-nowrap text-[11px] font-semibold ${
+                      onMap
+                        ? LABEL_ON_MAP
+                        : 'text-slate-700 dark:text-slate-200 [text-shadow:0_0_3px_white,0_0_3px_white,0_0_3px_white] dark:[text-shadow:0_0_3px_#161b22,0_0_3px_#161b22,0_0_3px_#161b22]'
+                    }`}
                     style={{
                       left: `${leftPct}%`,
                       top: `${topPct}%`,
@@ -269,6 +299,7 @@ export default function EventMap({
             })()}
           </div>
         </MapScroller>
+        <BasemapCredit basemap={map.basemap} />
       </div>
     </section>
   );
@@ -281,7 +312,7 @@ export default function EventMap({
 // (e.g. Blue Line's O'Hare branch). `affectedKey` re-runs the scroll when
 // the highlighted stations change, so navigating between events updates
 // the framing instead of stuck at the previous segment's position.
-export function MapScroller({ mapWidth, affectedCenterX, affectedKey, children }) {
+export function MapScroller({ mapWidth, affectedCenterX, affectedKey, padded = true, children }) {
   const ref = useRef(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: affectedKey captures the affected-stations identity
   useEffect(() => {
@@ -305,7 +336,9 @@ export function MapScroller({ mapWidth, affectedCenterX, affectedKey, children }
     // instead of being clipped — `overflow-x: auto` coerces the y-axis to clip
     // too, so without this cushion the label's top gets cut off. Same fix the
     // LinePage LineMap uses for its terminal labels.
-    <div ref={ref} className="relative overflow-x-auto py-6">
+    // A map with a basemap is a solid panel that already holds its labels, so it
+    // wants no cushion (`padded={false}`).
+    <div ref={ref} className={`relative overflow-x-auto ${padded ? 'py-6' : ''}`}>
       {children}
     </div>
   );

@@ -3,6 +3,7 @@ import { hexToRgba } from '../lib/format.js';
 import { buildMultiLineMap, sliceTrackBetween } from '../lib/lineMap.js';
 import { METRO_LINES } from '../lib/metroLines.js';
 import { displayStationName } from '../lib/stations.js';
+import { BasemapCredit, BasemapTiles } from './Basemap.jsx';
 import { MapScroller, normalize } from './EventMap.jsx';
 
 // Combined event map for an incident touching more than one train line — a
@@ -42,11 +43,15 @@ export default function MultiLineEventMap({
         maxWidth: 720,
         maxHeight: 420,
         cropToStationNames: cropNames,
+        basemap: true,
       }),
     [lineKeysKey, cropKey],
   );
 
   if (!map) return null;
+  // Street tiles under the lines: the faint tracks and dots below are drawn for
+  // a dark map, not the page's white or near-black card.
+  const onMap = Boolean(map.basemap);
 
   // Group projected stations by their loose-normalized name so a segment
   // endpoint ("Armitage (Brown/Purple)") resolves to the physical station even
@@ -202,14 +207,19 @@ export default function MultiLineEventMap({
           mapWidth={map.width}
           affectedCenterX={affectedCenterX}
           affectedKey={affected.map((s) => s.name).join('|')}
+          padded={!onMap}
         >
-          <div className="relative" style={{ minWidth: Math.min(map.width, 480), width: '100%' }}>
+          <div
+            className="relative rounded-md"
+            style={{ minWidth: Math.min(map.width, 480), width: '100%' }}
+          >
+            <BasemapTiles basemap={map.basemap} />
             <svg
               viewBox={`0 0 ${map.width} ${map.height}`}
               preserveAspectRatio="xMidYMid meet"
               role="img"
               aria-label={`Affected stretches across ${map.tracksByLine.length} Metro lines`}
-              className="block w-full h-auto overflow-hidden"
+              className="relative block w-full h-auto overflow-hidden"
             >
               <title>{`Affected stretches across ${map.tracksByLine.length} Metro lines`}</title>
               {/* Faint full tracks, one set per affected line in its color. */}
@@ -223,7 +233,7 @@ export default function MultiLineEventMap({
                         key={`${t.key}:${d}`}
                         d={d}
                         fill="none"
-                        stroke={hexToRgba(t.color, 0.25)}
+                        stroke={hexToRgba(t.color, onMap ? 0.6 : 0.25)}
                         strokeWidth={3}
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -231,6 +241,21 @@ export default function MultiLineEventMap({
                     );
                   }),
               )}
+              {/* A dark edge under the bold stretches so they stand off the
+                  street map's own lines (one per stretch, whatever its stripes). */}
+              {onMap &&
+                [...new Set(stretchPaths.map((h) => h.d))].map((d) => (
+                  <path
+                    key={`edge:${d}`}
+                    d={d}
+                    fill="none"
+                    stroke="#0b0f14"
+                    strokeWidth={9}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.7}
+                  />
+                ))}
               {/* Bold highlighted stretches. A stretch on one line draws solid;
                   a stretch shared by several affected lines candy-stripes their
                   colors via interleaved dashes (butt caps so the dashes tile
@@ -246,7 +271,7 @@ export default function MultiLineEventMap({
                   strokeLinejoin="round"
                   strokeDasharray={h.dasharray ?? undefined}
                   strokeDashoffset={h.dasharray ? h.dashoffset : undefined}
-                  opacity={0.9}
+                  opacity={onMap ? 1 : 0.9}
                 />
               ))}
               {/* Context dots for every other station on the affected lines. */}
@@ -259,7 +284,9 @@ export default function MultiLineEventMap({
                     cy={s.y}
                     r={2.5}
                     fill="#cbd5e1"
-                    className="dark:[fill:#475569]"
+                    stroke={onMap ? '#0b0f14' : undefined}
+                    strokeWidth={onMap ? 1 : undefined}
+                    className={onMap ? undefined : 'dark:[fill:#475569]'}
                   >
                     <title>{displayStationName(s.name)}</title>
                   </circle>
@@ -274,10 +301,10 @@ export default function MultiLineEventMap({
                     cx={s.x}
                     cy={s.y}
                     r={5.5}
-                    fill="#334155"
-                    stroke="white"
+                    fill={onMap ? '#e2e8f0' : '#334155'}
+                    stroke={onMap ? '#0b0f14' : 'white'}
                     strokeWidth={2}
-                    className="dark:[fill:#cbd5e1] dark:[stroke:#0d1117]"
+                    className={onMap ? undefined : 'dark:[fill:#cbd5e1] dark:[stroke:#0d1117]'}
                   >
                     <title>{displayStationName(s.name)}</title>
                   </circle>
@@ -298,6 +325,7 @@ export default function MultiLineEventMap({
             </svg>
           </div>
         </MapScroller>
+        <BasemapCredit basemap={map.basemap} />
       </div>
     </section>
   );

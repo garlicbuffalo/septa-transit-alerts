@@ -5,18 +5,24 @@ import { METRO_LINES } from '../lib/metroLines.js';
 import { buildRailLineMap } from '../lib/railLineMap.js';
 import { RAIL_LINES } from '../lib/railLines.js';
 import { displayStationName } from '../lib/stations.js';
+import { BasemapCredit, BasemapTiles, LABEL_ON_MAP } from './Basemap.jsx';
 
 // Five intensity stops keyed off the line's max station count so the
 // busiest station is fully saturated and the rest scale linearly. Mirrors
 // the existing Calendar / Hour-of-Week heatmap conventions for visual
 // consistency across the site.
-function stationFill(count, maxCount, baseColor) {
-  if (count === 0 || maxCount <= 0) return 'var(--timeline-empty)';
+//
+// `onMap` is for dots drawn over a basemap's dark tiles, where the page's pale
+// "empty" colour and the faintest tints would vanish: quiet stations are a
+// neutral grey and every tint starts stronger.
+function stationFill(count, maxCount, baseColor, onMap = false) {
+  if (count === 0 || maxCount <= 0)
+    return onMap ? 'rgba(148,163,184,0.85)' : 'var(--timeline-empty)';
   const ratio = count / maxCount;
-  if (ratio < 0.2) return hexToRgba(baseColor, 0.35);
-  if (ratio < 0.4) return hexToRgba(baseColor, 0.55);
-  if (ratio < 0.7) return hexToRgba(baseColor, 0.75);
-  if (ratio < 0.9) return hexToRgba(baseColor, 0.9);
+  if (ratio < 0.2) return hexToRgba(baseColor, onMap ? 0.55 : 0.35);
+  if (ratio < 0.4) return hexToRgba(baseColor, onMap ? 0.7 : 0.55);
+  if (ratio < 0.7) return hexToRgba(baseColor, onMap ? 0.82 : 0.75);
+  if (ratio < 0.9) return hexToRgba(baseColor, onMap ? 0.92 : 0.9);
   return baseColor;
 }
 
@@ -26,8 +32,8 @@ function pathFor(track) {
   return `M${track.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('L')}`;
 }
 
-function StationDot({ station, maxCount, accent, radius = 5, hrefBase = '/station' }) {
-  const fill = stationFill(station.count, maxCount, accent);
+function StationDot({ station, maxCount, accent, radius = 5, hrefBase = '/station', onMap }) {
+  const fill = stationFill(station.count, maxCount, accent, onMap);
   const display = displayStationName(station.name);
   const label =
     station.count === 0
@@ -40,9 +46,9 @@ function StationDot({ station, maxCount, accent, radius = 5, hrefBase = '/statio
       cy={station.y}
       r={radius}
       fill={fill}
-      stroke="white"
+      stroke={onMap ? '#0b0f14' : 'white'}
       strokeWidth={1.5}
-      className="dark:[stroke:#0d1117]"
+      className={onMap ? undefined : 'dark:[stroke:#0d1117]'}
     >
       <title>{label}</title>
     </circle>
@@ -74,7 +80,7 @@ function StationDot({ station, maxCount, accent, radius = 5, hrefBase = '/statio
 //     label never extends past the canvas. Left third → label's left
 //     edge sits at the dot (text grows right). Right third → right edge
 //     at the dot (text grows left). Middle third → centered on the dot.
-function TerminalLabel({ station, mapWidth, mapHeight, radius }) {
+function TerminalLabel({ station, mapWidth, mapHeight, radius, onMap }) {
   const leftPct = (station.x / mapWidth) * 100;
   const topPct = (station.y / mapHeight) * 100;
   const xRatio = station.x / mapWidth;
@@ -102,7 +108,11 @@ function TerminalLabel({ station, mapWidth, mapHeight, radius }) {
 
   return (
     <span
-      className="absolute pointer-events-none whitespace-nowrap text-[11px] font-semibold text-slate-700 dark:text-slate-200 [text-shadow:0_0_3px_white,0_0_3px_white,0_0_3px_white] dark:[text-shadow:0_0_3px_#161b22,0_0_3px_#161b22,0_0_3px_#161b22]"
+      className={`absolute pointer-events-none whitespace-nowrap text-[11px] font-semibold ${
+        onMap
+          ? LABEL_ON_MAP
+          : 'text-slate-700 dark:text-slate-200 [text-shadow:0_0_3px_white,0_0_3px_white,0_0_3px_white] dark:[text-shadow:0_0_3px_#161b22,0_0_3px_#161b22,0_0_3px_#161b22]'
+      }`}
       style={{
         left: `${leftPct}%`,
         top: `${topPct}%`,
@@ -129,6 +139,10 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
       (isRail ? buildRailLineMap : buildLineMap)(lineKey, stationIndex, {
         maxWidth: 720,
         maxHeight: 540,
+        // Street tiles under the line. The margin keeps terminal labels (HTML,
+        // placed past their dot) inside the map rather than off its edge.
+        basemap: true,
+        margin: 40,
       }),
     [lineKey, stationIndex, isRail],
   );
@@ -158,6 +172,7 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
     };
   }, []);
   if (!map) return null;
+  const onMap = Boolean(map.basemap);
   const info = isRail ? RAIL_LINES[lineKey] : METRO_LINES[lineKey];
   const accent = info?.color ?? '#475569';
   // SEPTA lines read "L1"; Regional Rail lines are named outright ("Union Pacific
@@ -169,6 +184,9 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
   const trackPaths = map.tracks.filter((t) => t.length >= 2).map(pathFor);
   const inset = map.downtown;
   const insetTracks = inset ? inset.tracks.filter((t) => t.length >= 2).map(pathFor) : [];
+  // Over a basemap the track is drawn stronger, on a dark edge, so it reads
+  // against the street map's own lines.
+  const trackAlpha = onMap ? 0.75 : 0.35;
 
   return (
     <section>
@@ -189,31 +207,53 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
               padding turns that negative offset into a positive one inside
               the padding-box (where `overflow-x: auto` is coerced to clip
               both axes). */}
-          <div ref={scrollRef} className="relative overflow-x-auto flex-1 min-w-0 py-6">
+          <div
+            ref={scrollRef}
+            className={`relative overflow-x-auto flex-1 min-w-0 rounded-md ${onMap ? '' : 'py-6'}`}
+          >
             <div
               aria-hidden="true"
-              className={`pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-white dark:from-gh-surface to-transparent sm:hidden z-20 transition-opacity ${
+              className={`pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l ${
+                onMap ? 'from-[#262626]' : 'from-white dark:from-gh-surface'
+              } to-transparent sm:hidden z-20 transition-opacity ${
                 showRightFade ? 'opacity-100' : 'opacity-0'
               }`}
             />
             {/* SVG sized container — labels are HTML siblings of the SVG,
                 positioned in % of this container so they scale with the
                 SVG and aren't clipped by viewBox bounds. */}
-            <div className="relative" style={{ minWidth: Math.min(map.width, 560), width: '100%' }}>
+            <div
+              className="relative rounded-md"
+              style={{ minWidth: Math.min(map.width, 560), width: '100%' }}
+            >
+              <BasemapTiles basemap={map.basemap} />
               <svg
                 viewBox={`0 0 ${map.width} ${map.height}`}
                 preserveAspectRatio="xMidYMid meet"
                 role="img"
                 aria-label={`${mapLabel} stations heatmap`}
-                className="block w-full h-auto"
+                className="relative block w-full h-auto"
               >
                 <title>{`${mapLabel} stations`}</title>
+                {onMap &&
+                  trackPaths.map((d) => (
+                    <path
+                      key={`edge:${d}`}
+                      d={d}
+                      fill="none"
+                      stroke="#0b0f14"
+                      strokeWidth={7}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity={0.6}
+                    />
+                  ))}
                 {trackPaths.map((d) => (
                   <path
                     key={d}
                     d={d}
                     fill="none"
-                    stroke={hexToRgba(accent, 0.35)}
+                    stroke={hexToRgba(accent, trackAlpha)}
                     strokeWidth={4}
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -227,6 +267,7 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
                     accent={accent}
                     radius={6}
                     hrefBase={hrefBase}
+                    onMap={onMap}
                   />
                 ))}
                 {/* Marker rectangle on the main map showing where the
@@ -239,7 +280,7 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
                     width={map.downtown.mainBoxRect.width}
                     height={map.downtown.mainBoxRect.height}
                     fill="none"
-                    stroke="#94a3b8"
+                    stroke={onMap ? '#e2e8f0' : '#94a3b8'}
                     strokeWidth={1.5}
                     strokeDasharray="4 3"
                     rx={3}
@@ -258,50 +299,76 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
                     mapWidth={map.width}
                     mapHeight={map.height}
                     radius={6}
+                    onMap={onMap}
                   />
                 ))}
             </div>
           </div>
 
           {inset && (
-            <div className="lg:w-[280px] flex-shrink-0">
+            // Tiles are raster, so when the inset stacks under the map (below lg)
+            // it stops short of the full width rather than blow them up.
+            <div className={`lg:w-[280px] flex-shrink-0 ${onMap ? 'w-full max-w-[360px]' : ''}`}>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
                 Downtown
               </p>
-              <div className="rounded-md border border-slate-200 dark:border-gh-border p-2 bg-slate-50 dark:bg-gh-canvas">
-                <svg
-                  viewBox={`0 0 ${inset.width} ${inset.height}`}
-                  preserveAspectRatio="xMidYMid meet"
-                  role="img"
-                  aria-label={`${info?.label ?? lineKey} Line downtown stations zoom`}
-                  className="block w-full h-auto"
-                >
-                  <title>{`${info?.label ?? lineKey} Line downtown stations`}</title>
-                  {insetTracks.map((d) => (
-                    <path
-                      key={`inset-${d}`}
-                      d={d}
-                      fill="none"
-                      stroke={hexToRgba(accent, 0.35)}
-                      strokeWidth={3.5}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  ))}
-                  {inset.stations.map((s) => (
-                    <StationDot
-                      key={`inset-${s.name}`}
-                      station={s}
-                      maxCount={map.maxCount}
-                      accent={accent}
-                      radius={6}
-                    />
-                  ))}
-                </svg>
+              <div
+                className={`rounded-md border border-slate-200 dark:border-gh-border bg-slate-50 dark:bg-gh-canvas ${
+                  onMap ? 'overflow-hidden' : 'p-2'
+                }`}
+              >
+                <div className="relative">
+                  <BasemapTiles basemap={inset.basemap} />
+                  <svg
+                    viewBox={`0 0 ${inset.width} ${inset.height}`}
+                    preserveAspectRatio="xMidYMid meet"
+                    role="img"
+                    aria-label={`${info?.label ?? lineKey} Line downtown stations zoom`}
+                    className="relative block w-full h-auto"
+                  >
+                    <title>{`${info?.label ?? lineKey} Line downtown stations`}</title>
+                    {onMap &&
+                      insetTracks.map((d) => (
+                        <path
+                          key={`inset-edge-${d}`}
+                          d={d}
+                          fill="none"
+                          stroke="#0b0f14"
+                          strokeWidth={6.5}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          opacity={0.6}
+                        />
+                      ))}
+                    {insetTracks.map((d) => (
+                      <path
+                        key={`inset-${d}`}
+                        d={d}
+                        fill="none"
+                        stroke={hexToRgba(accent, trackAlpha)}
+                        strokeWidth={3.5}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    ))}
+                    {inset.stations.map((s) => (
+                      <StationDot
+                        key={`inset-${s.name}`}
+                        station={s}
+                        maxCount={map.maxCount}
+                        accent={accent}
+                        radius={6}
+                        onMap={onMap}
+                      />
+                    ))}
+                  </svg>
+                </div>
               </div>
             </div>
           )}
         </div>
+
+        <BasemapCredit basemap={map.basemap} />
 
         {/* Legend mirrors the calendar/hour-grid scale */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 pt-3 border-t border-slate-100 dark:border-gh-border">
@@ -317,8 +384,8 @@ export default function LineMap({ lineKey, stationIndex, kind = 'metro' }) {
                     style={{
                       backgroundColor:
                         r === 0
-                          ? 'var(--timeline-empty)'
-                          : stationFill(count, Math.max(map.maxCount, 1), accent),
+                          ? stationFill(0, 1, accent, onMap)
+                          : stationFill(count, Math.max(map.maxCount, 1), accent, onMap),
                     }}
                   />
                 );

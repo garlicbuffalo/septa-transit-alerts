@@ -5,6 +5,7 @@ import { hexToRgba } from '../lib/format.js';
 import { buildLineMap, sliceTrackBetween, terminalPointsFor } from '../lib/lineMap.js';
 import { METRO_LINES } from '../lib/metroLines.js';
 import { displayStationName, slugifyStation } from '../lib/stations.js';
+import { BasemapCredit, BasemapTiles } from './Basemap.jsx';
 
 // Trains drop out of SEPTA feed for short stretches constantly (layovers at
 // terminals, tunnels, missing predictions). We bridge gaps up to this long —
@@ -349,8 +350,8 @@ export default function EventReplay({ eventId, lineKey, fromStation, toStation, 
     };
   }, [eventId]);
 
-  // On a phone, render the line in portrait (long axis vertical) so it fills
-  // the screen's height instead of squishing into a wide sliver.
+  // On a phone the map's canvas is narrower (and may be taller), so its dots and
+  // labels aren't shrunk to specks when it's fitted to the card's width.
   const isMobile = useMediaQuery('(max-width: 640px)');
   // Honor reduced-motion like the rest of the app (index.css kills looping
   // animations): drop the dot fade tweening and never auto-run. Playback itself
@@ -362,9 +363,12 @@ export default function EventReplay({ eventId, lineKey, fromStation, toStation, 
         ? buildLineMap(
             lineKey,
             null,
+            // Street tiles under the line, so the canvas isn't turned to stand a
+            // long line upright (street names would run sideways): a tall line
+            // gets a taller canvas, a wide one a shorter canvas.
             isMobile
-              ? { maxWidth: 400, maxHeight: 640, margin: 16, preferPortrait: true }
-              : { maxWidth: 720, maxHeight: 320 },
+              ? { maxWidth: 400, maxHeight: 520, margin: 20, basemap: true }
+              : { maxWidth: 720, maxHeight: 400, margin: 28, basemap: true },
           )
         : null,
     [lineKey, isMobile],
@@ -475,6 +479,7 @@ export default function EventReplay({ eventId, lineKey, fromStation, toStation, 
 
   if (status !== 'ready' || !map || !track) return null;
 
+  const onMap = Boolean(map.basemap);
   const info = METRO_LINES[lineKey];
   const accent = info?.color ?? '#475569';
   const trackPaths = map.tracks
@@ -583,9 +588,17 @@ export default function EventReplay({ eventId, lineKey, fromStation, toStation, 
     const midY = (affected[0].y + affected[1].y) / 2;
     const cx = map.width / 2;
     const cy = map.height / 2;
+    // A side where the whole arrow stays on the canvas wins outright (a line
+    // that hugs one edge would otherwise have its arrow cut off there); between
+    // two that fit, the farther from the center.
+    const fits = (q) => q.x >= 22 && q.x <= map.width - 22 && q.y >= 22 && q.y <= map.height - 22;
     const [base] = [ang + Math.PI / 2, ang - Math.PI / 2]
       .map((pa) => ({ x: midX + Math.cos(pa) * 30, y: midY + Math.sin(pa) * 30 }))
-      .sort((p, q) => Math.hypot(q.x - cx, q.y - cy) - Math.hypot(p.x - cx, p.y - cy));
+      .sort(
+        (p, q) =>
+          Number(fits(q)) - Number(fits(p)) ||
+          Math.hypot(q.x - cx, q.y - cy) - Math.hypot(p.x - cx, p.y - cy),
+      );
     directionArrow = arrowPath(base.x, base.y, ang);
     arrowSide = Math.sign(base.x - midX);
   }
@@ -611,149 +624,182 @@ export default function EventReplay({ eventId, lineKey, fromStation, toStation, 
         </p>
       )}
       <div className="bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border p-4">
-        {/* Mobile: portrait line, sized to the screen's height and centered.
-            Desktop: a wide landscape line — give it a minimum render width and
-            let the card scroll horizontally rather than shrink to specks. */}
-        <div className={isMobile ? 'flex justify-center' : 'overflow-x-auto -mx-1 px-1'}>
-          <svg
-            viewBox={`0 0 ${map.width} ${map.height}`}
-            preserveAspectRatio="xMidYMid meet"
-            role="img"
-            aria-label={`Replay of trains on the ${info?.label ?? lineKey} Line`}
-            className="block"
-            style={
-              isMobile
-                ? { height: 'min(560px, 64vh)', width: 'auto', maxWidth: '100%' }
-                : { width: '100%', height: 'auto', minWidth: Math.min(map.width, 560) }
-            }
+        {/* The map is as wide as the card; a minimum render width, with the card
+            scrolling sideways, keeps a wide line from shrinking to specks. A
+            phone's canvas is narrower to begin with, so it just fits. */}
+        <div className="overflow-x-auto -mx-1 px-1">
+          <div
+            className="relative rounded-md"
+            style={{ width: '100%', minWidth: Math.min(map.width, isMobile ? 280 : 560) }}
           >
-            <title>{`Replay of ${dots.length} trains on the ${info?.label ?? lineKey} Line`}</title>
-            {trackPaths.map((d) => (
-              <path
-                key={d}
-                d={d}
-                fill="none"
-                stroke={hexToRgba(accent, 0.22)}
-                strokeWidth={3}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            ))}
-            {highlightPath && (
-              <path
-                d={highlightPath}
-                fill="none"
-                stroke={coldActive ? '#ef4444' : hexToRgba(accent, 0.4)}
-                strokeWidth={coldActive ? 6 : 4}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray={coldActive ? '2 6' : undefined}
-                opacity={0.9}
-              />
-            )}
-            {/* Quiet station dots for context. */}
-            {map.stations.map((s) => (
-              <circle
-                key={s.name}
-                cx={s.x}
-                cy={s.y}
-                r={affected.includes(s) ? 5 : 2.5}
-                fill={affected.includes(s) ? 'none' : '#cbd5e1'}
-                stroke={affected.includes(s) ? accent : 'none'}
-                strokeWidth={affected.includes(s) ? 2.5 : 0}
-                className={affected.includes(s) ? '' : 'dark:[fill:#475569]'}
-              >
-                <title>{displayStationName(s.name)}</title>
-              </circle>
-            ))}
-            {/* Affected-direction arrow — drawn above the station pins (with a
-                halo) so it stays legible against the track and dots. */}
-            {directionArrow && (
-              <g strokeLinecap="round" strokeLinejoin="round" fill="none">
-                {/* Halo underneath for legibility over the track + dots. */}
+            <BasemapTiles basemap={map.basemap} />
+            <svg
+              viewBox={`0 0 ${map.width} ${map.height}`}
+              preserveAspectRatio="xMidYMid meet"
+              role="img"
+              aria-label={`Replay of trains on the ${info?.label ?? lineKey} Line`}
+              className="relative block"
+              style={{ width: '100%', height: 'auto' }}
+            >
+              <title>{`Replay of ${dots.length} trains on the ${info?.label ?? lineKey} Line`}</title>
+              {/* Over a basemap the line is drawn stronger, on a dark edge, so it
+                reads against the street map's own lines. */}
+              {onMap &&
+                trackPaths.map((d) => (
+                  <path
+                    key={`edge:${d}`}
+                    d={d}
+                    fill="none"
+                    stroke="#0b0f14"
+                    strokeWidth={7}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.6}
+                  />
+                ))}
+              {trackPaths.map((d) => (
                 <path
-                  d={directionArrow}
-                  stroke="white"
-                  strokeWidth={6}
-                  className="dark:[stroke:#0d1117]"
+                  key={d}
+                  d={d}
+                  fill="none"
+                  stroke={hexToRgba(accent, onMap ? 0.6 : 0.22)}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
-                <path d={directionArrow} stroke={coldActive ? '#ef4444' : accent} strokeWidth={3} />
-              </g>
-            )}
-            {/* "Signal lost" rings — a hollow dashed circle where a train's feed
+              ))}
+              {onMap && highlightPath && (
+                <path
+                  d={highlightPath}
+                  fill="none"
+                  stroke="#0b0f14"
+                  strokeWidth={coldActive ? 9 : 7}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.7}
+                />
+              )}
+              {highlightPath && (
+                <path
+                  d={highlightPath}
+                  fill="none"
+                  stroke={coldActive ? '#ef4444' : hexToRgba(accent, onMap ? 0.85 : 0.4)}
+                  strokeWidth={coldActive ? 6 : 4}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray={coldActive ? '2 6' : undefined}
+                  opacity={onMap ? 1 : 0.9}
+                />
+              )}
+              {/* Quiet station dots for context. */}
+              {map.stations.map((s) => (
+                <circle
+                  key={s.name}
+                  cx={s.x}
+                  cy={s.y}
+                  r={affected.includes(s) ? 5 : 2.5}
+                  fill={affected.includes(s) ? 'none' : '#cbd5e1'}
+                  stroke={affected.includes(s) ? accent : onMap ? '#0b0f14' : 'none'}
+                  strokeWidth={affected.includes(s) ? 2.5 : onMap ? 1 : 0}
+                  className={affected.includes(s) || onMap ? '' : 'dark:[fill:#475569]'}
+                >
+                  <title>{displayStationName(s.name)}</title>
+                </circle>
+              ))}
+              {/* Affected-direction arrow — drawn above the station pins (with a
+                halo) so it stays legible against the track and dots. */}
+              {directionArrow && (
+                <g strokeLinecap="round" strokeLinejoin="round" fill="none">
+                  {/* Halo underneath for legibility over the track + dots. */}
+                  <path
+                    d={directionArrow}
+                    stroke={onMap ? '#0b0f14' : 'white'}
+                    strokeWidth={6}
+                    className={onMap ? undefined : 'dark:[stroke:#0d1117]'}
+                  />
+                  <path
+                    d={directionArrow}
+                    stroke={coldActive ? '#ef4444' : accent}
+                    strokeWidth={3}
+                  />
+                </g>
+              )}
+              {/* "Signal lost" rings — a hollow dashed circle where a train's feed
                 went dark mid-route, fading over a few seconds. Distinct from a
                 train that cleanly ran off at a terminus (which just exits). */}
-            {lostGhosts.map((g) => (
-              <circle
-                key={`lost-${g.id}`}
-                cx={g.x}
-                cy={g.y}
-                r={7}
-                fill="none"
-                stroke={accent}
-                strokeWidth={2}
-                strokeDasharray="2 3"
-                opacity={g.opacity}
-              >
-                <title>{`Run ${g.id} · signal lost`}</title>
-              </circle>
-            ))}
-            {/* Live train dots. Moving trains render as an arrowhead pointing
+              {lostGhosts.map((g) => (
+                <circle
+                  key={`lost-${g.id}`}
+                  cx={g.x}
+                  cy={g.y}
+                  r={7}
+                  fill="none"
+                  stroke={accent}
+                  strokeWidth={2}
+                  strokeDasharray="2 3"
+                  opacity={g.opacity}
+                >
+                  <title>{`Run ${g.id} · signal lost`}</title>
+                </circle>
+              ))}
+              {/* Live train dots. Moving trains render as an arrowhead pointing
                 the way they're headed (so opposing streams separate at a
                 glance); stationary ones stay a plain dot. Opacity drops as a
                 dot's position is bridged across a feed gap. */}
-            {dots.map((d) => (
-              <g key={d.id} opacity={d.opacity}>
-                <circle cx={d.x} cy={d.y} r={9} fill={hexToRgba(accent, 0.25)} />
-                {d.ang != null ? (
-                  <path
-                    d={triMarker(d.x, d.y, d.ang)}
-                    fill={accent}
-                    stroke="white"
-                    strokeWidth={1.5}
-                    strokeLinejoin="round"
-                    className="dark:[stroke:#0d1117]"
-                  >
-                    <title>{`Run ${d.id}`}</title>
-                  </path>
-                ) : (
-                  <circle
-                    cx={d.x}
-                    cy={d.y}
-                    r={5.5}
-                    fill={accent}
-                    stroke="white"
-                    strokeWidth={2}
-                    className="dark:[stroke:#0d1117]"
-                  >
-                    <title>{`Run ${d.id}`}</title>
-                  </circle>
-                )}
-              </g>
-            ))}
-            {/* Affected-station labels — drawn last (with a halo) so you can
+              {dots.map((d) => (
+                <g key={d.id} opacity={d.opacity}>
+                  <circle cx={d.x} cy={d.y} r={9} fill={hexToRgba(accent, 0.25)} />
+                  {d.ang != null ? (
+                    <path
+                      d={triMarker(d.x, d.y, d.ang)}
+                      fill={accent}
+                      stroke="white"
+                      strokeWidth={1.5}
+                      strokeLinejoin="round"
+                      className={onMap ? undefined : 'dark:[stroke:#0d1117]'}
+                    >
+                      <title>{`Run ${d.id}`}</title>
+                    </path>
+                  ) : (
+                    <circle
+                      cx={d.x}
+                      cy={d.y}
+                      r={5.5}
+                      fill={accent}
+                      stroke="white"
+                      strokeWidth={2}
+                      className={onMap ? undefined : 'dark:[stroke:#0d1117]'}
+                    >
+                      <title>{`Run ${d.id}`}</title>
+                    </circle>
+                  )}
+                </g>
+              ))}
+              {/* Affected-station labels — drawn last (with a halo) so you can
                 read which stations frame the gap without hovering. Placement
                 (above/below the dot, or beside it for tight stacks) is resolved
                 up front by affectedLabelOffsets so close pairs don't collide. */}
-            {affected.map((s) => (
-              <text
-                key={`lbl-${s.name}`}
-                x={s.x + labelPos[s.name].dx}
-                y={s.y + labelPos[s.name].dy}
-                textAnchor={labelPos[s.name].anchor}
-                fontSize={9.5}
-                fontWeight={600}
-                fill={accent}
-                stroke="white"
-                strokeWidth={2.75}
-                className="dark:[stroke:#0d1117]"
-                style={{ paintOrder: 'stroke' }}
-              >
-                {displayStationName(s.name)}
-              </text>
-            ))}
-          </svg>
+              {affected.map((s) => (
+                <text
+                  key={`lbl-${s.name}`}
+                  x={s.x + labelPos[s.name].dx}
+                  y={s.y + labelPos[s.name].dy}
+                  textAnchor={labelPos[s.name].anchor}
+                  fontSize={9.5}
+                  fontWeight={600}
+                  fill={onMap ? '#f1f5f9' : accent}
+                  stroke={onMap ? '#0b0f14' : 'white'}
+                  strokeWidth={2.75}
+                  className={onMap ? undefined : 'dark:[stroke:#0d1117]'}
+                  style={{ paintOrder: 'stroke' }}
+                >
+                  {displayStationName(s.name)}
+                </text>
+              ))}
+            </svg>
+          </div>
         </div>
+        <BasemapCredit basemap={map.basemap} />
 
         {/* Controls */}
         <div className="mt-3 flex items-center gap-3 flex-wrap">
