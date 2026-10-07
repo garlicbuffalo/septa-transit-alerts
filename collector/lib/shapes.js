@@ -4,7 +4,7 @@
 // lines under gaps, bunches, and stuck vehicles) and measures positions along
 // them. Built alongside the schedule index (see schedule.js) and cached as
 // SHAPES_FILE next to it.
-import { readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { eachCsvRow } from './gtfsFiles.js';
 import { classifyRoute } from './network.js';
@@ -12,6 +12,11 @@ import { classifyRoute } from './network.js';
 export const SHAPES_VERSION = 1;
 export const SHAPES_FILE = 'route-shapes.json';
 const SIMPLIFY_M = 6;
+// The shapes published for the site's route maps: one file per bus route
+// under shapes/, simplified to what a map can show.
+export const PUBLISHED_SHAPES_DIR = 'shapes';
+const PUBLISHED_SIMPLIFY_M = 15;
+const PUBLISHED_VERSION = 1;
 
 const toRad = (d) => (d * Math.PI) / 180;
 
@@ -132,8 +137,54 @@ export class RouteShapes {
     return Object.values(this.data.routes[route] ?? {});
   }
 
+  /** Every direction's shape for a route, as [directionId, [[lat, lon], …]] pairs. */
+  directions(route) {
+    return Object.entries(this.data.routes[route] ?? {});
+  }
+
   /** Every route with a shape. */
   routes() {
     return Object.keys(this.data.routes);
   }
+}
+
+/**
+ * Write each bus route's shapes into the data directory for the site's route
+ * maps (SEPTA Metro lines are drawn from the site's bundled geometry), and
+ * remove the files of routes that are gone. Files whose content is unchanged
+ * are left alone.
+ * @param {string} dir the data directory
+ * @param {RouteShapes} shapes
+ * @returns {Promise<{ written: number, removed: number }>}
+ */
+export async function publishRouteShapes(dir, shapes) {
+  const out = join(dir, PUBLISHED_SHAPES_DIR);
+  await mkdir(out, { recursive: true });
+  const names = new Set();
+  let written = 0;
+  for (const route of shapes.routes()) {
+    if (classifyRoute(route)?.mode !== 'bus') continue;
+    const directions = {};
+    for (const [id, points] of shapes.directions(route)) {
+      directions[id] = simplify(points, PUBLISHED_SIMPLIFY_M).map(([lat, lon]) => [
+        Math.round(lat * 1e5) / 1e5,
+        Math.round(lon * 1e5) / 1e5,
+      ]);
+    }
+    const name = `${encodeURIComponent(route)}.json`;
+    names.add(name);
+    const body = `${JSON.stringify({ schema_version: PUBLISHED_VERSION, route, directions })}\n`;
+    const path = join(out, name);
+    const current = await readFile(path, 'utf8').catch(() => null);
+    if (current === body) continue;
+    await writeFile(path, body);
+    written++;
+  }
+  let removed = 0;
+  for (const name of await readdir(out)) {
+    if (names.has(name)) continue;
+    await rm(join(out, name), { force: true });
+    removed++;
+  }
+  return { written, removed };
 }

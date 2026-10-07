@@ -49,7 +49,9 @@ import { LONG_RUNNING_THRESHOLD_MS } from './LongRunningBanner.jsx';
 import NotFoundPage from './NotFoundPage.jsx';
 import RailCancellationDelayStats from './RailCancellationDelayStats.jsx';
 import RailUpcomingCancellations from './RailUpcomingCancellations.jsx';
+import RouteMap from './RouteMap.jsx';
 import { SignalBreakdownSingleRoute } from './SignalBreakdown.jsx';
+import SpeedMap from './SpeedMap.jsx';
 import Timeline from './Timeline.jsx';
 import TrendSparkline from './TrendSparkline.jsx';
 
@@ -706,6 +708,18 @@ export default function LinePage({ kind, lineId }) {
                 stationIndex={stationIndex}
               />
             )}
+
+            {/* A bus route's map: Metro and Regional Rail have the station map
+                above. */}
+            {!isLine && <RouteMap route={lineId} label={heading} />}
+
+            {/* The past week's speeds along the route or line. Subway lines (L1,
+                B1–B3) don't report positions, so they never have any. */}
+            <SpeedMap
+              route={effectiveLineId}
+              label={isMetro ? `${heading} line` : heading}
+              mode={isRail ? 'rail' : isMetro ? 'metro' : 'bus'}
+            />
 
             {isLine && <AccessibilityOutagesSection outages={lineOutages} />}
 

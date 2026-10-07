@@ -2,31 +2,16 @@
 // vehicles moved there, gray where there was no data. Modeled on
 // cta-insights' speedmaps (ISC), including its traffic-light colors, which
 // match the colored squares the post text uses as its legend.
+import { bandFor, NO_DATA_COLOR, SPEED_BANDS } from '../../src/lib/speedBands.js';
 import { sliceAlong } from '../lib/geo.js';
 import { composite, legend, line, titlePill } from './draw.js';
 import { bboxOf, fitView, project } from './projection.js';
 
 export const SPEED_MAP_SIZE = 1200;
-export const NO_DATA = '#4a4a48';
+export const NO_DATA = NO_DATA_COLOR;
 
-/** Color bands: road vehicles (buses, trolleys, M1) and Regional Rail. */
-export const SPEED_BANDS = {
-  road: [
-    { below: 5, color: '#ff2a2a', emoji: '🟥', label: 'under 5 mph' },
-    { below: 10, color: '#ff8c1a', emoji: '🟧', label: '5–10' },
-    { below: 15, color: '#ffd21a', emoji: '🟨', label: '10–15' },
-    { below: Infinity, color: '#2ad17f', emoji: '🟩', label: '15+ mph' },
-  ],
-  rail: [
-    { below: 15, color: '#ff2a2a', emoji: '🟥', label: 'under 15 mph' },
-    { below: 25, color: '#ff8c1a', emoji: '🟧', label: '15–25' },
-    { below: 35, color: '#ffd21a', emoji: '🟨', label: '25–35' },
-    { below: 45, color: '#a855f7', emoji: '🟪', label: '35–45' },
-    { below: Infinity, color: '#2ad17f', emoji: '🟩', label: '45+ mph' },
-  ],
-};
-
-export const bandFor = (bands, mph) => bands.find((b) => mph < b.below) ?? bands.at(-1);
+// The bands and the colors are shared with the site (src/lib/speedBands.js).
+export { bandFor, SPEED_BANDS };
 
 /**
  * @param {{ measured: { points: number[][], cum: number[], length: number },

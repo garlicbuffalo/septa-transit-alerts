@@ -113,6 +113,7 @@ features/history.js     detection history: daily caps and "📊" callouts
 features/rail.js        Regional Rail roundups, the TrainView tally, and on-time recaps
 features/timelapse.js   timelapse recordings: start, sample, render, post
 features/speedmaps.js   past-hour speeds binned along a route, round-robin
+features/speedhistory.js past week's speeds per route, for the site's pages
 features/recaps.js      weekly and monthly bunching hotspots and gap charts
 features/cancellations.js  twice-daily cancelled-trip roundups
 features/insights.js    the insights account: reposts, rough hours, daily and weekly digests
@@ -140,6 +141,8 @@ Each feature decides what to post from the collector's incidents. It records wha
 Each route gets at most one post per kind per hour, and a few per day: 3 gaps, 3 bunches, 4 stuck-vehicle posts and 3 silent stretches. A detection 25% worse than everything already posted for the route that day posts anyway. Posts carry history callouts ("📊 2nd Route 23 gap reported today · biggest gap vs schedule on this route in 30 days"). When a detection is attached to a SEPTA alert, the alerts account quotes it into that alert's thread, up to 3 per thread.
 
 **Speed maps.** Every two hours from morning to evening, each account maps how fast its vehicles moved along one route or line over the past hour: buses (bus account), trolleys and the M1 (metro), Regional Rail lines (rail). Speeds come from each vehicle's consecutive positions, binned along the route (40 stretches, or half-mile stretches for Regional Rail) and colored like traffic: red is slow, green is moving well, gray had no data. Layovers at the ends of a route don't count. Routes take turns, least recently mapped first, and a map with data for under 30% of its route is skipped. A route's slowest or fastest map in 14 days gets a "📊" callout.
+
+**Speed history for the site.** Every 10 minutes the server folds the new positions into per-day tallies (distance and time per stretch of each bus, trolley, and M1 route shape, and each Regional Rail line's main alignment in half-mile stretches, in the `speed_bins` table), since observations are kept only 3 days. Hourly, with the data snapshot, it writes the past 7 Philadelphia days' averages to `speeds/<route>.json` (`speeds/rail/<line>.json` for Regional Rail) for the site's route and line pages (a stretch needs 3 readings to show; a direction with data for under 20% of its route is left out). The collector publishes bus route shapes to `shapes/<route>.json` for the route maps.
 
 **Cancelled trips.** SEPTA publishes each day's cancelled bus and trolley trips ahead of time. At 6:45 AM and 2:45 PM, the bus and metro accounts post the day's count by route ("Route 16: 14 of 120 trips"). The 12 worst routes are listed and the rest summed in one line ("…and 33 more routes, 107 trips"), since SEPTA can cancel 250+ bus trips on 45 routes in a day. A day with fewer than 3 cancelled trips gets no post, and each route's incident on the site links to the roundup.
 

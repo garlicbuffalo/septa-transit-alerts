@@ -16,6 +16,7 @@
 //
 // Exit code is non-zero only when every source failed, so a single flaky
 // endpoint doesn't fail the run (its changes are simply skipped this tick).
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -26,6 +27,7 @@ import { decodeTripUpdates } from './lib/gtfsRealtime.js';
 import { applyOfficialAlerts } from './lib/officialAlerts.js';
 import { advanceCancellations, applyTrainView } from './lib/railTrains.js';
 import { loadSchedule } from './lib/schedule.js';
+import { loadRouteShapes, PUBLISHED_SHAPES_DIR, publishRouteShapes } from './lib/shapes.js';
 import { createSources } from './lib/sources.js';
 import { advanceTripCancellations, applyTripCancellations } from './lib/tripCancellations.js';
 import { applyVehicleConditions, findConditions, VEHICLE_SOURCES } from './lib/vehicleDetectors.js';
@@ -225,6 +227,19 @@ export async function collect({
       now,
       previousShardKeys: archive.shardKeys,
     });
+    // Bus route shapes for the site's route maps, whenever the GTFS cache has
+    // been rebuilt (or the files are missing).
+    try {
+      const shapes = await loadRouteShapes({ cacheDir, fixturesDir });
+      const builtAt = shapes?.data.built_at ?? null;
+      const published = existsSync(join(dataDir, PUBLISHED_SHAPES_DIR));
+      if (shapes && (state.shapesBuiltAt !== builtAt || !published)) {
+        summary.shapes = await publishRouteShapes(dataDir, shapes);
+        state.shapesBuiltAt = builtAt;
+      }
+    } catch (err) {
+      warn(`route shapes: ${err.message}`);
+    }
     state.updated_at = now;
     await writeFile(join(dataDir, STATE_FILE), `${JSON.stringify(state)}\n`);
   }

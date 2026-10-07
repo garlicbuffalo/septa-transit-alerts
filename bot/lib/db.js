@@ -8,6 +8,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
+import { easternDateKey } from '../../collector/lib/time.js';
 
 const MIGRATIONS = [
   `
@@ -159,6 +160,35 @@ const MIGRATIONS = [
   ALTER TABLE posts ADD COLUMN highlight TEXT;
   CREATE INDEX posts_highlight ON posts (highlight, ts) WHERE highlight IS NOT NULL;
   `,
+  `
+  -- Speed history for the site's route and line pages: how far vehicles went
+  -- and how long it took, per Philadelphia day and stretch of a route's
+  -- shape, rolled up from the observations before they're pruned.
+  -- speed_dirs maps SEPTA's direction text ("NorthBound") to the shape it
+  -- follows (the GTFS direction id) and fixes the stretch length, so a day's
+  -- bins always line up with the earlier ones.
+  CREATE TABLE speed_bins (
+    day TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    route TEXT NOT NULL,
+    dir TEXT NOT NULL,
+    bin INTEGER NOT NULL,
+    dist REAL NOT NULL,
+    dt REAL NOT NULL,
+    n INTEGER NOT NULL,
+    PRIMARY KEY (day, mode, route, dir, bin)
+  ) WITHOUT ROWID;
+  CREATE TABLE speed_dirs (
+    mode TEXT NOT NULL,
+    route TEXT NOT NULL,
+    text TEXT NOT NULL,
+    dir TEXT NOT NULL,
+    len REAL NOT NULL,
+    bin_m REAL NOT NULL,
+    ts INTEGER NOT NULL,
+    PRIMARY KEY (mode, route, text)
+  ) WITHOUT ROWID;
+  `,
 ];
 
 /**
@@ -231,6 +261,8 @@ export function pruneDb(db, now, { observationRetentionDays }) {
     )
     .run(now - DAY).changes;
   db.prepare('DELETE FROM captures WHERE end_ts < ?').run(now - 30 * DAY);
+  // The speed history keeps the site's week, plus a day's margin.
+  db.prepare('DELETE FROM speed_bins WHERE day < ?').run(easternDateKey(now - 9 * DAY));
   // A year of trains, plus a month's margin, for the recaps.
   const railCutoff = new Date(now - 400 * DAY).toISOString().slice(0, 10);
   db.prepare('DELETE FROM rail_trains WHERE service_date < ?').run(railCutoff);

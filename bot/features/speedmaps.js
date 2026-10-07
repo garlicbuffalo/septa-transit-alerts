@@ -31,26 +31,23 @@ export const SPEED_CONFIG = {
   // Trying this many routes before giving up for the slot.
   attempts: 6,
 };
-const MPH_PER_MPS = 2.23694;
+export const MPH_PER_MPS = 2.23694;
 
 /**
- * Bin speeds along a measured shape.
+ * The usable consecutive-report pairs of each vehicle along a measured shape:
+ * where along it (m), how far the vehicle moved (m) and how long it took (ms).
+ * Pairs with an implausible gap or speed, off the shape, or in the layover at
+ * either end of it are left out.
  * @param {Array<{ vehicle_id: string, t: number, lat: number, lon: number }>} samples
- * @returns {{ bins: Array<{ mph: number, n: number } | null>, binM: number,
- *   coverage: number, avgMph: number | null, pairs: number }}
+ * @returns {Generator<{ b: object, along: number, dist: number, dt: number }>}
+ *   `b` is the pair's later sample
  */
-export function computeSpeeds(samples, measured, cfg) {
-  const binM = cfg.binM ?? measured.length / cfg.bins;
-  const count = Math.max(1, Math.ceil(measured.length / binM));
-  const acc = Array.from({ length: count }, () => ({ dist: 0, dt: 0, n: 0 }));
+export function* speedPairs(samples, measured, cfg) {
   const byVehicle = new Map();
   for (const s of samples) {
     if (!byVehicle.has(s.vehicle_id)) byVehicle.set(s.vehicle_id, []);
     byVehicle.get(s.vehicle_id).push(s);
   }
-  let pairs = 0;
-  let totalDist = 0;
-  let totalDt = 0;
   for (const list of byVehicle.values()) {
     list.sort((a, b) => a.t - b.t);
     for (let i = 1; i < list.length; i++) {
@@ -64,22 +61,43 @@ export function computeSpeeds(samples, measured, cfg) {
       if (loc.off > cfg.maxOffM) continue;
       // Layovers at the ends of the route aren't traffic.
       if (loc.along < cfg.endM || loc.along > measured.length - cfg.endM) continue;
-      const bin = acc[Math.min(count - 1, Math.floor(loc.along / binM))];
-      bin.dist += dist;
-      bin.dt += dt;
-      bin.n++;
-      totalDist += dist;
-      totalDt += dt;
-      pairs++;
+      yield { b, along: loc.along, dist, dt };
     }
+  }
+}
+
+/** Whether a stretch's midpoint is clear of the layover at either end of the shape. */
+export function inService(index, binM, length, cfg) {
+  const mid = (index + 0.5) * binM;
+  return mid >= cfg.endM && mid <= length - cfg.endM;
+}
+
+/**
+ * Bin speeds along a measured shape.
+ * @param {Array<{ vehicle_id: string, t: number, lat: number, lon: number }>} samples
+ * @returns {{ bins: Array<{ mph: number, n: number } | null>, binM: number,
+ *   coverage: number, avgMph: number | null, pairs: number }}
+ */
+export function computeSpeeds(samples, measured, cfg) {
+  const binM = cfg.binM ?? measured.length / cfg.bins;
+  const count = Math.max(1, Math.ceil(measured.length / binM));
+  const acc = Array.from({ length: count }, () => ({ dist: 0, dt: 0, n: 0 }));
+  let pairs = 0;
+  let totalDist = 0;
+  let totalDt = 0;
+  for (const { along, dist, dt } of speedPairs(samples, measured, cfg)) {
+    const bin = acc[Math.min(count - 1, Math.floor(along / binM))];
+    bin.dist += dist;
+    bin.dt += dt;
+    bin.n++;
+    totalDist += dist;
+    totalDt += dt;
+    pairs++;
   }
   const bins = acc.map((b) =>
     b.n ? { mph: (b.dist / (b.dt / 1000)) * MPH_PER_MPS, n: b.n } : null,
   );
-  const eligible = acc.filter((_, i) => {
-    const mid = (i + 0.5) * binM;
-    return mid >= cfg.endM && mid <= measured.length - cfg.endM;
-  }).length;
+  const eligible = acc.filter((_, i) => inService(i, binM, measured.length, cfg)).length;
   return {
     bins,
     binM,
