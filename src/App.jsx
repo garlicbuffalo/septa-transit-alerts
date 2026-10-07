@@ -5,6 +5,7 @@ import Footer from './components/Footer.jsx';
 import Header from './components/Header.jsx';
 import HomeFilters from './components/HomeFilters.jsx';
 import HourOfWeekHeatmap from './components/HourOfWeekHeatmap.jsx';
+import SystemDashboard from './components/health/SystemDashboard.jsx';
 import IncidentList from './components/IncidentList.jsx';
 import { LONG_RUNNING_THRESHOLD_MS } from './components/LongRunningBanner.jsx';
 import RailUpcomingCancellations from './components/RailUpcomingCancellations.jsx';
@@ -521,11 +522,23 @@ export default function App() {
               </div>
             </div>
 
-            {/* Status, top of page: always a clear answer to "is anything
-                wrong right now?". The All view splits it into a Metro & Bus
-                lane and a Regional Rail lane so the two networks never blur
-                into one stream; a single selected network renders one focused
-                ActiveAlerts. */}
+            {/* Live system-health dashboard, top of page: per-mode status
+                tiles and charts answer "is anything wrong right now, and
+                where?" at a glance, before the detailed alert lists. Scoped
+                to the selected network like everything else. */}
+            <SystemDashboard
+              incidents={networkIncidents}
+              network={selectedNetwork}
+              now={now}
+              dataStartTs={data.data_start_ts ?? null}
+              burst={burst}
+            />
+
+            {/* The alerts behind the dashboard. The All view splits them into
+                a Metro & Bus lane and a Regional Rail lane so the two networks
+                never blur into one stream; a single selected network renders
+                one focused ActiveAlerts. The burst chip lives on the dashboard
+                header above, so it isn't repeated here. */}
             {selectedNetwork === 'all' ? (
               <RightNow
                 transitRecent={lanes.transitRecent}
@@ -538,7 +551,6 @@ export default function App() {
                 highlightedIds={highlightedIds}
                 typicalDurations={typicalDurations}
                 stationIndex={stationIndex}
-                burst={burst}
               />
             ) : (
               <>
@@ -553,7 +565,6 @@ export default function App() {
                     highlightedIds={highlightedIds}
                     typicalDurations={typicalDurations}
                     stationIndex={stationIndex}
-                    burst={burst}
                   />
                 ) : upcomingCancellations.length > 0 ? null : (
                   <section className="flex items-center gap-3 rounded-lg border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/30 px-4 py-3">
