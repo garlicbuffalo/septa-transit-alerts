@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // Leaflet is covered in InteractiveMap.test.jsx; here the map is a stand-in that
 // shows what it was asked to draw.
 vi.mock('../components/InteractiveMap.jsx', () => ({
-  default: ({ label, lines, dots, children }) => (
+  default: ({ label, lines, dots, stops, stopZoom, children }) => (
     <div data-testid="map" data-label={label}>
       <span data-testid="lines">{JSON.stringify(lines)}</span>
       <span data-testid="dots">{JSON.stringify(dots ?? [])}</span>
+      <span data-testid="stops">{JSON.stringify((stops ?? []).map((s) => s.name))}</span>
+      <span data-testid="stop-zoom">{String(stopZoom)}</span>
       {children}
     </div>
   ),
@@ -114,6 +116,47 @@ describe('SpeedMap', () => {
   });
 });
 
+describe('SpeedMap stops', () => {
+  const shapes = {
+    schema_version: 1,
+    route: '17',
+    directions: { 0: LINE, 1: [...LINE].reverse() },
+    stops: {
+      0: [
+        [40.0, -75.17, 'Front St & Market St'],
+        [40.02, -75.17, '20th St & Johnston St'],
+      ],
+      1: [[40.01, -75.1701, 'Broad St & Spring Garden St']],
+    },
+  };
+
+  it('gives the map the stops of the direction on show, and swaps them with the toggle', async () => {
+    serve({
+      'speeds/17.json': speeds([
+        direction({ id: '0', label: 'Southbound', readings: 900 }),
+        direction({ id: '1', label: 'Northbound', readings: 100 }),
+      ]),
+      'shapes/17.json': shapes,
+    });
+    render(<SpeedMap route="17" label="Route 17" />);
+    await screen.findByTestId('stops');
+    await waitFor(() =>
+      expect(drawn('stops')).toEqual(['Front St & Market St', '20th St & Johnston St']),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Northbound' }));
+    expect(drawn('stops')).toEqual(['Broad St & Spring Garden St']);
+    // The map's own default for when stops appear.
+    expect(screen.getByTestId('stop-zoom')).toHaveTextContent('undefined');
+  });
+
+  it('still draws the speeds when the route has no published stops', async () => {
+    serve({ 'speeds/17.json': speeds([direction()]) });
+    render(<SpeedMap route="17" label="Route 17" />);
+    await screen.findByTestId('lines');
+    expect(drawn('stops')).toEqual([]);
+  });
+});
+
 describe('SpeedMap for Regional Rail', () => {
   it('reads the line’s file under speeds/rail/ and uses the rail speed bands', async () => {
     serve({
@@ -133,6 +176,11 @@ describe('SpeedMap for Regional Rail', () => {
     expect(screen.getByText('Both directions')).toBeInTheDocument();
     expect(screen.getByText(/TrainView/)).toBeInTheDocument();
     expect(screen.getByText(/Trains in both directions are combined/)).toBeInTheDocument();
+    // A line's stations come with the site, and are always shown.
+    expect(drawn('stops').length).toBeGreaterThan(10);
+    expect(screen.getByTestId('stop-zoom')).toHaveTextContent('0');
+    // No shapes file is fetched for a rail line.
+    expect(fetch.mock.calls.every(([url]) => !String(url).includes('/shapes/'))).toBe(true);
     expect(screen.getByText(/how fast trains moved/)).toBeInTheDocument();
     // The rail bands call 15 mph slow: one of three stretches shown.
     expect(screen.getByText(/1 of 3 stretches under 15 mph/)).toBeInTheDocument();
@@ -147,6 +195,27 @@ describe('RouteMap', () => {
     // A line for each direction's shape, and a dot at each end.
     expect(drawn('lines')).toHaveLength(1);
     expect(drawn('dots')).toHaveLength(2);
+    expect(drawn('stops')).toEqual([]);
+  });
+
+  it('gives the map the route’s stops, both directions’, once each', async () => {
+    serve({
+      'shapes/17.json': {
+        schema_version: 1,
+        route: '17',
+        directions: { 0: LINE },
+        stops: {
+          0: [[40.0, -75.17, 'Front St & Market St']],
+          1: [
+            [40.0, -75.17, 'Front St & Market St'],
+            [40.02, -75.17, '20th St & Johnston St'],
+          ],
+        },
+      },
+    });
+    render(<RouteMap route="17" label="Route 17" />);
+    await screen.findByTestId('stops');
+    expect(drawn('stops')).toEqual(['Front St & Market St', '20th St & Johnston St']);
   });
 
   it('draws nothing without a shape', async () => {

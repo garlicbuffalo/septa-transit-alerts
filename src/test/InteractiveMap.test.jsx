@@ -43,6 +43,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const STOPS = [
+  { id: '0:0', point: ROUTE[0], name: 'Front St & Market St' },
+  { id: '0:1', point: ROUTE[1], name: '20th St & Johnston St' },
+];
+// Dots in the stops' own pane: a visible dot and a larger hit circle for each stop.
+const stopPaths = (container) => container.querySelectorAll('.leaflet-stops-pane path');
+const zoomIn = async (times) => {
+  for (let i = 0; i < times; i++) await userEvent.click(screen.getByTitle('Zoom in'));
+};
+
 describe('InteractiveMap', () => {
   it('draws each line over its dark edge, and a dot for each end', () => {
     const { container } = render(<InteractiveMap {...props} />);
@@ -173,6 +183,58 @@ describe('InteractiveMap', () => {
     expect(tiles(container)[0].getAttribute('src')).toMatch(
       /^https:\/\/tile\.openstreetmap\.org\//,
     );
+  });
+
+  describe('stops', () => {
+    it('shows none at the whole-route view, with a cue to zoom in, then shows them zoomed in', async () => {
+      const { container } = render(<InteractiveMap {...props} stops={STOPS} stopZoom={16} />);
+      expect(stopPaths(container)).toHaveLength(0);
+      expect(screen.getByText('Zoom in to see stops')).toBeInTheDocument();
+      await zoomIn(5);
+      expect(zoomOf(container)).toBeGreaterThanOrEqual(16);
+      expect(stopPaths(container)).toHaveLength(STOPS.length * 2);
+      expect(screen.queryByText('Zoom in to see stops')).not.toBeInTheDocument();
+    });
+
+    it('takes them off again when zoomed back out', async () => {
+      const { container } = render(<InteractiveMap {...props} stops={STOPS} stopZoom={16} />);
+      await zoomIn(5);
+      expect(stopPaths(container).length).toBeGreaterThan(0);
+      await userEvent.click(screen.getByRole('button', { name: 'Reset view' }));
+      expect(stopPaths(container)).toHaveLength(0);
+      expect(screen.getByText('Zoom in to see stops')).toBeInTheDocument();
+    });
+
+    it('always shows them when the threshold is zero, with no cue', () => {
+      const { container } = render(<InteractiveMap {...props} stops={STOPS} stopZoom={0} />);
+      expect(stopPaths(container)).toHaveLength(STOPS.length * 2);
+      expect(screen.queryByText('Zoom in to see stops')).not.toBeInTheDocument();
+    });
+
+    it('names a stop when it is hovered', async () => {
+      const { container } = render(<InteractiveMap {...props} stops={STOPS} stopZoom={0} />);
+      // The hit circles are the interactive ones in the stops pane.
+      const hit = container.querySelectorAll('.leaflet-stops-pane path.leaflet-interactive');
+      expect(hit).toHaveLength(STOPS.length);
+      await userEvent.hover(hit[1]);
+      expect(await screen.findByText('20th St & Johnston St')).toBeInTheDocument();
+    });
+
+    it('has no cue when there are no stops', () => {
+      render(<InteractiveMap {...props} />);
+      expect(screen.queryByText('Zoom in to see stops')).not.toBeInTheDocument();
+    });
+
+    it('swaps in new stops without moving the view', async () => {
+      const { container, rerender } = render(
+        <InteractiveMap {...props} stops={STOPS} stopZoom={0} />,
+      );
+      await zoomIn(2);
+      const zoomed = zoomOf(container);
+      rerender(<InteractiveMap {...props} stops={STOPS.slice(0, 1)} stopZoom={0} />);
+      expect(stopPaths(container)).toHaveLength(2);
+      expect(zoomOf(container)).toBe(zoomed);
+    });
   });
 
   it('removes its map when it goes away', () => {

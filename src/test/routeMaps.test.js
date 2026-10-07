@@ -5,9 +5,11 @@ import {
   loadRouteShapes,
   loadRouteSpeeds,
   measure,
+  railStopsOf,
   SPEEDS_STALE_MS,
   sliceAlong,
   speedWindowLabel,
+  stopsOf,
   summarizeSpeeds,
 } from '../lib/routeMaps.js';
 import { bandFor, SPEED_BANDS } from '../lib/speedBands.js';
@@ -142,6 +144,61 @@ describe('buildRouteMap', () => {
   it('has no map without a line', () => {
     expect(buildRouteMap({})).toBeNull();
     expect(buildRouteMap({ 0: [[40, -75]] })).toBeNull();
+  });
+});
+
+describe('stopsOf', () => {
+  const file = {
+    stops: {
+      0: [
+        [39.95, -75.17, 'Front St & Market St'],
+        [39.96, -75.17, '20th St & Johnston St'],
+      ],
+      1: [
+        [39.96, -75.17, '20th St & Johnston St'],
+        [39.9501, -75.1702, 'Front St & Market St'],
+      ],
+    },
+  };
+
+  it('lists one direction’s stops in order', () => {
+    expect(stopsOf(file, '1').map((s) => s.name)).toEqual([
+      '20th St & Johnston St',
+      'Front St & Market St',
+    ]);
+    expect(stopsOf(file, 0)[0]).toEqual({
+      id: '0:0',
+      point: [39.95, -75.17],
+      name: 'Front St & Market St',
+    });
+  });
+
+  it('lists every direction’s stops once each when no direction is given', () => {
+    // 20th St appears in both directions at the same spot; the other side of
+    // Front St, 20 m along, is its own stop.
+    expect(stopsOf(file).map((s) => s.name)).toEqual([
+      'Front St & Market St',
+      '20th St & Johnston St',
+      'Front St & Market St',
+    ]);
+  });
+
+  it('has none for a file without stops', () => {
+    expect(stopsOf({ directions: {} })).toEqual([]);
+    expect(stopsOf(null)).toEqual([]);
+  });
+});
+
+describe('railStopsOf', () => {
+  it('lists a line’s stations from the bundled data', () => {
+    const stops = railStopsOf('pao');
+    expect(stops.length).toBeGreaterThan(10);
+    for (const s of stops) {
+      expect(s.name).toBeTruthy();
+      expect(s.point[0]).toBeGreaterThan(39);
+      expect(s.point[1]).toBeLessThan(-75);
+    }
+    expect(railStopsOf('nope')).toEqual([]);
   });
 });
 

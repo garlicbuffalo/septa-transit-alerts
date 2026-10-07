@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { buildRouteMap, loadRouteShapes } from '../lib/routeMaps.js';
+import { buildRouteMap, loadRouteShapes, stopsOf } from '../lib/routeMaps.js';
 import MapPlaceholder from './MapPlaceholder.jsx';
 
 // Leaflet is heavy; it loads only for a page that has a map to show.
@@ -25,6 +25,7 @@ export default function RouteMap({ route, label, accent = '#60a5fa' }) {
     () => map?.lines.map((l) => ({ id: l.id, points: l.points, color: accent, weight: 4.5 })),
     [map, accent],
   );
+  const stops = useMemo(() => stopsOf(shapes), [shapes]);
   const dots = useMemo(() => map?.ends.map((point) => ({ id: point.join(), point })), [map]);
   if (!map) return null;
   return (
@@ -34,10 +35,17 @@ export default function RouteMap({ route, label, accent = '#60a5fa' }) {
       </h2>
       <div className="bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border p-4">
         <Suspense fallback={<MapPlaceholder />}>
-          <InteractiveMap label={`Map of ${label}`} fit={map.fit} lines={lines} dots={dots} />
+          <InteractiveMap
+            label={`Map of ${label}`}
+            fit={map.fit}
+            lines={lines}
+            dots={dots}
+            stops={stops}
+          />
         </Suspense>
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          Both directions of the route · dots mark where it starts and ends
+          Both directions of the route · large dots mark where it starts and ends · zoom in to see
+          its stops
         </p>
       </div>
     </section>

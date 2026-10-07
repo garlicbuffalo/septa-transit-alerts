@@ -6,7 +6,8 @@
 // SHAPES_FILE next to it.
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { eachCsvRow } from './gtfsFiles.js';
+import { cleanStopName } from '../../src/lib/stops.js';
+import { eachCsvRow, parseCsvLine } from './gtfsFiles.js';
 import { classifyRoute } from './network.js';
 
 export const SHAPES_VERSION = 1;
@@ -60,13 +61,51 @@ export function simplify(points, toleranceM = SIMPLIFY_M) {
 }
 
 /**
+ * The stops of the given trips, in order: tripId → [stopId, …]. stop_times.txt
+ * is ~100 MB, so it's scanned line by line and only those trips' rows are kept.
+ */
+function stopsOfTrips(zip, tripIds) {
+  const text = zip.read('stop_times.txt').toString('utf8');
+  let pos = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let nl = text.indexOf('\n', pos);
+  const header = parseCsvLine(text.slice(pos, nl).replace(/\r$/, ''));
+  const iTrip = header.indexOf('trip_id');
+  const iStop = header.indexOf('stop_id');
+  const iSeq = header.indexOf('stop_sequence');
+  const rows = new Map(); // tripId → [[seq, stopId], …]
+  pos = nl + 1;
+  while (pos < text.length) {
+    nl = text.indexOf('\n', pos);
+    if (nl < 0) nl = text.length;
+    const line = text.slice(pos, nl).replace(/\r$/, '');
+    pos = nl + 1;
+    if (!line) continue;
+    const cells = line.includes('"') ? parseCsvLine(line) : line.split(',');
+    if (!tripIds.has(cells[iTrip])) continue;
+    if (!rows.has(cells[iTrip])) rows.set(cells[iTrip], []);
+    rows.get(cells[iTrip]).push([Number(cells[iSeq]), cells[iStop]]);
+  }
+  const out = new Map();
+  for (const [tripId, list] of rows)
+    out.set(
+      tripId,
+      list.sort((a, b) => a[0] - b[0]).map((r) => r[1]),
+    );
+  return out;
+}
+
+/**
  * @param {{ read(name: string): Buffer }} zip google_bus.zip
- * @returns {{ version: number, built_at: number, routes: Record<string, Record<string, number[][]>> }}
- *   routes[routeKey][direction] = [[lat, lon], …]
+ * @returns {{ version: number, built_at: number, routes: Record<string, Record<string, number[][]>>,
+ *   stops: Record<string, Record<string, Array<[number, number, string]>>> }}
+ *   routes[routeKey][direction] = [[lat, lon], …];
+ *   stops[routeKey][direction] = [[lat, lon, name], …] along the route (from a
+ *   trip that runs the chosen shape), so they sit on the line that's drawn
  */
 export function buildRouteShapes(zip, now = Date.now()) {
   // Trips per (route, direction, shape): the busiest shape represents the route.
   const counts = new Map();
+  const sampleTrip = new Map(); // `${key}|${shape_id}` → a trip that runs it
   eachCsvRow(zip.read('trips.txt').toString('utf8'), (r) => {
     const route = classifyRoute(r.route_id);
     if (!route || route.mode === 'regional_rail' || !r.shape_id) return;
@@ -74,12 +113,19 @@ export function buildRouteShapes(zip, now = Date.now()) {
     if (!counts.has(key)) counts.set(key, new Map());
     const byShape = counts.get(key);
     byShape.set(r.shape_id, (byShape.get(r.shape_id) ?? 0) + 1);
+    if (!sampleTrip.has(`${key}|${r.shape_id}`)) sampleTrip.set(`${key}|${r.shape_id}`, r.trip_id);
   });
   const wanted = new Map(); // shape_id → [routeKey|dir]
+  const stopTrips = new Map(); // tripId → [routeKey|dir]
   for (const [key, byShape] of counts) {
     const [shapeId] = [...byShape.entries()].sort((a, b) => b[1] - a[1])[0];
     if (!wanted.has(shapeId)) wanted.set(shapeId, []);
     wanted.get(shapeId).push(key);
+    const trip = sampleTrip.get(`${key}|${shapeId}`);
+    if (trip) {
+      if (!stopTrips.has(trip)) stopTrips.set(trip, []);
+      stopTrips.get(trip).push(key);
+    }
   }
   const points = new Map();
   eachCsvRow(zip.read('shapes.txt').toString('utf8'), (r) => {
@@ -105,7 +151,34 @@ export function buildRouteShapes(zip, now = Date.now()) {
       routes[route][dir] = line;
     }
   }
-  return { version: SHAPES_VERSION, built_at: now, routes };
+  return { version: SHAPES_VERSION, built_at: now, routes, stops: buildRouteStops(zip, stopTrips) };
+}
+
+// Each route and direction's stops, in order, from its sample trip.
+function buildRouteStops(zip, stopTrips) {
+  const byTrip = stopsOfTrips(zip, stopTrips);
+  const places = new Map(); // stop_id → [lat, lon, name]
+  eachCsvRow(zip.read('stops.txt').toString('utf8'), (r) => {
+    const lat = Number(r.stop_lat);
+    const lon = Number(r.stop_lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || (!lat && !lon)) return;
+    places.set(r.stop_id, [
+      Math.round(lat * 1e5) / 1e5,
+      Math.round(lon * 1e5) / 1e5,
+      cleanStopName(r.stop_name) || r.stop_id,
+    ]);
+  });
+  const stops = {};
+  for (const [tripId, keys] of stopTrips) {
+    const list = (byTrip.get(tripId) ?? []).map((id) => places.get(id)).filter(Boolean);
+    if (list.length === 0) continue;
+    for (const key of keys) {
+      const [route, dir] = key.split('|');
+      if (!stops[route]) stops[route] = {};
+      stops[route][dir] = list;
+    }
+  }
+  return stops;
 }
 
 /** Read the cached shapes (or a fixture's), or null. */
@@ -142,6 +215,11 @@ export class RouteShapes {
     return Object.entries(this.data.routes[route] ?? {});
   }
 
+  /** A route's stops in one direction, in order: [[lat, lon, name], …] (empty if unknown). */
+  stops(route, direction = '0') {
+    return this.data.stops?.[route]?.[String(direction)] ?? [];
+  }
+
   /** Every route with a shape. */
   routes() {
     return Object.keys(this.data.routes);
@@ -149,8 +227,8 @@ export class RouteShapes {
 }
 
 /**
- * Write each bus route's shapes into the data directory for the site's route
- * maps (SEPTA Metro lines are drawn from the site's bundled geometry), and
+ * Write each bus and Metro route's shapes, and its stops where the cache has
+ * them, into the data directory for the site's route and speed maps, and
  * remove the files of routes that are gone. Files whose content is unchanged
  * are left alone.
  * @param {string} dir the data directory
@@ -163,7 +241,7 @@ export async function publishRouteShapes(dir, shapes) {
   const names = new Set();
   let written = 0;
   for (const route of shapes.routes()) {
-    if (classifyRoute(route)?.mode !== 'bus') continue;
+    if (classifyRoute(route)?.mode === 'regional_rail') continue;
     const directions = {};
     for (const [id, points] of shapes.directions(route)) {
       directions[id] = simplify(points, PUBLISHED_SIMPLIFY_M).map(([lat, lon]) => [
@@ -173,7 +251,16 @@ export async function publishRouteShapes(dir, shapes) {
     }
     const name = `${encodeURIComponent(route)}.json`;
     names.add(name);
-    const body = `${JSON.stringify({ schema_version: PUBLISHED_VERSION, route, directions })}\n`;
+    // Stops come from the same trips as the shapes; a cache built before the
+    // collector kept them has none, and the file just leaves them out.
+    const stops = {};
+    for (const [id] of shapes.directions(route)) {
+      const list = shapes.stops(route, id);
+      if (list.length) stops[id] = list;
+    }
+    const file = { schema_version: PUBLISHED_VERSION, route, directions };
+    if (Object.keys(stops).length) file.stops = stops;
+    const body = `${JSON.stringify(file)}\n`;
     const path = join(out, name);
     const current = await readFile(path, 'utf8').catch(() => null);
     if (current === body) continue;
