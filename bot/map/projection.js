@@ -1,5 +1,6 @@
 // Web Mercator math matching Mapbox's Static Images API (512-px tiles), so
 // SVG drawn over a fetched basemap lands exactly on the streets beneath it.
+// basemap.js stitches CARTO's tiles into the same view, so they line up too.
 
 export const TILE_SIZE = 512;
 

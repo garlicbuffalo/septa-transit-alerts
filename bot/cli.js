@@ -2,7 +2,7 @@
 // Operator commands for the bot service (same configuration as main.js):
 //
 //   node bot/cli.js check          verify credentials: each Bluesky account,
-//                                  the Mapbox token, the GitHub token
+//                                  the map tiles, the GitHub token
 //   node bot/cli.js once           one observe + collect tick, then exit
 //   node bot/cli.js map <id>       render the alert map for an incident in
 //                                  the data directory to the assets folder
@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { createBlueskyClient } from './lib/bluesky.js';
 import { loadConfig } from './lib/config.js';
 import { createRuntime, log } from './lib/runtime.js';
-import { staticMapUrl } from './map/basemap.js';
+import { checkCarto, staticMapUrl } from './map/basemap.js';
 import { renderAlertMap } from './map/lineMap.js';
 
 const config = loadConfig();
@@ -49,6 +49,13 @@ async function check() {
       say(false, `Bluesky ${name}: ${err.message}`);
     }
   }
+  if (config.tilesUrl || config.cartoKey) {
+    const res = await checkCarto(config);
+    const via = config.tilesUrl ? `relay ${config.tilesUrl}` : 'CARTO key';
+    say(res.ok, `CARTO map tiles (${via}): ${res.ok ? `works (${res.detail})` : res.detail}`);
+  } else {
+    say(true, 'CARTO map tiles: not set (TILES_URL or CARTO_KEY)');
+  }
   if (config.mapboxToken) {
     const url = staticMapUrl(
       { lat: 39.9526, lon: -75.1652, zoom: 12, width: 64, height: 64 },
@@ -57,7 +64,10 @@ async function check() {
     const res = await fetch(url).catch((err) => ({ ok: false, status: err.message }));
     say(res.ok, `Mapbox token: ${res.ok ? 'works' : `HTTP ${res.status}`}`);
   } else {
-    say(true, 'Mapbox token: not set (maps use a plain background)');
+    say(
+      true,
+      'Mapbox token: not set (fine with CARTO tiles; otherwise maps use a plain background)',
+    );
   }
   if (config.github.token) {
     const res = await fetch(`https://api.github.com/repos/${config.github.repo}`, {

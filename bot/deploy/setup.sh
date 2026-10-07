@@ -73,7 +73,7 @@ cat <<EOF
 Done. The bots are running in dry-run mode.
 
 Next:
-  1. Fill in ${ENV_FILE} (Bluesky app passwords, Mapbox token, GitHub token):
+  1. Fill in ${ENV_FILE} (Bluesky app passwords, map tiles, GitHub token):
        sudo nano ${ENV_FILE}
   2. Check every credential:            sudo septa-bots check
   3. Apply settings:                    sudo systemctl restart septa-bots

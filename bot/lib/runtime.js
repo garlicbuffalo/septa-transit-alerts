@@ -34,8 +34,23 @@ export function createRuntime(config, { logFn = log } = {}) {
         log: logFn,
       })
     : createDryRunClient({ assetsDir: config.assetsDir, log: logFn });
-  if (!config.mapboxToken) logFn('maps: no MAPBOX_TOKEN — maps render on a plain background');
-  const basemap = createBasemap({ token: config.mapboxToken, log: logFn });
+  const carto = config.tilesUrl ? 'the relay' : config.cartoKey ? 'a key' : null;
+  if (carto) {
+    logFn(
+      `maps: CARTO tiles through ${carto}${config.mapboxToken ? ', Mapbox as a fallback' : ''}`,
+    );
+  } else if (config.mapboxToken) {
+    logFn('maps: Mapbox (set TILES_URL or CARTO_KEY for the CARTO map the site uses)');
+  } else {
+    logFn('maps: no TILES_URL, CARTO_KEY, or MAPBOX_TOKEN — maps render on a plain background');
+  }
+  const basemap = createBasemap({
+    token: config.mapboxToken,
+    tilesUrl: config.tilesUrl,
+    cartoKey: config.cartoKey,
+    cartoReferer: config.cartoReferer,
+    log: logFn,
+  });
   const poster = createPoster({ db, client, log: logFn });
   const publisher = createPublisher({
     dataDir: config.dataDir,

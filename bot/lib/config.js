@@ -58,6 +58,12 @@ export function loadConfig(env = process.env) {
     fixturesDir: env.FIXTURES_DIR ? resolve(env.FIXTURES_DIR) : null,
     blueskyService: env.BLUESKY_SERVICE?.trim() || 'https://bsky.social',
     accounts,
+    // Map tiles (map/basemap.js): CARTO's dark map through the tracker's relay
+    // (TILES_URL) or directly with a key (CARTO_KEY, with CARTO_REFERER for a key
+    // limited to a domain); a Mapbox token is the fallback.
+    tilesUrl: env.TILES_URL?.trim() || null,
+    cartoKey: env.CARTO_KEY?.trim() || null,
+    cartoReferer: env.CARTO_REFERER?.trim() || null,
     mapboxToken: env.MAPBOX_TOKEN?.trim() || null,
     github: {
       token: githubToken,
