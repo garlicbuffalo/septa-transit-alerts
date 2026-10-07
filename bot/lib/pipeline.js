@@ -13,6 +13,9 @@
 //   recaps       Sundays and the 1st: bunching hotspots and gaps (bus,
 //                metro), the Regional Rail on-time recap
 //   speed maps   every 2 hours by day: one route's speeds per account
+//   speed rollup every 10 minutes: fold new positions into the per-day speed
+//                tallies; the past week's speeds are published hourly with the
+//                data, for the site's route and line pages
 //   housekeeping hourly: prune old observations and dry-run assets
 //   backup       nightly: a consistent copy of the database
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
@@ -34,6 +37,7 @@ import {
 } from '../features/insights.js';
 import { maybePostRailRollup, postRailRecap, recordTrains } from '../features/rail.js';
 import { postRecap } from '../features/recaps.js';
+import { maybePublishSpeeds, rollupSpeeds } from '../features/speedhistory.js';
 import { postSpeedMap } from '../features/speedmaps.js';
 import {
   renderDueCapture,
@@ -147,6 +151,11 @@ export function createPipeline({
     /** Map and post one route's past-hour speeds for an account. */
     speedMap(account) {
       return postSpeedMap({ db, poster, shapes, basemap, account, now: now(), log });
+    },
+
+    /** Fold the positions since the last run into the per-day speed tallies. */
+    speedRollup() {
+      return rollupSpeeds(db, { shapes, now: now() });
     },
 
     /** Post the weekly or monthly Regional Rail recap. */
@@ -289,6 +298,11 @@ export function createPipeline({
       });
       let published = null;
       if (ok) {
+        // The week's speeds ride along with the data (hourly, and with the
+        // bot's other files, never on their own).
+        await step('speed-files', () =>
+          maybePublishSpeeds(db, { dataDir: config.dataDir, shapes, now: t }),
+        );
         try {
           published = await publisher.publish(summary);
         } catch (err) {

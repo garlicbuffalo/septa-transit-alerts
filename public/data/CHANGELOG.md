@@ -3,10 +3,27 @@
 Breaking and notable changes to the published data under `/data/` —
 `alerts-recent.json`, the monthly `alerts/<YYYY-MM>.json` shards,
 `incidents/by-line/<key>.json`, `alerts-index.json`, `aggregates.json`,
-`daily-counts.json`, `accessibility.json`, and `alerts.csv` — and to the
+`daily-counts.json`, `accessibility.json`, `shapes/<route>.json`,
+`speeds/<route>.json`, and `alerts.csv` — and to the
 syndication feeds (`/feed.xml` and the per-line/route feeds under `/feed/`).
 Newest first. If you build on this data, watch this file before pinning to the
 format.
+
+## 2026-10-07 — Route shapes and weekly speeds
+
+- New **`shapes/<route>.json`** (bus routes; the route id is URL-encoded):
+  `{ schema_version, route, directions: { "<direction id>": [[lat, lon], …] } }`.
+  Each direction's shape from SEPTA's GTFS, simplified to about 15 m. Written by
+  the collector whenever it rebuilds its GTFS cache.
+- New **`speeds/<route>.json`** (bus routes, trolley lines, and the M1; written
+  by the bot server only, so absent when the GitHub Actions collector is
+  running alone, and for routes with too little tracker data):
+  `{ schema_version, mode, route, generated_at, window_days, from_day, to_day,
+  days_with_data, directions: [{ id, label, avg_mph, coverage, readings, bin_m,
+  mph, n, shape }] }`. `mph[i]` is the past week's average speed (total
+  distance over total time) along the i-th `bin_m`-meter stretch of `shape`,
+  `null` where there were fewer than 3 readings; `n[i]` is the readings behind
+  it. Updated hourly.
 
 ## 2026-10-06 — Detection posts and silent routes
 

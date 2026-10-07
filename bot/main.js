@@ -33,6 +33,15 @@ scheduler.every('collect', config.intervals.collectMs, () => pipeline.collectTic
 });
 scheduler.every('sample', 15_000, () => pipeline.sampleCaptures());
 scheduler.every('render', 30_000, () => pipeline.renderCaptures(), { delayMs: 20_000 });
+scheduler.every(
+  'speed-rollup',
+  10 * 60_000,
+  async () => {
+    const r = await pipeline.speedRollup();
+    if (r.pairs) log(`speed rollup: ${r.pairs} readings`);
+  },
+  { delayMs: 45_000 },
+);
 scheduler.cron('snapshot', '0 8,11,14,17,20 * * *', () => pipeline.startSnapshots());
 // Speed maps: every two hours by day, staggered across the accounts.
 for (const [account, spec] of [

@@ -199,5 +199,6 @@ export function fakeShapes(
   return {
     shape: (route) => routes[route] ?? null,
     shapes: (route) => (routes[route] ? [routes[route]] : []),
+    directions: (route) => (routes[route] ? [['0', routes[route]]] : []),
   };
 }
