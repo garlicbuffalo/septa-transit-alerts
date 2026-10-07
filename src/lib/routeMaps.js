@@ -12,7 +12,6 @@
 // speeds; the GitHub Actions collector publishes no speeds at all), and the
 // pages simply leave the map out.
 
-import { fitMercator } from './basemap.js';
 import { dataUrl } from './dataSource.js';
 import { bandFor, SPEED_BANDS } from './speedBands.js';
 
@@ -48,8 +47,6 @@ export async function loadRouteSpeeds(route, { rail = false, now = Date.now() } 
   if (now - file.generated_at > SPEEDS_STALE_MS) return null;
   return file;
 }
-
-const MAP_SIZE = { maxWidth: 720, maxHeight: 540, margin: 40 };
 
 const toRad = (d) => (d * Math.PI) / 180;
 
@@ -87,46 +84,38 @@ export function sliceAlong({ points, cum }, from, to) {
   return out;
 }
 
-const pathOf = (pts) => `M${pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('L')}`;
-
 /**
- * A route's directions projected onto map tiles.
+ * A route's directions as lines for the map, and where they start and end.
  * @param {Record<string, number[][]>} directions
- * @returns {{ width: number, height: number, basemap: object,
- *   paths: string[], ends: Array<{ x: number, y: number }> } | null}
+ * @returns {{ lines: Array<{ id: string, points: number[][] }>, ends: number[][],
+ *   fit: number[][] } | null}
  */
 export function buildRouteMap(directions) {
-  const lines = Object.values(directions ?? {}).filter((l) => l?.length >= 2);
-  const fit = fitMercator(lines.flat(), MAP_SIZE);
-  if (!fit) return null;
-  const projected = lines.map((l) => l.map(([lat, lon]) => fit.project(lat, lon)));
+  const lines = Object.entries(directions ?? {})
+    .filter(([, points]) => points?.length >= 2)
+    .map(([id, points]) => ({ id, points }));
+  if (lines.length === 0) return null;
   // The two directions usually end at the same places: one dot for each.
   const ends = [];
-  for (const line of projected) {
-    for (const p of [line[0], line.at(-1)]) {
-      if (!ends.some((e) => Math.hypot(e.x - p.x, e.y - p.y) < 8)) ends.push(p);
+  for (const { points } of lines) {
+    for (const p of [points[0], points.at(-1)]) {
+      if (!ends.some((e) => Math.hypot(e[0] - p[0], e[1] - p[1]) < 1e-4)) ends.push(p);
     }
   }
-  return {
-    width: fit.width,
-    height: fit.height,
-    basemap: fit.basemap,
-    paths: projected.map(pathOf),
-    ends,
-  };
+  return { lines, ends, fit: lines.flatMap((l) => l.points) };
 }
 
 /**
- * One direction's week of speeds projected onto map tiles: the route's line,
- * and over it each stretch with data in its speed band's color.
+ * One direction's week of speeds as lines for the map: the route's own line,
+ * and over it each stretch with data, in its speed band's color.
  * @param {{ shape: number[][], mph: Array<number | null>, n: number[], bin_m: number }} direction
  * @param {Array<{ below: number, color: string, label: string }>} [bands]
+ * @returns {{ base: number[][], stretches: Array<{ index: number, mph: number,
+ *   readings: number, color: string, points: number[][] }>, fit: number[][] } | null}
  */
 export function buildSpeedMap(direction, bands = SPEED_BANDS.road) {
-  const fit = fitMercator(direction.shape, MAP_SIZE);
-  if (!fit) return null;
+  if (!(direction.shape?.length >= 2)) return null;
   const measured = measure(direction.shape);
-  const project = ([lat, lon]) => fit.project(lat, lon);
   const stretches = [];
   direction.mph.forEach((mph, index) => {
     if (mph == null) return;
@@ -138,16 +127,10 @@ export function buildSpeedMap(direction, bands = SPEED_BANDS.road) {
       mph,
       readings: direction.n[index] ?? 0,
       color: bandFor(bands, mph).color,
-      d: pathOf(sliceAlong(measured, from, to).map(project)),
+      points: sliceAlong(measured, from, to),
     });
   });
-  return {
-    width: fit.width,
-    height: fit.height,
-    basemap: fit.basemap,
-    base: pathOf(direction.shape.map(project)),
-    stretches,
-  };
+  return { base: direction.shape, stretches, fit: direction.shape };
 }
 
 /**

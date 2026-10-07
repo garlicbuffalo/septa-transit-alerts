@@ -2,6 +2,20 @@ import '@testing-library/jest-dom';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Leaflet is covered in InteractiveMap.test.jsx; here the map is a stand-in that
+// shows what it was asked to draw.
+vi.mock('../components/InteractiveMap.jsx', () => ({
+  default: ({ label, lines, dots, children }) => (
+    <div data-testid="map" data-label={label}>
+      <span data-testid="lines">{JSON.stringify(lines)}</span>
+      <span data-testid="dots">{JSON.stringify(dots ?? [])}</span>
+      {children}
+    </div>
+  ),
+}));
+const drawn = (id) => JSON.parse(screen.getByTestId(id).textContent);
+
 import RouteMap from '../components/RouteMap.jsx';
 import SpeedMap from '../components/SpeedMap.jsx';
 
@@ -60,7 +74,13 @@ describe('SpeedMap', () => {
     expect(screen.getByText('22.0 mph')).toBeInTheDocument();
     expect(screen.getByText('Sep 30 – Oct 6')).toBeInTheDocument();
     expect(screen.getByText(/4,000 position pairs/)).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /averaging 9\.1 mph/ })).toBeInTheDocument();
+    expect(screen.getByText(/averaging 9\.1 mph/)).toBeInTheDocument();
+    // The route's gray line, and a colored line (with its mph) for each stretch with data.
+    await screen.findByTestId('lines');
+    const lines = drawn('lines');
+    expect(lines.map((l) => l.id)).toEqual(['base', 0, 2, 3]);
+    expect(lines[1].tip).toBe('3.2 mph (30 readings)');
+    expect(lines[1].color).not.toBe(lines[0].color);
     // One direction: no toggle.
     expect(screen.queryByRole('button', { name: 'Southbound' })).not.toBeInTheDocument();
   });
@@ -80,7 +100,10 @@ describe('SpeedMap', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: 'Southbound' }));
     expect(screen.getByText('9.1 mph')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /Route 17 southbound/ })).toBeInTheDocument();
+    expect(screen.getByTestId('map')).toHaveAttribute(
+      'data-label',
+      'Route 17 southbound average speeds',
+    );
   });
 
   it('draws nothing for a route without speeds', async () => {
@@ -110,9 +133,9 @@ describe('SpeedMap for Regional Rail', () => {
     expect(screen.getByText('Both directions')).toBeInTheDocument();
     expect(screen.getByText(/TrainView/)).toBeInTheDocument();
     expect(screen.getByText(/Trains in both directions are combined/)).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /how fast trains moved/ })).toBeInTheDocument();
+    expect(screen.getByText(/how fast trains moved/)).toBeInTheDocument();
     // The rail bands call 15 mph slow: one of three stretches shown.
-    expect(screen.getByRole('img', { name: /1 of 3 stretches under 15 mph/ })).toBeInTheDocument();
+    expect(screen.getByText(/1 of 3 stretches under 15 mph/)).toBeInTheDocument();
   });
 });
 
@@ -120,7 +143,10 @@ describe('RouteMap', () => {
   it('draws the route when its shape is published', async () => {
     serve({ 'shapes/17.json': { schema_version: 1, route: '17', directions: { 0: LINE } } });
     render(<RouteMap route="17" label="Route 17" />);
-    expect(await screen.findByRole('img', { name: 'Map of Route 17' })).toBeInTheDocument();
+    expect(await screen.findByTestId('map')).toHaveAttribute('data-label', 'Map of Route 17');
+    // A line for each direction's shape, and a dot at each end.
+    expect(drawn('lines')).toHaveLength(1);
+    expect(drawn('dots')).toHaveLength(2);
   });
 
   it('draws nothing without a shape', async () => {

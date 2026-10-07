@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   buildSpeedMap,
   loadRouteSpeeds,
@@ -6,9 +6,11 @@ import {
   summarizeSpeeds,
 } from '../lib/routeMaps.js';
 import { NO_DATA_COLOR, SPEED_BANDS } from '../lib/speedBands.js';
-import { BasemapCredit, BasemapTiles } from './Basemap.jsx';
+import MapPlaceholder from './MapPlaceholder.jsx';
 
-const pathProps = { fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' };
+// Leaflet is heavy; it loads only for a page that has a map to show.
+const InteractiveMap = lazy(() => import('./InteractiveMap.jsx'));
+
 const plural = (n, word) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
 
 // A route's or line's path colored by how fast its vehicles moved along each
@@ -41,6 +43,20 @@ export default function SpeedMap({ route, label, mode = 'bus' }) {
   const map = useMemo(
     () => (direction ? buildSpeedMap(direction, bands) : null),
     [direction, bands],
+  );
+  // Gray under everything; each stretch with data over it in its band's color.
+  const lines = useMemo(
+    () =>
+      map && [
+        { id: 'base', points: map.base, color: NO_DATA_COLOR },
+        ...map.stretches.map((st) => ({
+          id: st.index,
+          points: st.points,
+          color: st.color,
+          tip: `${st.mph.toFixed(1)} mph (${plural(st.readings, 'reading')})`,
+        })),
+      ],
+    [map],
   );
   const summary = useMemo(
     () => (direction ? summarizeSpeeds(direction, bands) : null),
@@ -112,46 +128,31 @@ export default function SpeedMap({ route, label, mode = 'bus' }) {
           ))}
         </div>
 
-        <div className="relative rounded-md overflow-hidden">
-          <BasemapTiles basemap={map.basemap} />
-          <svg
-            viewBox={`0 0 ${map.width} ${map.height}`}
-            preserveAspectRatio="xMidYMid meet"
-            role="img"
-            aria-label={alt}
-            className="relative block w-full h-auto"
-          >
-            <title>{`${label}${dirLabel} average speeds`}</title>
-            <path d={map.base} stroke="#0b0f14" strokeWidth={9} opacity={0.7} {...pathProps} />
-            <path d={map.base} stroke={NO_DATA_COLOR} strokeWidth={5} {...pathProps} />
-            {map.stretches.map((s) => (
-              <path key={s.index} d={s.d} stroke={s.color} strokeWidth={5} {...pathProps}>
-                <title>{`${s.mph.toFixed(1)} mph (${plural(s.readings, 'reading')})`}</title>
-              </path>
-            ))}
-          </svg>
-          <ul className="absolute left-2 bottom-2 rounded-md bg-black/70 px-2 py-1.5 text-[11px] leading-tight text-slate-100 space-y-0.5">
-            {[...bands].reverse().map((b) => (
-              <li key={b.label} className="flex items-center gap-1.5">
+        <p className="sr-only">{alt}</p>
+        <Suspense fallback={<MapPlaceholder />}>
+          <InteractiveMap label={`${label}${dirLabel} average speeds`} fit={map.fit} lines={lines}>
+            <ul className="absolute left-2 bottom-2 z-[1000] rounded-md bg-black/70 px-2 py-1.5 text-[11px] leading-tight text-slate-100 space-y-0.5">
+              {[...bands].reverse().map((b) => (
+                <li key={b.label} className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden="true"
+                    className="inline-block h-1.5 w-4 rounded-full"
+                    style={{ backgroundColor: b.color }}
+                  />
+                  {b.label}
+                </li>
+              ))}
+              <li className="flex items-center gap-1.5">
                 <span
                   aria-hidden="true"
                   className="inline-block h-1.5 w-4 rounded-full"
-                  style={{ backgroundColor: b.color }}
+                  style={{ backgroundColor: NO_DATA_COLOR }}
                 />
-                {b.label}
+                no data
               </li>
-            ))}
-            <li className="flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="inline-block h-1.5 w-4 rounded-full"
-                style={{ backgroundColor: NO_DATA_COLOR }}
-              />
-              no data
-            </li>
-          </ul>
-        </div>
-        <BasemapCredit basemap={map.basemap} />
+            </ul>
+          </InteractiveMap>
+        </Suspense>
 
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           Each stretch is the total distance {noun} covered there over the total time, from{' '}

@@ -120,3 +120,37 @@ html {
     padding-bottom: calc(4rem + env(safe-area-inset-bottom));
   }
 }
+
+/* Leaflet's zoom buttons and tooltips, matched to the dark maps they sit on
+   (the interactive route and speed maps). Leaflet's own stylesheet loads with
+   the map, after this one, so these are made specific enough to win. */
+.leaflet-container .leaflet-bar a,
+.leaflet-container .leaflet-bar a:hover {
+  background-color: #161b22;
+  color: #e2e8f0;
+  border-bottom-color: #30363d;
+}
+.leaflet-container .leaflet-bar a:hover {
+  background-color: #21262d;
+}
+.leaflet-container .leaflet-bar a.leaflet-disabled {
+  background-color: #161b22;
+  color: #64748b;
+}
+.leaflet-container .leaflet-bar {
+  border: 1px solid #30363d;
+  box-shadow: none;
+}
+.leaflet-container .leaflet-tooltip {
+  background-color: #161b22;
+  border-color: #30363d;
+  color: #e2e8f0;
+  box-shadow: none;
+}
+.leaflet-container .leaflet-tooltip-top::before {
+  border-top-color: #30363d;
+}
+.leaflet-container:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: -2px;
+}
