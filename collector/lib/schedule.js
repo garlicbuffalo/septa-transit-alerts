@@ -23,7 +23,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { eachCsvRow, GTFS_URL, parseCsvLine, readZip } from './gtfsFiles.js';
 import { classifyRoute } from './network.js';
-import { buildRouteShapes, SHAPES_FILE } from './shapes.js';
+import { buildRouteShapes, SHAPES_FILE, SHAPES_REV } from './shapes.js';
 import { easternParts, easternToEpoch } from './time.js';
 
 export const SCHEDULE_VERSION = 1;
@@ -170,6 +170,17 @@ export async function downloadBusFeed() {
 }
 
 /**
+ * Whether a cached index can be used as it is: under a day old, and built when the shapes cache
+ * held everything it does now (see SHAPES_REV). The second part is so that a collector updated
+ * with a new kind of shape data has it on its next tick, not up to a day later.
+ */
+export function cacheIsCurrent(cached, now) {
+  return (
+    Boolean(cached) && now - cached.built_at < MAX_CACHE_AGE_MS && cached.shapes_rev === SHAPES_REV
+  );
+}
+
+/**
  * Load the schedule index: from fixtures (tests), a fresh-enough cache, or by
  * downloading SEPTA's GTFS and rebuilding the cache. Falls back to a stale
  * cache when the download fails; resolves null when there's nothing usable,
@@ -192,10 +203,13 @@ export async function loadSchedule({ cacheDir, fixturesDir, now = Date.now(), lo
       cached = null;
     }
   }
-  if (cached && now - cached.built_at < MAX_CACHE_AGE_MS) return Schedule.from(cached);
+  if (cacheIsCurrent(cached, now)) return Schedule.from(cached);
   try {
     const zip = await downloadBusFeed();
     const index = buildScheduleIndex(zip, now);
+    // Recorded whether or not the shapes below build: a shapes failure must not have the whole
+    // feed downloaded again on every tick.
+    index.shapes_rev = SHAPES_REV;
     if (cacheDir) {
       await mkdir(cacheDir, { recursive: true });
       await writeAtomic(join(cacheDir, CACHE_FILE), JSON.stringify(index));

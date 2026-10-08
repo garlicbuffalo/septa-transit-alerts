@@ -18,14 +18,19 @@ const SIMPLIFY_M = 6;
 export const PUBLISHED_SHAPES_DIR = 'shapes';
 const PUBLISHED_SIMPLIFY_M = 15;
 const PUBLISHED_VERSION = 1;
-// All the bus routes together in one file, for the site's system map: it draws
-// every route at once, and fetching 150-odd shapes files for that would be
-// 150-odd requests. At 10 m no line is more than 10 m off the schedule's own (a corner
-// is cut by that much at most, 22 px at the map's deepest zoom); 20 m left a fifth of
-// the lines further off than that, for 15 KB gzipped less.
+// All the bus routes together in one file, for the site's system map: it draws every route
+// at once, and fetching 150-odd shapes files for that would be 150-odd requests.
 export const SYSTEM_MAP_FILE = 'system-map.json';
-const SYSTEM_MAP_SIMPLIFY_M = 10;
+// The system map is drawn from a finer copy of the bus shapes than the 6 m the rest of the
+// site and the bot use (the cache's `fine`). At the map's deepest zoom (18, under half a
+// meter a pixel) 6 m shows a rounded corner as straight chords, and 10 m is worse; at 3 m
+// the lines follow the street. Past that is size for nothing: 1.5 m looks the same at half
+// as much again.
+const FINE_SIMPLIFY_M = 3;
 const SYSTEM_MAP_VERSION = 1;
+// Bumped when the shapes cache gains something its readers need. schedule.js rebuilds a cache
+// built before the bump on the next tick instead of up to a day late.
+export const SHAPES_REV = 2;
 // A route's second direction is left out when it runs along the first (the
 // same street both ways), at this distance for this share of its points: at the
 // system map's scale it would only draw the same line twice.
@@ -33,6 +38,10 @@ const SAME_STREET_M = 30;
 const SAME_STREET_SHARE = 0.9;
 
 const toRad = (d) => (d * Math.PI) / 180;
+
+// Coordinates to 5 decimals, about a meter.
+const roundPoints = (points) =>
+  points.map(([lat, lon]) => [Math.round(lat * 1e5) / 1e5, Math.round(lon * 1e5) / 1e5]);
 
 // Perpendicular distance (m) from p to segment a–b, in a local flat projection.
 function offsetM(p, a, b) {
@@ -110,8 +119,11 @@ function stopsOfTrips(zip, tripIds) {
 /**
  * @param {{ read(name: string): Buffer }} zip google_bus.zip
  * @returns {{ version: number, built_at: number, routes: Record<string, Record<string, number[][]>>,
- *   stops: Record<string, Record<string, Array<[number, number, string]>>> }}
+ *   stops: Record<string, Record<string, Array<[number, number, string]>>>,
+ *   fine: Record<string, Record<string, number[][]>> }}
  *   routes[routeKey][direction] = [[lat, lon], …];
+ *   fine[routeKey][direction] = the same line of a bus route, simplified much less (for the
+ *   site's system map; absent from a cache built before it);
  *   stops[routeKey][direction] = [[lat, lon, name], …] along the route (from a
  *   trip that runs the chosen shape), so they sit on the line that's drawn
  */
@@ -149,22 +161,32 @@ export function buildRouteShapes(zip, now = Date.now()) {
       .push([Number(r.shape_pt_sequence), Number(r.shape_pt_lat), Number(r.shape_pt_lon)]);
   });
   const routes = {};
+  const fine = {};
   for (const [shapeId, keys] of wanted) {
     const pts = (points.get(shapeId) ?? [])
       .sort((a, b) => a[0] - b[0])
       .map(([, lat, lon]) => [lat, lon]);
     if (pts.length < 2) continue;
-    const line = simplify(pts).map(([lat, lon]) => [
-      Math.round(lat * 1e5) / 1e5,
-      Math.round(lon * 1e5) / 1e5,
-    ]);
+    const line = roundPoints(simplify(pts));
+    const finer = roundPoints(simplify(pts, FINE_SIMPLIFY_M));
     for (const key of keys) {
       const [route, dir] = key.split('|');
       if (!routes[route]) routes[route] = {};
       routes[route][dir] = line;
+      // The site draws Metro from its own shapes, so only buses need a finer copy.
+      if (classifyRoute(route)?.mode === 'bus') {
+        if (!fine[route]) fine[route] = {};
+        fine[route][dir] = finer;
+      }
     }
   }
-  return { version: SHAPES_VERSION, built_at: now, routes, stops: buildRouteStops(zip, stopTrips) };
+  return {
+    version: SHAPES_VERSION,
+    built_at: now,
+    routes,
+    stops: buildRouteStops(zip, stopTrips),
+    fine,
+  };
 }
 
 // Each route and direction's stops, in order, from its sample trip.
@@ -221,6 +243,16 @@ export class RouteShapes {
   /** Every direction's shape for a route. */
   shapes(route) {
     return Object.values(this.data.routes[route] ?? {});
+  }
+
+  /**
+   * Every direction's line of a route for the site's system map: the finer copy when the cache
+   * has one (a cache built before it has only the 6 m shapes, which do for the day until the
+   * next rebuild).
+   */
+  systemLines(route) {
+    const fine = this.data.fine?.[route];
+    return fine ? Object.values(fine) : this.shapes(route);
   }
 
   /** Every direction's shape for a route, as [directionId, [[lat, lon], …]] pairs. */
@@ -303,8 +335,9 @@ function runsAlong(line, others, toleranceM = SAME_STREET_M) {
 /**
  * Write every bus route's lines into one file for the site's system map:
  * `{ schema_version, generated_at, routes: { [route]: [[[lat, lon], …], …] } }`,
- * one line per direction that doesn't just retrace the other. Metro routes are
- * left out (the site carries those itself). Left alone when unchanged.
+ * one line per direction that doesn't just retrace the other, from the cache's finer
+ * copy of the shapes where it has one. Metro routes are left out (the site carries
+ * those itself). Left alone when unchanged.
  * @param {string} dir the data directory
  * @param {RouteShapes} shapes
  * @returns {Promise<boolean>} whether the file was written
@@ -314,11 +347,8 @@ export async function publishSystemMap(dir, shapes) {
   for (const route of [...shapes.routes()].sort()) {
     if (classifyRoute(route)?.mode !== 'bus') continue;
     const lines = [];
-    for (const [, points] of shapes.directions(route)) {
-      const line = simplify(points, SYSTEM_MAP_SIMPLIFY_M).map(([lat, lon]) => [
-        Math.round(lat * 1e5) / 1e5,
-        Math.round(lon * 1e5) / 1e5,
-      ]);
+    for (const points of shapes.systemLines(route)) {
+      const line = roundPoints(points);
       if (line.length >= 2 && !runsAlong(line, lines)) lines.push(line);
     }
     if (lines.length) routes[route] = lines;
