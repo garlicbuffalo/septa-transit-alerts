@@ -6,6 +6,7 @@
 export const PRIMARY_NAV = [
   { key: 'now', label: 'Now', desktopLabel: 'Alerts', href: '/', icon: 'pulse' },
   { key: 'routes', label: 'Routes', href: '/routes', icon: 'routes' },
+  { key: 'map', label: 'Map', href: '/map', icon: 'map' },
   { key: 'stations', label: 'Stations', href: '/stations', icon: 'pin' },
   { key: 'history', label: 'History', href: '/calendar', icon: 'calendar' },
   { key: 'follow', label: 'Follow', desktopLabel: 'Subscribe', href: '/subscribe', icon: 'bell' },
@@ -13,12 +14,13 @@ export const PRIMARY_NAV = [
 
 // Which PRIMARY_NAV entry a path belongs to, or null for pages outside the
 // tabs (About, Privacy, a 404). Detail pages light up their parent tab: a line
-// or route page and the system map sit under Routes, a station page under Stations, and the
+// or route page sits under Routes, a station page under Stations, and the
 // day/week/stats/compare views under History.
 export function activeNavKey(pathname) {
   const path = (pathname || '/').replace(/\/+$/, '') || '/';
   if (path === '/' || path.startsWith('/event/') || path.startsWith('/system/')) return 'now';
-  if (/^\/(routes|map|line|route|rail\/line)(\/|$)/.test(path)) return 'routes';
+  if (/^\/(routes|line|route|rail\/line)(\/|$)/.test(path)) return 'routes';
+  if (/^\/map(\/|$)/.test(path)) return 'map';
   if (/^\/(stations|station|rail\/station)(\/|$)/.test(path)) return 'stations';
   if (/^\/(calendar|day|week|stats|compare)(\/|$)/.test(path)) return 'history';
   if (/^\/subscribe(\/|$)/.test(path)) return 'follow';

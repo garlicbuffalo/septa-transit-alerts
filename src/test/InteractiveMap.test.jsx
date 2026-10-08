@@ -366,6 +366,14 @@ describe('InteractiveMap', () => {
     expect(screen.getByText('Zoom in to see stations')).toBeInTheDocument();
   });
 
+  it('keeps its layers in a stacking context of their own, below the page’s bars and menus', () => {
+    // Leaflet's panes and controls have z-indexes of 400 to 1000; left to the page's
+    // stacking context they paint over the fixed tab bar and the Browse menu.
+    const { container } = render(<InteractiveMap {...props} />);
+    const frame = container.querySelector('.leaflet-container').parentElement;
+    expect(frame).toHaveClass('isolate');
+  });
+
   it('removes its map when it goes away', () => {
     const { container, unmount } = render(<InteractiveMap {...props} />);
     expect(container.querySelector('.leaflet-container')).not.toBeNull();

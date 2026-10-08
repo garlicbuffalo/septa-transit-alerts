@@ -276,7 +276,10 @@ export default function InteractiveMap({
 
   return (
     <div>
-      <div className={`relative overflow-hidden rounded-md bg-[#262626] ${className}`}>
+      {/* `isolate` keeps Leaflet's layers (z-index 400 to 1000) and the controls over them
+          inside the map: without it they paint over the page's own fixed bar and menus,
+          such as the phone tab bar and the Browse menu. */}
+      <div className={`relative isolate overflow-hidden rounded-md bg-[#262626] ${className}`}>
         <section
           ref={containerRef}
           aria-label={`${label}. Interactive map: drag to move, plus and minus to zoom.`}

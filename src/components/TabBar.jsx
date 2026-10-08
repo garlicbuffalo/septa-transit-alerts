@@ -11,7 +11,7 @@ export default function TabBar() {
       aria-label="Primary"
       className="tab-bar sm:hidden fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 dark:border-gh-border bg-white/90 dark:bg-gh-surface/90 backdrop-blur-md"
     >
-      <ul className="grid grid-cols-5">
+      <ul className="grid grid-flow-col auto-cols-fr">
         {PRIMARY_NAV.map((item) => {
           const current = item.key === active;
           return (
