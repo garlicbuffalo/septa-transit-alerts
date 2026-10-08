@@ -308,29 +308,7 @@ describe('InteractiveMap', () => {
       expect(container.querySelectorAll('.leaflet-overlay-pane path')).toHaveLength(3);
     });
 
-    it('passes a clicked line to onLineClick, and makes it clickable without a tooltip', () => {
-      const onLineClick = vi.fn();
-      const { container } = render(
-        <InteractiveMap
-          {...props}
-          dots={[]}
-          onLineClick={onLineClick}
-          lines={[
-            { id: 'a', points: ROUTE, color: '#60a5fa' },
-            { id: 'b', points: ROUTE.slice(0, 2), color: '#ff2a2a', tip: 'Route B' },
-          ]}
-        />,
-      );
-      const clickable = container.querySelectorAll('path.leaflet-interactive');
-      expect(clickable).toHaveLength(2);
-      // Leaflet works out where on the map a click is from its coordinates.
-      fireEvent.click(clickable[1], { clientX: 20, clientY: 20 });
-      expect(onLineClick).toHaveBeenCalledWith('b');
-      fireEvent.click(clickable[0], { clientX: 20, clientY: 20 });
-      expect(onLineClick).toHaveBeenLastCalledWith('a');
-    });
-
-    it('is not clickable without onLineClick', () => {
+    it('makes only a line with a tooltip hoverable', () => {
       const { container } = render(<InteractiveMap {...props} />);
       expect(container.querySelectorAll('path.leaflet-interactive')).toHaveLength(1);
     });
@@ -358,6 +336,143 @@ describe('InteractiveMap', () => {
       } finally {
         getContext.mockRestore();
       }
+    });
+  });
+
+  describe('onPointer', () => {
+    const mapOf = (container) => container.querySelector('.leaflet-container');
+    // Fitting the map to its route when it first shows is a move of the view, so it is
+    // reported; these tests are about what comes after.
+    const show = (extra = {}) => {
+      const onPointer = vi.fn();
+      const view = render(<InteractiveMap {...props} {...extra} onPointer={onPointer} />);
+      expect(onPointer.mock.calls.map(([e]) => e.type)).toContain('move');
+      onPointer.mockClear();
+      return { onPointer, ...view };
+    };
+    // Leaflet works out where a mouse event is on the map from its coordinates.
+    const at = (x, y, extra = {}) => ({ clientX: x, clientY: y, ...extra });
+
+    it('reports a click or tap: where it is on the map, on screen, and how big a pixel is', () => {
+      const { onPointer, container } = show();
+      fireEvent.click(mapOf(container), at(20, 30));
+      expect(onPointer).toHaveBeenCalledTimes(1);
+      const [e] = onPointer.mock.calls[0];
+      expect(e).toMatchObject({
+        type: 'pick',
+        x: 20,
+        y: 30,
+        width: 600,
+        height: 400,
+        touch: false,
+      });
+      expect(e.lat).toBeGreaterThan(39);
+      expect(e.lat).toBeLessThan(41);
+      expect(e.lon).toBeGreaterThan(-76);
+      expect(e.lon).toBeLessThan(-74);
+      expect(e.metersPerPx).toBeGreaterThan(0);
+      expect(Number.isFinite(e.top)).toBe(true);
+      expect(Number.isFinite(e.bottom)).toBe(true);
+    });
+
+    it('has a pixel that is half the size for each level the map is zoomed in', async () => {
+      const { onPointer, container } = show();
+      const size = () => {
+        onPointer.mockClear();
+        fireEvent.click(mapOf(container), at(20, 30));
+        return onPointer.mock.calls.at(-1)[0].metersPerPx;
+      };
+      const start = size();
+      await userEvent.click(screen.getByTitle('Zoom in'));
+      const once = size();
+      await userEvent.click(screen.getByTitle('Zoom in'));
+      const twice = size();
+      expect(once).toBeCloseTo(start / 2, 1);
+      expect(twice).toBeCloseTo(start / 4, 1);
+    });
+
+    it('reports where a mouse is, at most once a frame', async () => {
+      const { onPointer, container } = show();
+      for (const x of [10, 20, 30, 40, 50]) fireEvent.mouseMove(mapOf(container), at(x, 60));
+      expect(onPointer).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(onPointer).toHaveBeenCalledTimes(1));
+      // The last place it was.
+      expect(onPointer.mock.calls[0][0]).toMatchObject({ type: 'hover', x: 50, y: 60 });
+    });
+
+    it('does not report a mouse that is dragging the map', async () => {
+      const { onPointer, container } = show();
+      fireEvent.mouseMove(mapOf(container), at(10, 10, { buttons: 1 }));
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(onPointer).not.toHaveBeenCalled();
+    });
+
+    it('does not report a move the map had already given up on by a click', async () => {
+      const { onPointer, container } = show();
+      fireEvent.mouseMove(mapOf(container), at(10, 10));
+      fireEvent.click(mapOf(container), at(10, 10));
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(onPointer.mock.calls.map(([e]) => e.type)).toEqual(['pick']);
+    });
+
+    it('says when the mouse leaves the map', () => {
+      const { onPointer, container } = show();
+      fireEvent.mouseOut(mapOf(container), { relatedTarget: document.body });
+      expect(onPointer).toHaveBeenCalledWith({ type: 'leave' });
+    });
+
+    it('says when the view is about to change, by a zoom or by Reset view', async () => {
+      const { onPointer } = show();
+      await userEvent.click(screen.getByTitle('Zoom in'));
+      expect(onPointer).toHaveBeenCalledWith({ type: 'move' });
+    });
+
+    it('leaves a stop to name itself: nothing is reported while the mouse is over one', async () => {
+      const { onPointer, container } = show({ stops: STOPS, stopZoom: 0 });
+      const hit = container.querySelectorAll('.leaflet-stops-pane path.leaflet-interactive')[0];
+      await userEvent.hover(hit);
+      expect(onPointer).toHaveBeenCalledWith({ type: 'leave' });
+      onPointer.mockClear();
+      fireEvent.mouseMove(mapOf(container), at(10, 10));
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(onPointer).not.toHaveBeenCalled();
+      // And it picks up again once the mouse is off the stop.
+      await userEvent.unhover(hit);
+      fireEvent.mouseMove(mapOf(container), at(12, 12));
+      await vi.waitFor(() => expect(onPointer).toHaveBeenCalledTimes(1));
+      expect(onPointer.mock.calls[0][0].type).toBe('hover');
+    });
+
+    it('says whether the screen is a touchscreen', () => {
+      const original = window.matchMedia;
+      window.matchMedia = (query) => ({
+        matches: query === '(pointer: coarse)',
+        addEventListener() {},
+        removeEventListener() {},
+      });
+      try {
+        const { onPointer, container } = show();
+        fireEvent.click(mapOf(container), at(20, 30));
+        expect(onPointer.mock.calls[0][0].touch).toBe(true);
+      } finally {
+        window.matchMedia = original;
+      }
+    });
+
+    it('is not needed: a map with no onPointer works as before', async () => {
+      const { container } = render(<InteractiveMap {...props} />);
+      fireEvent.click(mapOf(container), at(20, 30));
+      fireEvent.mouseMove(mapOf(container), at(20, 30));
+      await userEvent.click(screen.getByTitle('Zoom in'));
+      expect(container.querySelector('.leaflet-container')).not.toBeNull();
+    });
+
+    it('stops reporting when it goes away, with a move still waiting', async () => {
+      const { onPointer, container, unmount } = show();
+      fireEvent.mouseMove(mapOf(container), at(10, 10));
+      unmount();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(onPointer).not.toHaveBeenCalled();
     });
   });
 

@@ -4,14 +4,18 @@ import { RAIL_LINE_ORDER } from '../lib/railLines.js';
 import {
   BUS_COLOR,
   buildBusLayer,
+  highlightLines,
   MAP_MODE_KEYS,
   METRO_LAYER,
   METRO_LEGEND,
   modesParam,
   parseModes,
+  placeCard,
   RAIL_COLOR,
   RAIL_LAYER,
+  routesNear,
   SYSTEM_FIT,
+  sortRoutes,
   toggleMode,
   visibleLines,
   visibleStops,
@@ -133,19 +137,162 @@ describe('visibleLines', () => {
     expect(visibleLines({ ...layers, bus: null }, ['bus'])).toEqual([]);
     expect(modesOf(visibleLines({ ...layers, bus: null }, ALL))).toEqual(['rail', 'metro']);
   });
+});
 
-  it('draws a selected route again on top, wider, in white', () => {
-    const lines = visibleLines(layers, ALL, 'bus:17');
-    const plain = visibleLines(layers, ALL);
-    expect(lines.slice(0, plain.length)).toEqual(plain);
-    const extra = lines.slice(plain.length);
-    expect(extra).toHaveLength(2);
-    expect(extra.every((l) => l.color === '#ffffff' && l.routeId === 'bus:17')).toBe(true);
-    expect(extra[0].weight).toBeGreaterThan(plain.find((l) => l.routeId === 'bus:17').weight);
+describe('highlightLines', () => {
+  const layers = { metro: METRO_LAYER, rail: RAIL_LAYER, bus: BUS };
+  const lines = visibleLines(layers, ALL);
+
+  it('draws each of the routes again, wider, in white', () => {
+    const extra = highlightLines(lines, ['bus:17', 'metro:l1']);
+    const own = lines.filter((l) => l.routeId === 'bus:17' || l.routeId === 'metro:l1');
+    expect(extra).toHaveLength(own.length);
+    expect(extra.every((l) => l.color === '#ffffff')).toBe(true);
+    expect(new Set(extra.map((l) => l.routeId))).toEqual(new Set(['bus:17', 'metro:l1']));
+    const bus17 = lines.find((l) => l.routeId === 'bus:17');
+    expect(extra.find((l) => l.routeId === 'bus:17').weight).toBeGreaterThan(bus17.weight);
+    expect(extra.find((l) => l.routeId === 'bus:17').points).toBe(bus17.points);
   });
 
-  it('ignores a selected route that isn’t drawn', () => {
-    expect(visibleLines(layers, ['metro'], 'bus:17')).toHaveLength(METRO_LAYER.lines.length);
+  it('gives each a line id of its own', () => {
+    const extra = highlightLines(lines, ['bus:17']);
+    expect(extra.map((l) => l.id)).toEqual(['selected:bus:17:0', 'selected:bus:17:1']);
+  });
+
+  it('has nothing for no routes, or for a route that isn’t drawn', () => {
+    expect(highlightLines(lines, [])).toEqual([]);
+    expect(highlightLines(visibleLines(layers, ['metro']), ['bus:17'])).toEqual([]);
+  });
+});
+
+describe('routesNear', () => {
+  // Two streets a few blocks apart, a route on each, and a third on the first street.
+  const street = (lon) => [
+    [39.95, lon],
+    [39.96, lon],
+  ];
+  const lines = [
+    { id: 'a:0', routeId: 'a', points: street(-75.17) },
+    { id: 'b:0', routeId: 'b', points: street(-75.17) },
+    { id: 'c:0', routeId: 'c', points: street(-75.16) },
+    // A route with two lines, both near: found once.
+    { id: 'd:0', routeId: 'd', points: street(-75.17) },
+    { id: 'd:1', routeId: 'd', points: street(-75.1701) },
+  ];
+
+  it('finds every route with a line near the point, each once', () => {
+    expect(routesNear(lines, 39.955, -75.17, 30).sort()).toEqual(['a', 'b', 'd']);
+  });
+
+  it('measures from the point to the line, not to its points', () => {
+    // Mid-block: 500 m from either end of the line, and right on it.
+    expect(routesNear(lines, 39.955, -75.1701, 30)).toContain('a');
+    // 0.0005° of longitude at this latitude is about 43 m.
+    expect(routesNear(lines, 39.955, -75.1695, 30)).toEqual([]);
+    expect(routesNear(lines, 39.955, -75.1695, 60).sort()).toEqual(['a', 'b', 'd']);
+  });
+
+  it('finds the other street, and none where there are no lines', () => {
+    expect(routesNear(lines, 39.955, -75.16, 30)).toEqual(['c']);
+    expect(routesNear(lines, 39.955, -75.165, 30)).toEqual([]);
+    expect(routesNear(lines, 40.5, -75.17, 30)).toEqual([]);
+  });
+
+  it('stops at a line’s ends', () => {
+    expect(routesNear(lines, 39.9505, -75.17, 30)).toContain('a');
+    // 100 m past the end of the street.
+    expect(routesNear(lines, 39.949, -75.17, 30)).toEqual([]);
+  });
+
+  it('finds the routes where the real Metro and Regional Rail lines run', () => {
+    const real = visibleLines({ metro: METRO_LAYER, rail: RAIL_LAYER }, ALL);
+    const [lat, lon] = METRO_LAYER.lines.find((l) => l.routeId === 'metro:l1').points[3];
+    expect(routesNear(real, lat, lon, 15)).toContain('metro:l1');
+    expect(routesNear(real, 0, 0, 15)).toEqual([]);
+  });
+
+  it('copes with a line of one point, or none', () => {
+    const odd = [
+      { id: 'x:0', routeId: 'x', points: [[39.955, -75.17]] },
+      { id: 'y:0', routeId: 'y', points: [] },
+    ];
+    expect(routesNear(odd, 39.955, -75.17, 30)).toEqual([]);
+  });
+});
+
+describe('sortRoutes', () => {
+  it('lists Metro, then Regional Rail, then buses, each in the site’s order', () => {
+    const routes = [
+      BUS.routes.get('bus:K'),
+      RAIL_LAYER.routes.get('rail:pao'),
+      BUS.routes.get('bus:17'),
+      METRO_LAYER.routes.get('metro:t1'),
+      RAIL_LAYER.routes.get('rail:air'),
+      METRO_LAYER.routes.get('metro:l1'),
+    ];
+    expect(sortRoutes(routes).map((r) => r.id)).toEqual([
+      'metro:l1',
+      'metro:t1',
+      'rail:air',
+      'rail:pao',
+      'bus:17',
+      'bus:K',
+    ]);
+  });
+
+  it('does not change the list it is given', () => {
+    const routes = [BUS.routes.get('bus:K'), BUS.routes.get('bus:17')];
+    sortRoutes(routes);
+    expect(routes.map((r) => r.id)).toEqual(['bus:K', 'bus:17']);
+  });
+});
+
+describe('placeCard', () => {
+  const frame = { width: 800, height: 600 };
+  const card = { w: 200, h: 100 };
+
+  it('puts the card beside the point, to its right and under it', () => {
+    expect(placeCard({ x: 100, y: 100, ...frame }, card)).toEqual({ left: 114, top: 114 });
+  });
+
+  it('puts it to the left, and over the point, where there is no room', () => {
+    expect(placeCard({ x: 700, y: 500, ...frame }, card)).toEqual({ left: 486, top: 386 });
+  });
+
+  it('keeps it inside the frame', () => {
+    const near = placeCard({ x: 5, y: 5, ...frame }, card);
+    expect(near.left).toBeGreaterThanOrEqual(6);
+    expect(near.top).toBeGreaterThanOrEqual(6);
+    // A frame too narrow to have room on either side of the point still holds the card.
+    const narrow = placeCard({ x: 150, y: 50, width: 300, height: 600 }, card);
+    expect(narrow.left).toBeGreaterThanOrEqual(6);
+    expect(narrow.left + card.w).toBeLessThanOrEqual(300 - 6);
+  });
+
+  it('never covers the point with the card when there is room on a side', () => {
+    for (const [x, y] of [
+      [100, 100],
+      [700, 100],
+      [100, 500],
+      [700, 500],
+      [400, 300],
+    ]) {
+      const { left, top } = placeCard({ x, y, ...frame }, card);
+      const covers = x >= left && x <= left + card.w && y >= top && y <= top + card.h;
+      expect(covers).toBe(false);
+    }
+  });
+
+  it('keeps clear of the part of the frame that is out of sight', () => {
+    // The bottom 150 px are under a tab bar: a card for a point at y 300 goes over it.
+    const out = placeCard({ x: 100, y: 440, ...frame }, { ...card, hiddenBelow: 150 });
+    expect(out.top + card.h).toBeLessThanOrEqual(600 - 150 - 6);
+    expect(out.top).toBe(326);
+  });
+
+  it('shrinks to nothing rather than going off the top of a frame that is too short', () => {
+    const { top } = placeCard({ x: 50, y: 50, width: 800, height: 80 }, card);
+    expect(top).toBe(6);
   });
 });
 

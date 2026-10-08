@@ -57,7 +57,8 @@ export const METRO_LEGEND = [
  */
 
 function addRoute(layer, route, polylines, style) {
-  layer.routes.set(route.id, route);
+  // `order` is where the route comes in its mode, for listing routes in the site's order.
+  layer.routes.set(route.id, { ...route, order: layer.routes.size });
   polylines.forEach((points, i) => {
     if (!(points?.length >= 2)) return;
     layer.lines.push({
@@ -160,31 +161,129 @@ export const METRO_LAYER = buildMetroLayer();
 export const RAIL_LAYER = buildRailLayer();
 
 /**
- * The lines to draw for the chosen modes, bottom to top, and over them the
- * selected route (if it's one of those drawn) in white.
+ * The lines to draw for the chosen modes, bottom to top.
  * @param {{ metro?: Layer, bus?: Layer | null, rail?: Layer }} layers
  * @param {string[]} modes
- * @param {string | null} [selectedId] a route id
  */
-export function visibleLines(layers, modes, selectedId = null) {
+export function visibleLines(layers, modes) {
   const lines = [];
   for (const mode of DRAW_ORDER) {
     if (modes.includes(mode) && layers[mode]) lines.push(...layers[mode].lines);
   }
-  if (selectedId) {
-    for (const l of lines.filter((x) => x.routeId === selectedId)) {
-      lines.push({
-        id: `selected:${l.id}`,
-        routeId: selectedId,
-        points: l.points,
-        color: SELECTED_COLOR,
-        weight: (l.weight ?? 5) + SELECTED_EXTRA,
-        casing: true,
-        tip: l.tip,
-      });
-    }
-  }
   return lines;
+}
+
+/**
+ * Lines that draw the given routes again over everything else, wider, in white.
+ * @param {Array<object>} lines the lines of `visibleLines`
+ * @param {string[]} routeIds
+ */
+export function highlightLines(lines, routeIds) {
+  if (routeIds.length === 0) return [];
+  const wanted = new Set(routeIds);
+  return lines
+    .filter((l) => wanted.has(l.routeId))
+    .map((l) => ({
+      id: `selected:${l.id}`,
+      routeId: l.routeId,
+      points: l.points,
+      color: SELECTED_COLOR,
+      weight: (l.weight ?? 5) + SELECTED_EXTRA,
+      casing: true,
+    }));
+}
+
+// --- What is at a point ---------------------------------------------------------
+// Hovering or tapping the map asks which routes run there. A line is hit only
+// by a pointer right on it, and buses are thin, so this looks at every route
+// with a line within a few pixels of the pointer instead of only the topmost.
+
+const M_PER_DEG = 111_320;
+const boundsCache = new WeakMap();
+
+function boundsOf(line) {
+  let b = boundsCache.get(line);
+  if (!b) {
+    let south = 90;
+    let north = -90;
+    let west = 180;
+    let east = -180;
+    for (const [lat, lon] of line.points) {
+      south = Math.min(south, lat);
+      north = Math.max(north, lat);
+      west = Math.min(west, lon);
+      east = Math.max(east, lon);
+    }
+    b = [south, west, north, east];
+    boundsCache.set(line, b);
+  }
+  return b;
+}
+
+// Whether a polyline passes within `tolerance` meters of (lat, lon), measured in a
+// flat projection around the point.
+function passesWithin(points, lat, lon, kLon, tolerance) {
+  for (let i = 1; i < points.length; i++) {
+    const ax = (points[i - 1][1] - lon) * M_PER_DEG * kLon;
+    const ay = (points[i - 1][0] - lat) * M_PER_DEG;
+    const dx = (points[i][1] - lon) * M_PER_DEG * kLon - ax;
+    const dy = (points[i][0] - lat) * M_PER_DEG - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2)) : 0;
+    if (Math.hypot(ax + t * dx, ay + t * dy) <= tolerance) return true;
+  }
+  return false;
+}
+
+/**
+ * The routes with a line within `toleranceM` meters of a point, each once.
+ * @param {Array<object>} lines the lines of `visibleLines`
+ * @returns {string[]} route ids
+ */
+export function routesNear(lines, lat, lon, toleranceM) {
+  const kLon = Math.cos((lat * Math.PI) / 180);
+  const dLat = toleranceM / M_PER_DEG;
+  const dLon = toleranceM / (M_PER_DEG * kLon);
+  const found = new Set();
+  for (const line of lines) {
+    if (found.has(line.routeId)) continue;
+    const [south, west, north, east] = boundsOf(line);
+    if (lat < south - dLat || lat > north + dLat || lon < west - dLon || lon > east + dLon)
+      continue;
+    if (passesWithin(line.points, lat, lon, kLon, toleranceM)) found.add(line.routeId);
+  }
+  return [...found];
+}
+
+const MODE_RANK = { metro: 0, rail: 1, bus: 2 };
+
+/** Routes in the order to list them: Metro, then Regional Rail, then buses, each in the site's order. */
+export function sortRoutes(routes) {
+  return [...routes].sort((a, b) => MODE_RANK[a.mode] - MODE_RANK[b.mode] || a.order - b.order);
+}
+
+/**
+ * Where a card of `w` by `h` pixels goes next to a point in a frame: to the right of
+ * the point, else the left; under it, else over it; and kept inside the frame. A
+ * frame that runs off the bottom of the screen (under a phone's tab bar, or below
+ * the fold) is cut off there by `hiddenBelow`, so the card stays where it can be seen.
+ * @param {{ x: number, y: number, width: number, height: number }} at the point, in the frame
+ * @param {{ w: number, h: number, gap?: number, margin?: number, hiddenBelow?: number }} card
+ * @returns {{ left: number, top: number }}
+ */
+export function placeCard(
+  { x, y, width, height },
+  { w, h, gap = 14, margin = 6, hiddenBelow = 0 },
+) {
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  let left = x + gap;
+  if (left + w > width - margin) left = x - gap - w;
+  left = clamp(left, margin, width - w - margin);
+  const floor = height - hiddenBelow - margin;
+  let top = y + gap;
+  if (top + h > floor) top = y - gap - h;
+  top = clamp(top, margin, floor - h);
+  return { left, top };
 }
 
 // Metro and rail stations as the stops an InteractiveMap draws. A rail station
