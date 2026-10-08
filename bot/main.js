@@ -72,11 +72,13 @@ scheduler.cron('rail-recap-month', '50 10 1 * *', async () =>
   log(`rail recap: ${JSON.stringify(await pipeline.railRecap('month'))}`),
 );
 // Hall of Fame and Wall of Shame: Sunday at noon, after the recaps, for the
-// week just ended.
+// week just ended. Tried every half hour until 3 pm: a thread already posted is
+// skipped, and one that failed after its first post continues with the reply, so
+// a restart or an outage at noon doesn't lose the week.
 for (const [account, spec] of [
-  ['bus', '5 12 * * 0'],
-  ['metro', '10 12 * * 0'],
-  ['rail', '15 12 * * 0'],
+  ['bus', '5,35 12-14 * * 0'],
+  ['metro', '10,40 12-14 * * 0'],
+  ['rail', '15,45 12-14 * * 0'],
 ]) {
   scheduler.cron(`halloffame-${account}`, spec, async () =>
     log(`hall of fame ${account}: ${JSON.stringify(await pipeline.hallOfFame(account))}`),

@@ -121,4 +121,13 @@ describe('scheduler', () => {
     const firstOfMonth = cronMatcher('30 10 1 * *');
     expect(firstOfMonth(Date.UTC(2026, 10, 1, 15, 30))).toBe(true);
   });
+
+  it('matches the Hall of Fame retries: every half hour from noon to 3 pm on Sundays', () => {
+    const bus = cronMatcher('5,35 12-14 * * 0');
+    // Sunday 2026-12-06, Eastern time (UTC-5).
+    const at = (hour, minute) => bus(Date.UTC(2026, 11, 6, hour + 5, minute));
+    expect([at(12, 5), at(12, 35), at(13, 5), at(14, 35)]).toEqual([true, true, true, true]);
+    expect([at(11, 35), at(12, 6), at(15, 5)]).toEqual([false, false, false]);
+    expect(bus(Date.UTC(2026, 11, 7, 17, 5))).toBe(false);
+  });
 });
