@@ -4,10 +4,21 @@ Breaking and notable changes to the published data under `/data/` —
 `alerts-recent.json`, the monthly `alerts/<YYYY-MM>.json` shards,
 `incidents/by-line/<key>.json`, `alerts-index.json`, `aggregates.json`,
 `daily-counts.json`, `accessibility.json`, `shapes/<route>.json`,
-`speeds/<route>.json`, `speeds/rail/<line>.json`, and `alerts.csv` — and to the
+`system-map.json`, `speeds/<route>.json`, `speeds/rail/<line>.json`, and `alerts.csv` — and to the
 syndication feeds (`/feed.xml` and the per-line/route feeds under `/feed/`).
 Newest first. If you build on this data, watch this file before pinning to the
 format.
+
+## 2026-10-08 — System map shapes
+
+- New **`system-map.json`**: every bus route's lines in one file, for the site's
+  system map (`/map`), so it needn't fetch a `shapes/<route>.json` per route:
+  `{ schema_version, generated_at, routes: { "<route id>": [[[lat, lon], …], …] } }`.
+  A route has one line for each direction that isn't the same street as the
+  other (a route that runs the same street both ways has one), simplified to
+  about 20 m. Metro routes are left out; the site carries those itself. Written
+  by the collector alongside `shapes/<route>.json`, whenever it rebuilds its GTFS
+  cache or the file is missing.
 
 ## 2026-10-07 — Stops on route shapes
 

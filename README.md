@@ -40,6 +40,7 @@ SEPTA Metro uses the 2025 line names: L1 (Market-Frankford), B1/B2/B3 (Broad Str
 - **Network filter** — All / Metro & Bus / Regional Rail. Metro line and bus route filters narrow Metro & Bus; Regional Rail has its own line filter.
 - **90-day timeline, hour-of-week heatmap, and calendar** — when and where incidents cluster.
 - **Line, route, and station pages** — `/line/l1`, `/route/17`, `/rail/line/pao`, `/station/8th-market`, `/rail/station/suburban-station`: reliability stats, resolution-time histograms, a station heatmap on a geographic line map, accessibility outages, and the full incident history.
+- **System map** — `/map` draws every SEPTA Metro line, Regional Rail line, and bus route on one street map you can pan and zoom (drag, scroll, pinch, or the +/− buttons; stations appear as you zoom in). The mode buttons narrow it to one mode or any combination (`/map?modes=metro,rail`), and selecting a route links to its page. Metro and Regional Rail are drawn from the data bundled with the site; bus routes come from `system-map.json`, which the collector publishes with the route shapes, so they appear once the collector has run.
 - **Route maps and speed maps** — bus route pages (`/route/17`) show the route on a street map you can pan and zoom (drag, the +/− buttons, or Ctrl/⌘ + scroll; on a phone, two fingers; stops appear as you zoom in), and bus, trolley, M1, and Regional Rail pages show how fast vehicles moved along each stretch over the past 7 days (by direction, except Regional Rail, whose TrainView feed has none). Speeds come from the bot server's vehicle positions, so they're absent when only the GitHub Actions collector is running; the subway lines (L1, B1–B3) don't report positions.
 - **Event pages** — every incident has a permalink at `/event/:id` with its timeline of SEPTA updates and detections, affected stations and map, and surrounding context on the same line and across the system.
 - **Compare, stats, week recaps, and system health** — `/compare?metro=l1,b1`, `/stats`, `/week`, `/system/metro`, `/system/buses`, `/system/rail`.
@@ -83,6 +84,7 @@ Client-side routing only — every path renders the SPA from the same `index.htm
 | `/rail/line/:line` | Regional Rail line by SEPTA route code — `/rail/line/pao`, `/rail/line/wtr`. |
 | `/station/:slug`, `/rail/station/:slug` | Metro and Regional Rail station pages. |
 | `/stations`, `/routes` | A–Z directories. |
+| `/map` | System map of every line and route, filterable by mode — `/map?modes=bus,rail`. |
 | `/system/:mode` | `/system/metro`, `/system/buses`, `/system/rail`. |
 | `/calendar`, `/stats`, `/compare`, `/accessibility` | 12-month heatmap, leaderboards, side-by-side comparison, elevator outages. |
 | `/week`, `/week/:date` | Sunday–Saturday recaps. |

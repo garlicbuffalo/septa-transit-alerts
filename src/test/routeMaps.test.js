@@ -4,6 +4,7 @@ import {
   buildSpeedMap,
   loadRouteShapes,
   loadRouteSpeeds,
+  loadSystemMapShapes,
   measure,
   railStopsOf,
   SPEEDS_STALE_MS,
@@ -248,6 +249,33 @@ describe('loading the files', () => {
   it('has no speeds from a server that has gone quiet', async () => {
     vi.stubGlobal('fetch', respond(speedFile({ generated_at: NOW - SPEEDS_STALE_MS - 1 })));
     expect(await loadRouteSpeeds('17', { now: NOW })).toBeNull();
+  });
+
+  it('reads every bus route’s lines from system-map.json', async () => {
+    const file = { schema_version: 1, generated_at: NOW, routes: { 17: [LINE], K: [LINE] } };
+    const fetchFn = respond(file);
+    vi.stubGlobal('fetch', fetchFn);
+    expect((await loadSystemMapShapes()).routes[17]).toEqual([LINE]);
+    expect(fetchFn.mock.calls[0][0]).toMatch(/\/system-map\.json$/);
+  });
+
+  it('has no system map shapes when the file is missing, empty, or in another format', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 404 })),
+    );
+    expect(await loadSystemMapShapes()).toBeNull();
+    vi.stubGlobal('fetch', respond({ schema_version: 1, routes: {} }));
+    expect(await loadSystemMapShapes()).toBeNull();
+    vi.stubGlobal('fetch', respond({ schema_version: 2, routes: { 17: [LINE] } }));
+    expect(await loadSystemMapShapes()).toBeNull();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('offline');
+      }),
+    );
+    expect(await loadSystemMapShapes()).toBeNull();
   });
 
   it('reads a route’s shapes from shapes/<route>.json', async () => {

@@ -3,6 +3,8 @@
 //
 //   shapes/<route>.json   a bus or Metro route's shape in each direction, and its
 //                         stops (collector)
+//   system-map.json       every bus route's lines in one file, for the system map
+//                         (collector)
 //   speeds/<route>.json   the past week's average speeds along each direction
 //                         of a bus route, trolley line, or the M1 (bot server;
 //                         see bot/features/speedhistory.js)
@@ -41,6 +43,17 @@ async function loadJson(file) {
 export async function loadRouteShapes(route) {
   const file = await loadJson(`shapes/${encodeURIComponent(route)}.json`);
   return file?.directions && Object.keys(file.directions).length > 0 ? file : null;
+}
+
+/**
+ * Every bus route's lines for the system map: `{ routes: { [route]: [[[lat, lon], …], …] } }`
+ * (a line for each direction that isn't the same street as the other), or null.
+ */
+export async function loadSystemMapShapes() {
+  const file = await loadJson('system-map.json');
+  const routes = file?.routes;
+  if (!routes || typeof routes !== 'object' || Object.keys(routes).length === 0) return null;
+  return file;
 }
 
 /**

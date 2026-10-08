@@ -237,6 +237,135 @@ describe('InteractiveMap', () => {
     });
   });
 
+  describe('as the page’s own map (gestures="free")', () => {
+    it('zooms with the plain wheel, without a hint', () => {
+      const { container } = render(<InteractiveMap {...props} gestures="free" />);
+      const map = screen.getByRole('region', { name: /Interactive map/ });
+      const start = zoomOf(container);
+      const wheel = new WheelEvent('wheel', { deltaY: -400, bubbles: true, cancelable: true });
+      act(() => {
+        map.dispatchEvent(wheel);
+      });
+      expect(wheel.defaultPrevented).toBe(true);
+      expect(zoomOf(container)).toBeGreaterThan(start);
+      expect(screen.queryByText(/scroll to zoom the map/)).not.toBeInTheDocument();
+    });
+
+    it('zooms out with the wheel the other way', () => {
+      const { container } = render(<InteractiveMap {...props} gestures="free" />);
+      const map = screen.getByRole('region', { name: /Interactive map/ });
+      act(() => {
+        map.dispatchEvent(
+          new WheelEvent('wheel', { deltaY: -400, bubbles: true, cancelable: true }),
+        );
+      });
+      const zoomed = zoomOf(container);
+      act(() => {
+        map.dispatchEvent(
+          new WheelEvent('wheel', { deltaY: 400, bubbles: true, cancelable: true }),
+        );
+      });
+      expect(zoomOf(container)).toBeLessThan(zoomed);
+    });
+
+    it('moves with one finger on a touchscreen, where the guarded map leaves it to the page', () => {
+      const original = window.matchMedia;
+      window.matchMedia = (query) => ({
+        matches: query === '(pointer: coarse)',
+        addEventListener() {},
+        removeEventListener() {},
+      });
+      try {
+        const guarded = render(<InteractiveMap {...props} />);
+        expect(guarded.container.querySelector('.leaflet-touch-drag')).toBeNull();
+        guarded.unmount();
+        const free = render(<InteractiveMap {...props} gestures="free" />);
+        expect(free.container.querySelector('.leaflet-touch-drag')).not.toBeNull();
+        const map = screen.getByRole('region', { name: /Interactive map/ });
+        act(() => {
+          map.dispatchEvent(new Event('touchstart', { bubbles: true }));
+        });
+        expect(screen.queryByText(/two fingers/)).not.toBeInTheDocument();
+      } finally {
+        window.matchMedia = original;
+      }
+    });
+  });
+
+  describe('lines', () => {
+    it('leaves out the dark edge of a line that asks to', () => {
+      const { container } = render(
+        <InteractiveMap
+          {...props}
+          dots={[]}
+          lines={[
+            { id: 'a', points: ROUTE, color: '#60a5fa' },
+            { id: 'b', points: ROUTE, color: '#aab4c3', casing: false },
+          ]}
+        />,
+      );
+      // One edge and two colors.
+      expect(container.querySelectorAll('.leaflet-overlay-pane path')).toHaveLength(3);
+    });
+
+    it('passes a clicked line to onLineClick, and makes it clickable without a tooltip', () => {
+      const onLineClick = vi.fn();
+      const { container } = render(
+        <InteractiveMap
+          {...props}
+          dots={[]}
+          onLineClick={onLineClick}
+          lines={[
+            { id: 'a', points: ROUTE, color: '#60a5fa' },
+            { id: 'b', points: ROUTE.slice(0, 2), color: '#ff2a2a', tip: 'Route B' },
+          ]}
+        />,
+      );
+      const clickable = container.querySelectorAll('path.leaflet-interactive');
+      expect(clickable).toHaveLength(2);
+      // Leaflet works out where on the map a click is from its coordinates.
+      fireEvent.click(clickable[1], { clientX: 20, clientY: 20 });
+      expect(onLineClick).toHaveBeenCalledWith('b');
+      fireEvent.click(clickable[0], { clientX: 20, clientY: 20 });
+      expect(onLineClick).toHaveBeenLastCalledWith('a');
+    });
+
+    it('is not clickable without onLineClick', () => {
+      const { container } = render(<InteractiveMap {...props} />);
+      expect(container.querySelectorAll('path.leaflet-interactive')).toHaveLength(1);
+    });
+
+    it('shows a tooltip as text, not as HTML', async () => {
+      const { container } = render(
+        <InteractiveMap
+          {...props}
+          dots={[]}
+          lines={[{ id: 'a', points: ROUTE, color: '#fff', tip: 'Route <b>17</b> & more' }]}
+        />,
+      );
+      await userEvent.hover(container.querySelector('path.leaflet-interactive'));
+      expect(await screen.findByText('Route <b>17</b> & more')).toBeInTheDocument();
+      expect(container.querySelector('.leaflet-tooltip b')).toBeNull();
+    });
+
+    it('draws on a canvas, not an element per line, when asked', () => {
+      const ctx = new Proxy({}, { get: () => () => {}, set: () => true });
+      const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
+      try {
+        const { container } = render(<InteractiveMap {...props} canvas />);
+        expect(container.querySelector('.leaflet-overlay-pane canvas')).not.toBeNull();
+        expect(container.querySelectorAll('.leaflet-overlay-pane path')).toHaveLength(0);
+      } finally {
+        getContext.mockRestore();
+      }
+    });
+  });
+
+  it('names what the zoom cue is about', () => {
+    render(<InteractiveMap {...props} stops={STOPS} stopZoom={16} stopsLabel="stations" />);
+    expect(screen.getByText('Zoom in to see stations')).toBeInTheDocument();
+  });
+
   it('removes its map when it goes away', () => {
     const { container, unmount } = render(<InteractiveMap {...props} />);
     expect(container.querySelector('.leaflet-container')).not.toBeNull();

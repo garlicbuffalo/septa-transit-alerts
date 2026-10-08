@@ -27,7 +27,13 @@ import { decodeTripUpdates } from './lib/gtfsRealtime.js';
 import { applyOfficialAlerts } from './lib/officialAlerts.js';
 import { advanceCancellations, applyTrainView } from './lib/railTrains.js';
 import { loadSchedule } from './lib/schedule.js';
-import { loadRouteShapes, PUBLISHED_SHAPES_DIR, publishRouteShapes } from './lib/shapes.js';
+import {
+  loadRouteShapes,
+  PUBLISHED_SHAPES_DIR,
+  publishRouteShapes,
+  publishSystemMap,
+  SYSTEM_MAP_FILE,
+} from './lib/shapes.js';
 import { createSources } from './lib/sources.js';
 import { advanceTripCancellations, applyTripCancellations } from './lib/tripCancellations.js';
 import { applyVehicleConditions, findConditions, VEHICLE_SOURCES } from './lib/vehicleDetectors.js';
@@ -227,14 +233,17 @@ export async function collect({
       now,
       previousShardKeys: archive.shardKeys,
     });
-    // Bus route shapes for the site's route maps, whenever the GTFS cache has
-    // been rebuilt (or the files are missing).
+    // Bus route shapes for the site's route maps and system map, whenever the
+    // GTFS cache has been rebuilt (or the files are missing).
     try {
       const shapes = await loadRouteShapes({ cacheDir, fixturesDir });
       const builtAt = shapes?.data.built_at ?? null;
-      const published = existsSync(join(dataDir, PUBLISHED_SHAPES_DIR));
+      const published =
+        existsSync(join(dataDir, PUBLISHED_SHAPES_DIR)) &&
+        existsSync(join(dataDir, SYSTEM_MAP_FILE));
       if (shapes && (state.shapesBuiltAt !== builtAt || !published)) {
         summary.shapes = await publishRouteShapes(dataDir, shapes);
+        summary.systemMap = await publishSystemMap(dataDir, shapes);
         state.shapesBuiltAt = builtAt;
       }
     } catch (err) {
