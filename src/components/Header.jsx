@@ -139,7 +139,9 @@ export default function Header({
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-gh-subtle/60'
                       }`}
                     >
-                      <NavIcon name={item.icon} className="h-4 w-4 opacity-80" />
+                      {/* Icons only from md up: with six links, the row plus the "Updated"
+                          note is too wide for a small tablet or a phone on its side. */}
+                      <NavIcon name={item.icon} className="hidden md:block h-4 w-4 opacity-80" />
                       {item.desktopLabel ?? item.label}
                     </a>
                   </li>
