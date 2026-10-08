@@ -71,6 +71,17 @@ scheduler.cron('rail-recap-week', '40 10 * * 0', async () =>
 scheduler.cron('rail-recap-month', '50 10 1 * *', async () =>
   log(`rail recap: ${JSON.stringify(await pipeline.railRecap('month'))}`),
 );
+// Hall of Fame and Wall of Shame: Sunday at noon, after the recaps, for the
+// week just ended.
+for (const [account, spec] of [
+  ['bus', '5 12 * * 0'],
+  ['metro', '10 12 * * 0'],
+  ['rail', '15 12 * * 0'],
+]) {
+  scheduler.cron(`halloffame-${account}`, spec, async () =>
+    log(`hall of fame ${account}: ${JSON.stringify(await pipeline.hallOfFame(account))}`),
+  );
+}
 scheduler.cron('housekeeping', '7 * * * *', async () => {
   const r = await pipeline.housekeeping();
   log(

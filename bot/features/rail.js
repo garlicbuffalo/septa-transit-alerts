@@ -33,10 +33,10 @@ export const LATE_MIN = 15;
 // Trains listed per kind in an hourly roundup before "+N more".
 const LIST_CAP = 10;
 // A line needs this many trains in a recap window to be ranked.
-const MIN_LINE_TRAINS = 30;
+export const MIN_LINE_TRAINS = 30;
 // Fewer trains than this in a window means the bot wasn't running for most
 // of it: no recap.
-const MIN_RECAP_TRAINS = 200;
+export const MIN_RECAP_TRAINS = 200;
 const SITE_HOST = new URL(SITE_ORIGIN).host;
 
 const lineLabel = (key) => RAIL_LINES[key]?.label ?? key;
