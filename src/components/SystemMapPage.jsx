@@ -237,10 +237,9 @@ export default function SystemMapPage() {
   );
   const baseLines = useMemo(() => visibleLines(layers, modes), [layers, modes]);
   const pinnedIds = useMemo(() => (pin ? pin.routes.map((r) => r.id) : []), [pin]);
-  const lines = useMemo(
-    () => [...baseLines, ...highlightLines(baseLines, pinnedIds)],
-    [baseLines, pinnedIds],
-  );
+  // The pinned routes are outlined in a layer of their own, so pinning (and letting go of
+  // the pin as the map moves) doesn't redraw every line on the map.
+  const outlined = useMemo(() => highlightLines(baseLines, pinnedIds), [baseLines, pinnedIds]);
   const stops = useMemo(() => visibleStops(modes), [modes]);
   const dots = useMemo(() => (pin ? [{ id: 'pin', point: [pin.lat, pin.lon] }] : NO_DOTS), [pin]);
 
@@ -358,7 +357,8 @@ export default function SystemMapPage() {
               <InteractiveMap
                 label="Map of the SEPTA system"
                 fit={SYSTEM_FIT}
-                lines={lines}
+                lines={baseLines}
+                highlight={outlined}
                 dots={dots}
                 stops={stops}
                 stopZoom={STATION_ZOOM}

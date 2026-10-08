@@ -10,8 +10,19 @@ const mapProps = vi.hoisted(() => ({}));
 vi.mock('../components/InteractiveMap.jsx', () => ({
   default: (props) => {
     Object.assign(mapProps, props);
-    const { label, lines, dots, stops, stopZoom, stopsLabel, gestures, canvas, fit, children } =
-      props;
+    const {
+      label,
+      lines,
+      highlight,
+      dots,
+      stops,
+      stopZoom,
+      stopsLabel,
+      gestures,
+      canvas,
+      fit,
+      children,
+    } = props;
     return (
       <div
         data-testid="map"
@@ -26,6 +37,7 @@ vi.mock('../components/InteractiveMap.jsx', () => ({
           {JSON.stringify([...new Set(lines.map((l) => l.routeId))])}
         </span>
         <span data-testid="line-colors">{JSON.stringify(lines.map((l) => l.color))}</span>
+        <span data-testid="highlight-colors">{JSON.stringify(highlight.map((l) => l.color))}</span>
         <span data-testid="dots">{JSON.stringify(dots.map((d) => d.point))}</span>
         <span data-testid="stops">{JSON.stringify(stops.map((s) => s.mode))}</span>
         {children}
@@ -451,12 +463,15 @@ describe('SystemMapPage', () => {
 
       it('outlines those routes on the map, and marks the spot', async () => {
         await withRoutes({ 17: [street(-80)], 33: [street(-80.01)] });
-        const before = JSON.parse(screen.getByTestId('line-colors').textContent);
-        expect(before).not.toContain('#ffffff');
+        const linesBefore = mapProps.lines;
+        expect(JSON.parse(screen.getByTestId('highlight-colors').textContent)).toEqual([]);
         expect(JSON.parse(screen.getByTestId('dots').textContent)).toEqual([]);
         pick(NEAR, -80);
-        const colors = JSON.parse(screen.getByTestId('line-colors').textContent);
+        const colors = JSON.parse(screen.getByTestId('highlight-colors').textContent);
         expect(colors.filter((c) => c === '#ffffff')).toHaveLength(1);
+        // The outline is its own layer: the lines under it are the same ones, not redrawn.
+        expect(mapProps.lines).toBe(linesBefore);
+        expect(screen.getByTestId('line-colors').textContent).not.toContain('#ffffff');
         expect(JSON.parse(screen.getByTestId('dots').textContent)).toEqual([[NEAR, -80]]);
       });
 
@@ -486,7 +501,7 @@ describe('SystemMapPage', () => {
         pick(...FAR);
         expect(popup()).toBeNull();
         expect(JSON.parse(screen.getByTestId('dots').textContent)).toEqual([]);
-        expect(screen.getByTestId('line-colors').textContent).not.toContain('#ffffff');
+        expect(JSON.parse(screen.getByTestId('highlight-colors').textContent)).toEqual([]);
       });
 
       it('goes when the map moves or zooms, since the spot would no longer be where it was', async () => {

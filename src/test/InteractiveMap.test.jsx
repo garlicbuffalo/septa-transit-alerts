@@ -133,6 +133,32 @@ describe('InteractiveMap', () => {
     expect(zoomOf(container)).toBe(zoomed);
   });
 
+  it('draws a highlight over the lines in a layer of its own, redrawn without redrawing them', () => {
+    const { container, rerender } = render(<InteractiveMap {...props} />);
+    const paths = () => [...container.querySelectorAll('.leaflet-overlay-pane path')];
+    const before = paths();
+    expect(before).toHaveLength(5);
+    const highlight = [{ id: 'h', points: ROUTE, color: '#ffffff', weight: 8, casing: true }];
+    rerender(<InteractiveMap {...props} highlight={highlight} />);
+    const withHighlight = paths();
+    // An edge and a line more, on top; the ones under them are the same elements.
+    expect(withHighlight).toHaveLength(7);
+    expect(withHighlight.slice(0, 5)).toEqual(before);
+    expect(withHighlight.at(-1)).toHaveAttribute('stroke', '#ffffff');
+    rerender(<InteractiveMap {...props} highlight={[]} />);
+    expect(paths()).toEqual(before);
+    // New lines drawn after a highlight go under it.
+    rerender(<InteractiveMap {...props} highlight={highlight} />);
+    rerender(
+      <InteractiveMap
+        {...props}
+        highlight={highlight}
+        lines={[{ id: 'c', points: ROUTE, color: '#2ad17f' }]}
+      />,
+    );
+    expect(paths().at(-1)).toHaveAttribute('stroke', '#ffffff');
+  });
+
   it('refits when the points to fit change, as when the other direction is chosen', async () => {
     const { container, rerender } = render(<InteractiveMap {...props} />);
     const start = zoomOf(container);

@@ -30,6 +30,10 @@ import { SourceCredit } from './Basemap.jsx';
 // shown as text on hover or tap. `canvas` draws everything on one canvas instead of
 // an SVG element per line, for maps with hundreds of lines.
 //
+// `highlight` is lines of the same shape drawn over all of `lines`, in a layer of their own:
+// a page that outlines the selected routes can change that without the map redrawing
+// every line under it (hundreds of them, on the system map).
+//
 // `onPointer` is told where the pointer is on the map, for a page that works out
 // what is there itself (a line is only hit right on it, and a crowd of thin ones hides
 // all but the top): `{ type, lat, lon, x, y, width, height, top, bottom, metersPerPx,
@@ -73,12 +77,38 @@ const asText = (text) => document.createTextNode(String(text));
 // of the latitude and halves with each zoom level.
 const METERS_PER_PX_AT_ZOOM_0 = 156543.03392;
 
+// Each line over its dark edge (every edge first, so a crossing line's edge never cuts
+// into another line), added to a layer group.
+function drawLines(group, lines) {
+  const round = { lineCap: 'round', lineJoin: 'round', interactive: false };
+  for (const l of lines) {
+    if (l.casing === false) continue;
+    L.polyline(l.points, {
+      ...round,
+      color: EDGE,
+      weight: (l.weight ?? 5) + 4,
+      opacity: 0.65,
+    }).addTo(group);
+  }
+  for (const l of lines) {
+    const line = L.polyline(l.points, {
+      ...round,
+      interactive: Boolean(l.tip),
+      color: l.color,
+      weight: l.weight ?? 5,
+      opacity: l.opacity ?? 1,
+    }).addTo(group);
+    if (l.tip) line.bindTooltip(asText(l.tip), { sticky: true });
+  }
+}
+
 const wheelPixels = (e) => (e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY);
 
 export default function InteractiveMap({
   label,
   fit,
   lines = NONE,
+  highlight = NONE,
   dots = NONE,
   stops = NONE,
   stopZoom = STOP_ZOOM,
@@ -92,6 +122,7 @@ export default function InteractiveMap({
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
+  const highlightRef = useRef(null);
   const fitRef = useRef(fit);
   fitRef.current = fit;
   const stopsRef = useRef(null);
@@ -157,6 +188,7 @@ export default function InteractiveMap({
     });
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
+    highlightRef.current = L.layerGroup().addTo(map);
     map.createPane(STOP_PANE).style.zIndex = String(STOP_PANE_Z);
     stopsRef.current = L.layerGroup();
     map.on('zoomend', syncStops);
@@ -265,6 +297,7 @@ export default function InteractiveMap({
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
+      highlightRef.current = null;
       stopsRef.current = null;
     };
   }, [showHint, syncStops, free, useCanvas]);
@@ -276,26 +309,7 @@ export default function InteractiveMap({
     const group = layerRef.current;
     if (!map || !group) return;
     group.clearLayers();
-    const round = { lineCap: 'round', lineJoin: 'round', interactive: false };
-    for (const l of lines) {
-      if (l.casing === false) continue;
-      L.polyline(l.points, {
-        ...round,
-        color: EDGE,
-        weight: (l.weight ?? 5) + 4,
-        opacity: 0.65,
-      }).addTo(group);
-    }
-    for (const l of lines) {
-      const line = L.polyline(l.points, {
-        ...round,
-        interactive: Boolean(l.tip),
-        color: l.color,
-        weight: l.weight ?? 5,
-        opacity: l.opacity ?? 1,
-      }).addTo(group);
-      if (l.tip) line.bindTooltip(asText(l.tip), { sticky: true });
-    }
+    drawLines(group, lines);
     for (const d of dots) {
       L.circleMarker(d.point, {
         radius: 6,
@@ -306,7 +320,17 @@ export default function InteractiveMap({
         interactive: false,
       }).addTo(group);
     }
+    // Lines added after the highlight would be drawn over it.
+    highlightRef.current?.eachLayer((layer) => layer.bringToFront());
   }, [lines, dots]);
+
+  // The highlighted lines, redrawn on their own, over everything above.
+  useEffect(() => {
+    const group = highlightRef.current;
+    if (!group) return;
+    group.clearLayers();
+    drawLines(group, highlight);
+  }, [highlight]);
 
   // The stops, redrawn when they change; each is a dot, with a larger invisible
   // circle around it so a fingertip can hit it.
