@@ -83,7 +83,11 @@ export default function RoutesIndexPage() {
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">All routes</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
             Every SEPTA Metro line, bus route, and Regional Rail line. Pick one for its alert and
-            disruption history.
+            disruption history, or{' '}
+            <a href="/map" className="text-blue-500 hover:text-blue-400 hover:underline">
+              see them all on the system map
+            </a>
+            .
           </p>
 
           {/* Search by route number or name — the fast path through 150+ bus

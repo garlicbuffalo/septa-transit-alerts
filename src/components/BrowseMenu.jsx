@@ -204,6 +204,12 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
                 </span>
                 Stats
               </a>
+              <a href="/map" role="menuitem" className={ROW_LINK}>
+                <span aria-hidden="true" className="w-5 shrink-0 text-center">
+                  🗺️
+                </span>
+                System map
+              </a>
               <a href="/compare" role="menuitem" className={ROW_LINK}>
                 <span aria-hidden="true" className="w-5 shrink-0 text-center">
                   ⚖️

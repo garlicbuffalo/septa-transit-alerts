@@ -29,6 +29,7 @@ const StationPage = lazy(() => import('./components/StationPage.jsx'));
 const StationsIndexPage = lazy(() => import('./components/StationsIndexPage.jsx'));
 const StatsPage = lazy(() => import('./components/StatsPage.jsx'));
 const SubscribePage = lazy(() => import('./components/SubscribePage.jsx'));
+const SystemMapPage = lazy(() => import('./components/SystemMapPage.jsx'));
 const SystemHealthPage = lazy(() => import('./components/SystemHealthPage.jsx'));
 const WeekPage = lazy(() => import('./components/WeekPage.jsx'));
 
@@ -48,6 +49,8 @@ const WeekPage = lazy(() => import('./components/WeekPage.jsx'));
 //   /rail/station/:slug → Regional Rail station page (e.g. /rail/station/ardmore)
 //   /stations      → A–Z index of every Metro and Regional Rail station
 //   /routes        → index of every Metro line, bus route, and Regional Rail line
+//   /map           → map of every Metro line, bus route, and Regional Rail line,
+//                    filterable by mode (?modes=metro,rail)
 //   /day/:date     → single Philadelphia calendar day (YYYY-MM-DD)
 //   /week          → recap of the current Sun–Sat week
 //   /week/:date    → recap of the week containing :date (YYYY-MM-DD); the
@@ -67,6 +70,7 @@ const railLineMatch = /^\/rail\/line\/([^/?#]+)\/?$/.exec(path);
 const routeMatch = /^\/route\/([^/?#]+)\/?$/.exec(path);
 const stationsIndexMatch = /^\/stations\/?$/.exec(path);
 const routesIndexMatch = /^\/routes\/?$/.exec(path);
+const systemMapMatch = /^\/map\/?$/.exec(path);
 const stationMatch = /^\/station\/([^/?#]+)\/?$/.exec(path);
 const railStationMatch = /^\/rail\/station\/([^/?#]+)\/?$/.exec(path);
 const dayMatch = /^\/day\/([^/?#]+)\/?$/.exec(path);
@@ -93,6 +97,8 @@ if (eventMatch) {
   page = <StationsIndexPage />;
 } else if (routesIndexMatch) {
   page = <RoutesIndexPage />;
+} else if (systemMapMatch) {
+  page = <SystemMapPage />;
 } else if (stationMatch) {
   page = <StationPage slug={stationMatch[1]} />;
 } else if (railStationMatch) {

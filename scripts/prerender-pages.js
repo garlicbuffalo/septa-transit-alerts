@@ -15,7 +15,8 @@
 //   - /stats (singleton, always rendered)
 //   - /compare (singleton, always rendered)
 //   - /system/metro, /system/buses, and /system/rail (singletons, always rendered)
-//   - /stations and /routes (A–Z directory indexes, singletons)
+//   - /stations and /routes (A–Z directory indexes, singletons), and /map (the
+//     system map)
 //
 // Anything outside the scope falls back to the generic homepage OG card,
 // which the SPA shell at the unknown route serves by default.
@@ -425,6 +426,15 @@ function planPages(payload, dailyPayload) {
     return `<span class="pill" style="background:${info.color};color:${info.textColor}">${escHtml(info.label)}</span>`;
   }).join('');
   const busRouteCount = Object.keys(BUS_ROUTE_NAMES).length;
+  // The Metro pills plus a gray one each for the other two modes: "the whole system".
+  const systemPills =
+    indexMetroPills +
+    ['Bus', 'Regional Rail']
+      .map(
+        (label) =>
+          `<span class="pill" style="background:#475569;color:#fff">${escHtml(label)}</span>`,
+      )
+      .join('');
   const railStationCount = new Set(
     Object.values(railStations).flatMap((list) => list.map((st) => st.name)),
   ).size;
@@ -450,14 +460,19 @@ function planPages(payload, dailyPayload) {
     ogTitle: `All routes · ${SITE_NAME}`,
     desc: `Index of every SEPTA Metro line, bus route, and Regional Rail line, each linking to its service-alert and disruption history — archived on ${SITE_HOST}.`,
     subtitle: `Every SEPTA line and route in one place — ${METRO_LINE_ORDER.length} Metro lines, ${busRouteCount} bus routes, and ${RAIL_LINE_ORDER.length} Regional Rail lines.`,
-    pillHtml:
-      indexMetroPills +
-      ['Bus', 'Regional Rail']
-        .map(
-          (label) =>
-            `<span class="pill" style="background:#475569;color:#fff">${escHtml(label)}</span>`,
-        )
-        .join(''),
+    pillHtml: systemPills,
+  });
+  pages.push({
+    kind: 'index',
+    slug: 'system-map',
+    outDir: resolve(DIST, 'map'),
+    url: `${SITE}/map`,
+    path: '/map',
+    title: 'System map',
+    ogTitle: `System map · ${SITE_NAME}`,
+    desc: `A map of every SEPTA Metro line, bus route, and Regional Rail line you can pan and zoom, filtered by mode — each route linking to its service-alert and disruption history on ${SITE_HOST}.`,
+    subtitle: `Every SEPTA line and route on one map — ${METRO_LINE_ORDER.length} Metro lines, ${busRouteCount} bus routes, and ${RAIL_LINE_ORDER.length} Regional Rail lines.`,
+    pillHtml: systemPills,
   });
 
   // SEPTA Metro lines: always all of them — small stable set, deserves full

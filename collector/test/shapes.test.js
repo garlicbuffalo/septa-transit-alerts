@@ -2,7 +2,13 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildRouteShapes, publishRouteShapes, RouteShapes } from '../lib/shapes.js';
+import {
+  buildRouteShapes,
+  publishRouteShapes,
+  publishSystemMap,
+  RouteShapes,
+  SYSTEM_MAP_FILE,
+} from '../lib/shapes.js';
 
 const line = (lon) => Array.from({ length: 50 }, (_, i) => [39.9 + i * 0.002, lon + i * 1e-7]);
 const shapes = new RouteShapes({
@@ -59,6 +65,59 @@ describe('publishRouteShapes', () => {
     await publishRouteShapes(dir, shapes);
     await writeFile(join(dir, 'shapes', 'gone.json'), '{}');
     expect(await publishRouteShapes(dir, shapes)).toEqual({ written: 0, removed: 1 });
+  });
+});
+
+describe('publishSystemMap', () => {
+  const north = line(-75.17);
+  const south = [...north].reverse();
+  const system = new RouteShapes({
+    version: 1,
+    built_at: 42,
+    routes: {
+      // Two streets, one for each direction.
+      17: { 0: north, 1: line(-75.18) },
+      // The same street both ways.
+      K: { 0: north, 1: south },
+      'L1-OWL': { 0: line(-75.2) },
+      t1: { 0: line(-75.19) },
+    },
+  });
+  const read = async (dir) => JSON.parse(await readFile(join(dir, SYSTEM_MAP_FILE), 'utf8'));
+
+  it('puts every bus route in one file, and leaves Metro routes to the site', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'system-map-'));
+    expect(await publishSystemMap(dir, system)).toBe(true);
+    const file = await read(dir);
+    expect(file).toMatchObject({ schema_version: 1, generated_at: 42 });
+    expect(Object.keys(file.routes).sort()).toEqual(['17', 'K', 'L1-OWL']);
+    // A straight line is its two ends.
+    expect(file.routes['L1-OWL']).toEqual([
+      [
+        [39.9, -75.2],
+        [39.998, -75.2],
+      ],
+    ]);
+  });
+
+  it('keeps both directions only when they run on different streets', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'system-map-'));
+    await publishSystemMap(dir, system);
+    const { routes } = await read(dir);
+    expect(routes['17']).toHaveLength(2);
+    expect(routes.K).toHaveLength(1);
+  });
+
+  it('writes nothing again when nothing changed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'system-map-'));
+    await publishSystemMap(dir, system);
+    expect(await publishSystemMap(dir, system)).toBe(false);
+  });
+
+  it('creates the data directory if it is not there yet', async () => {
+    const dir = join(await mkdtemp(join(tmpdir(), 'system-map-')), 'data');
+    expect(await publishSystemMap(dir, system)).toBe(true);
+    expect((await read(dir)).routes).toHaveProperty('17');
   });
 });
 

@@ -27,6 +27,7 @@ A collector polls SEPTA's public APIs every few minutes, and Bluesky bots post w
 - Bus route pages: `__SITE_ORIGIN__/route/<routeId>` (e.g. `/route/17`).
 - Station pages: `__SITE_ORIGIN__/station/<slug>` (Metro, e.g. `/station/8th-market`) and `__SITE_ORIGIN__/rail/station/<slug>` (Regional Rail, e.g. `/rail/station/suburban-station`).
 - [All stations](__SITE_ORIGIN__/stations) and [all routes](__SITE_ORIGIN__/routes): Directories.
+- [System map](__SITE_ORIGIN__/map): Every Metro line, Regional Rail line, and bus route on one pan-and-zoom map, filterable by mode (`?modes=metro,bus,rail`, any combination).
 - Day pages: `__SITE_ORIGIN__/day/<YYYY-MM-DD>`.
 - Event pages: `__SITE_ORIGIN__/event/<id>` (the incident id, e.g. `alert-136615` or `delay-2026-10-05-3556`).
 

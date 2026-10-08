@@ -21,8 +21,15 @@ import { SourceCredit } from './Basemap.jsx';
 //   * on a touchscreen one finger scrolls the page and two move and zoom the map;
 //   * the +/− buttons and the arrow and +/− keys always work.
 //
-// `lines`: [{ id, points: [[lat, lon], …], color, weight?, opacity?, tip? }],
-// drawn in order over their casings (a dark edge that sets them off the tiles).
+// A map that is the page's main content (the system map) asks for `gestures="free"`
+// instead: there the wheel zooms, one finger moves the map, and there are no hints.
+//
+// `lines`: [{ id, points: [[lat, lon], …], color, weight?, opacity?, tip?, casing? }],
+// drawn in order over their casings (a dark edge that sets them off the tiles;
+// `casing: false` leaves a line without one, for thin lines in a crowd). `tip` is
+// shown as text on hover or tap. With `onLineClick`, a line with a `tip` or not can
+// be clicked or tapped and is passed to it by `id`. `canvas` draws everything on one
+// canvas instead of an SVG element per line, for maps with hundreds of lines.
 // `dots`: [{ id, point: [lat, lon] }]. `fit`: the points the first view shows.
 // `stops`: [{ id, point: [lat, lon], name }], small dots over the lines that
 // appear once the map is zoomed to `stopZoom` (a bus route's stops would crowd
@@ -50,6 +57,10 @@ const SourceTiles = L.TileLayer.extend({
   },
 });
 
+// Tooltip content as plain text: Leaflet takes a string for HTML, and these names
+// come from data.
+const asText = (text) => document.createTextNode(String(text));
+
 const wheelPixels = (e) => (e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY);
 
 export default function InteractiveMap({
@@ -59,6 +70,10 @@ export default function InteractiveMap({
   dots = NONE,
   stops = NONE,
   stopZoom = STOP_ZOOM,
+  stopsLabel = 'stops',
+  gestures = 'guarded',
+  canvas = false,
+  onLineClick,
   className = 'h-[360px] sm:h-[480px]',
   children,
 }) {
@@ -70,6 +85,11 @@ export default function InteractiveMap({
   const stopsRef = useRef(null);
   const stopZoomRef = useRef(stopZoom);
   stopZoomRef.current = stopZoom;
+  const onLineClickRef = useRef(onLineClick);
+  onLineClickRef.current = onLineClick;
+  // How the map behaves is decided when it is made; changing these later does nothing.
+  const free = useRef(gestures === 'free').current;
+  const useCanvas = useRef(canvas).current;
   const [hint, setHint] = useState(null);
   // Whether there are stops that the map isn't zoomed in enough to show yet.
   const [stopsHidden, setStopsHidden] = useState(false);
@@ -110,13 +130,16 @@ export default function InteractiveMap({
       attributionControl: false,
       scrollWheelZoom: false,
       // One finger scrolls the page on a touchscreen; two pinch and move the map.
-      dragging: !touchOnly,
+      // A map that fills the page moves with one finger instead.
+      dragging: free || !touchOnly,
       touchZoom: true,
       zoomSnap: 0,
       zoomDelta: 1,
       minZoom: 8,
       maxZoom: 18,
-      preferCanvas: false,
+      preferCanvas: useCanvas,
+      // A fingertip is wider than a line: a canvas line can be hit from a few pixels away.
+      ...(useCanvas && { renderer: L.canvas({ padding: 0.5, tolerance: 6 }) }),
     });
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
@@ -140,9 +163,9 @@ export default function InteractiveMap({
       tiles.redraw();
     });
 
-    // The wheel zooms only with Ctrl or ⌘ held.
+    // The wheel zooms only with Ctrl or ⌘ held, unless the map is the page.
     const onWheel = (e) => {
-      if (!(e.ctrlKey || e.metaKey)) {
+      if (!free && !(e.ctrlKey || e.metaKey)) {
         showHint(MAC ? 'Use ⌘ + scroll to zoom the map' : 'Use Ctrl + scroll to zoom the map');
         return;
       }
@@ -156,7 +179,9 @@ export default function InteractiveMap({
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     const onTouchStart = (e) => {
-      if (touchOnly && e.touches.length === 1) showHint('Use two fingers to move the map');
+      if (touchOnly && !free && e.touches.length === 1) {
+        showHint('Use two fingers to move the map');
+      }
     };
     el.addEventListener('touchstart', onTouchStart, { passive: true });
 
@@ -170,7 +195,7 @@ export default function InteractiveMap({
       layerRef.current = null;
       stopsRef.current = null;
     };
-  }, [showHint, syncStops]);
+  }, [showHint, syncStops, free, useCanvas]);
 
   // The lines and dots, redrawn when they change. This leaves the view alone: a
   // redraw must never undo where the reader has panned and zoomed to.
@@ -181,6 +206,7 @@ export default function InteractiveMap({
     group.clearLayers();
     const round = { lineCap: 'round', lineJoin: 'round', interactive: false };
     for (const l of lines) {
+      if (l.casing === false) continue;
       L.polyline(l.points, {
         ...round,
         color: EDGE,
@@ -188,15 +214,17 @@ export default function InteractiveMap({
         opacity: 0.65,
       }).addTo(group);
     }
+    const clickable = Boolean(onLineClickRef.current);
     for (const l of lines) {
       const line = L.polyline(l.points, {
         ...round,
-        interactive: Boolean(l.tip),
+        interactive: Boolean(l.tip) || clickable,
         color: l.color,
         weight: l.weight ?? 5,
         opacity: l.opacity ?? 1,
       }).addTo(group);
-      if (l.tip) line.bindTooltip(l.tip, { sticky: true });
+      if (l.tip) line.bindTooltip(asText(l.tip), { sticky: true });
+      if (clickable) line.on('click', () => onLineClickRef.current?.(l.id));
     }
     for (const d of dots) {
       L.circleMarker(d.point, {
@@ -232,7 +260,7 @@ export default function InteractiveMap({
         stroke: false,
         fillOpacity: 0,
       })
-        .bindTooltip(stop.name, { direction: 'top', offset: [0, -4] })
+        .bindTooltip(asText(stop.name), { direction: 'top', offset: [0, -4] })
         .addTo(group);
     }
     syncStops();
@@ -274,7 +302,7 @@ export default function InteractiveMap({
             aria-hidden="true"
             className="pointer-events-none absolute bottom-2 right-2 z-[1000] rounded-md bg-black/70 px-2 py-1 text-[11px] text-slate-100"
           >
-            Zoom in to see stops
+            Zoom in to see {stopsLabel}
           </div>
         )}
         {children}

@@ -18,6 +18,17 @@ const SIMPLIFY_M = 6;
 export const PUBLISHED_SHAPES_DIR = 'shapes';
 const PUBLISHED_SIMPLIFY_M = 15;
 const PUBLISHED_VERSION = 1;
+// All the bus routes together in one file, for the site's system map: it draws
+// every route at once, and fetching 150-odd shapes files for that would be
+// 150-odd requests. Lines are simplified a little more than the route pages'.
+export const SYSTEM_MAP_FILE = 'system-map.json';
+const SYSTEM_MAP_SIMPLIFY_M = 20;
+const SYSTEM_MAP_VERSION = 1;
+// A route's second direction is left out when it runs along the first (the
+// same street both ways), at this distance for this share of its points: at the
+// system map's scale it would only draw the same line twice.
+const SAME_STREET_M = 30;
+const SAME_STREET_SHARE = 0.9;
 
 const toRad = (d) => (d * Math.PI) / 180;
 
@@ -274,4 +285,51 @@ export async function publishRouteShapes(dir, shapes) {
     removed++;
   }
   return { written, removed };
+}
+
+// Whether (nearly) all of a line's points are within `toleranceM` of one of the
+// other lines.
+function runsAlong(line, others, toleranceM = SAME_STREET_M) {
+  const near = line.filter((p) =>
+    others.some((other) =>
+      other.some((q, i) => i > 0 && offsetM(p, other[i - 1], q) <= toleranceM),
+    ),
+  );
+  return near.length >= line.length * SAME_STREET_SHARE;
+}
+
+/**
+ * Write every bus route's lines into one file for the site's system map:
+ * `{ schema_version, generated_at, routes: { [route]: [[[lat, lon], …], …] } }`,
+ * one line per direction that doesn't just retrace the other. Metro routes are
+ * left out (the site carries those itself). Left alone when unchanged.
+ * @param {string} dir the data directory
+ * @param {RouteShapes} shapes
+ * @returns {Promise<boolean>} whether the file was written
+ */
+export async function publishSystemMap(dir, shapes) {
+  const routes = {};
+  for (const route of [...shapes.routes()].sort()) {
+    if (classifyRoute(route)?.mode !== 'bus') continue;
+    const lines = [];
+    for (const [, points] of shapes.directions(route)) {
+      const line = simplify(points, SYSTEM_MAP_SIMPLIFY_M).map(([lat, lon]) => [
+        Math.round(lat * 1e5) / 1e5,
+        Math.round(lon * 1e5) / 1e5,
+      ]);
+      if (line.length >= 2 && !runsAlong(line, lines)) lines.push(line);
+    }
+    if (lines.length) routes[route] = lines;
+  }
+  const file = {
+    schema_version: SYSTEM_MAP_VERSION,
+    generated_at: shapes.data.built_at,
+    routes,
+  };
+  const body = `${JSON.stringify(file)}\n`;
+  const path = join(dir, SYSTEM_MAP_FILE);
+  if ((await readFile(path, 'utf8').catch(() => null)) === body) return false;
+  await mkdir(dir, { recursive: true });
+  await writeFile(path, body);
+  return true;
 }

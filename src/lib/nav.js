@@ -13,12 +13,12 @@ export const PRIMARY_NAV = [
 
 // Which PRIMARY_NAV entry a path belongs to, or null for pages outside the
 // tabs (About, Privacy, a 404). Detail pages light up their parent tab: a line
-// or route page sits under Routes, a station page under Stations, and the
+// or route page and the system map sit under Routes, a station page under Stations, and the
 // day/week/stats/compare views under History.
 export function activeNavKey(pathname) {
   const path = (pathname || '/').replace(/\/+$/, '') || '/';
   if (path === '/' || path.startsWith('/event/') || path.startsWith('/system/')) return 'now';
-  if (/^\/(routes|line|route|rail\/line)(\/|$)/.test(path)) return 'routes';
+  if (/^\/(routes|map|line|route|rail\/line)(\/|$)/.test(path)) return 'routes';
   if (/^\/(stations|station|rail\/station)(\/|$)/.test(path)) return 'stations';
   if (/^\/(calendar|day|week|stats|compare)(\/|$)/.test(path)) return 'history';
   if (/^\/subscribe(\/|$)/.test(path)) return 'follow';
