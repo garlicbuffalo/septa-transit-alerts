@@ -27,9 +27,17 @@ import { SourceCredit } from './Basemap.jsx';
 // `lines`: [{ id, points: [[lat, lon], …], color, weight?, opacity?, tip?, casing? }],
 // drawn in order over their casings (a dark edge that sets them off the tiles;
 // `casing: false` leaves a line without one, for thin lines in a crowd). `tip` is
-// shown as text on hover or tap. With `onLineClick`, a line with a `tip` or not can
-// be clicked or tapped and is passed to it by `id`. `canvas` draws everything on one
-// canvas instead of an SVG element per line, for maps with hundreds of lines.
+// shown as text on hover or tap. `canvas` draws everything on one canvas instead of
+// an SVG element per line, for maps with hundreds of lines.
+//
+// `onPointer` is told where the pointer is on the map, for a page that works out
+// what is there itself (a line is only hit right on it, and a crowd of thin ones hides
+// all but the top): `{ type, lat, lon, x, y, width, height, top, bottom, metersPerPx,
+// touch }` with `type` one of `hover` (a mouse moving over the map, at most once a
+// frame, not while it drags and not over a stop, which names itself), `pick` (a click
+// or tap), `leave` (the mouse left the map) and `move` (the view is about to change,
+// so a point on it won't stay where it was; this one has only a `type`). `x`, `y` and
+// the size are in pixels in the map; `top` and `bottom` are where it is on the screen.
 // `dots`: [{ id, point: [lat, lon] }]. `fit`: the points the first view shows.
 // `stops`: [{ id, point: [lat, lon], name }], small dots over the lines that
 // appear once the map is zoomed to `stopZoom` (a bus route's stops would crowd
@@ -61,6 +69,10 @@ const SourceTiles = L.TileLayer.extend({
 // come from data.
 const asText = (text) => document.createTextNode(String(text));
 
+// A pixel at zoom 0 is this many meters at the equator, which narrows with the cosine
+// of the latitude and halves with each zoom level.
+const METERS_PER_PX_AT_ZOOM_0 = 156543.03392;
+
 const wheelPixels = (e) => (e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY);
 
 export default function InteractiveMap({
@@ -73,7 +85,7 @@ export default function InteractiveMap({
   stopsLabel = 'stops',
   gestures = 'guarded',
   canvas = false,
-  onLineClick,
+  onPointer,
   className = 'h-[360px] sm:h-[480px]',
   children,
 }) {
@@ -85,8 +97,10 @@ export default function InteractiveMap({
   const stopsRef = useRef(null);
   const stopZoomRef = useRef(stopZoom);
   stopZoomRef.current = stopZoom;
-  const onLineClickRef = useRef(onLineClick);
-  onLineClickRef.current = onLineClick;
+  const onPointerRef = useRef(onPointer);
+  onPointerRef.current = onPointer;
+  // Whether the mouse is over a stop (which shows its own name).
+  const overStop = useRef(false);
   // How the map behaves is decided when it is made; changing these later does nothing.
   const free = useRef(gestures === 'free').current;
   const useCanvas = useRef(canvas).current;
@@ -138,8 +152,8 @@ export default function InteractiveMap({
       minZoom: 8,
       maxZoom: 18,
       preferCanvas: useCanvas,
-      // A fingertip is wider than a line: a canvas line can be hit from a few pixels away.
-      ...(useCanvas && { renderer: L.canvas({ padding: 0.5, tolerance: 6 }) }),
+      // Drawn a half screen past the edges, so panning shows no blank margin.
+      ...(useCanvas && { renderer: L.canvas({ padding: 0.5 }) }),
     });
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
@@ -185,7 +199,65 @@ export default function InteractiveMap({
     };
     el.addEventListener('touchstart', onTouchStart, { passive: true });
 
+    // Where the pointer is, for `onPointer`. Mouse moves are coalesced to one a frame.
+    const report = (type, e) => {
+      const callback = onPointerRef.current;
+      if (!callback) return;
+      if (!e) {
+        callback({ type });
+        return;
+      }
+      const { lat, lng } = e.latlng;
+      const size = map.getSize();
+      const { top, bottom } = el.getBoundingClientRect();
+      callback({
+        type,
+        lat,
+        lon: lng,
+        x: e.containerPoint.x,
+        y: e.containerPoint.y,
+        width: size.x,
+        height: size.y,
+        top,
+        bottom,
+        metersPerPx:
+          (METERS_PER_PX_AT_ZOOM_0 * Math.cos((lat * Math.PI) / 180)) / 2 ** map.getZoom(),
+        touch: touchOnly,
+      });
+    };
+    let frame = null;
+    let moved = null;
+    const stopWatching = () => {
+      if (frame != null) cancelAnimationFrame(frame);
+      frame = null;
+      moved = null;
+    };
+    map.on('mousemove', (e) => {
+      // Not while the mouse drags the map, nor over a stop, which names itself.
+      if (!onPointerRef.current || overStop.current || e.originalEvent.buttons) return;
+      moved = e;
+      if (frame != null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        if (moved) report('hover', moved);
+        moved = null;
+      });
+    });
+    map.on('mouseout', () => {
+      stopWatching();
+      report('leave');
+    });
+    map.on('click', (e) => {
+      stopWatching();
+      report('pick', e);
+    });
+    map.on('movestart zoomstart', () => {
+      stopWatching();
+      report('move');
+    });
+
     return () => {
+      stopWatching();
       clearTimeout(hintTimer.current);
       unsubscribe();
       el.removeEventListener('wheel', onWheel);
@@ -214,17 +286,15 @@ export default function InteractiveMap({
         opacity: 0.65,
       }).addTo(group);
     }
-    const clickable = Boolean(onLineClickRef.current);
     for (const l of lines) {
       const line = L.polyline(l.points, {
         ...round,
-        interactive: Boolean(l.tip) || clickable,
+        interactive: Boolean(l.tip),
         color: l.color,
         weight: l.weight ?? 5,
         opacity: l.opacity ?? 1,
       }).addTo(group);
       if (l.tip) line.bindTooltip(asText(l.tip), { sticky: true });
-      if (clickable) line.on('click', () => onLineClickRef.current?.(l.id));
     }
     for (const d of dots) {
       L.circleMarker(d.point, {
@@ -261,6 +331,13 @@ export default function InteractiveMap({
         fillOpacity: 0,
       })
         .bindTooltip(asText(stop.name), { direction: 'top', offset: [0, -4] })
+        .on('mouseover', () => {
+          overStop.current = true;
+          onPointerRef.current?.({ type: 'leave' });
+        })
+        .on('mouseout', () => {
+          overStop.current = false;
+        })
         .addTo(group);
     }
     syncStops();

@@ -20,9 +20,11 @@ const PUBLISHED_SIMPLIFY_M = 15;
 const PUBLISHED_VERSION = 1;
 // All the bus routes together in one file, for the site's system map: it draws
 // every route at once, and fetching 150-odd shapes files for that would be
-// 150-odd requests. Lines are simplified a little more than the route pages'.
+// 150-odd requests. At 10 m no line is more than 10 m off the schedule's own (a corner
+// is cut by that much at most, 22 px at the map's deepest zoom); 20 m left a fifth of
+// the lines further off than that, for 15 KB gzipped less.
 export const SYSTEM_MAP_FILE = 'system-map.json';
-const SYSTEM_MAP_SIMPLIFY_M = 20;
+const SYSTEM_MAP_SIMPLIFY_M = 10;
 const SYSTEM_MAP_VERSION = 1;
 // A route's second direction is left out when it runs along the first (the
 // same street both ways), at this distance for this share of its points: at the

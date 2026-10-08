@@ -16,7 +16,7 @@ format.
   `{ schema_version, generated_at, routes: { "<route id>": [[[lat, lon], …], …] } }`.
   A route has one line for each direction that isn't the same street as the
   other (a route that runs the same street both ways has one), simplified to
-  about 20 m. Metro routes are left out; the site carries those itself. Written
+  about 10 m. Metro routes are left out; the site carries those itself. Written
   by the collector alongside `shapes/<route>.json`, whenever it rebuilds its GTFS
   cache or the file is missing.
 
