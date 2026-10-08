@@ -10,6 +10,37 @@ import {
   SYSTEM_MAP_FILE,
 } from '../lib/shapes.js';
 
+// The corner of a street, a quarter circle with a 60 m radius: the sort of curve a bus loop
+// around City Hall is made of. Simplified to 6 m it is three points and 4.7 m off the street;
+// to 3 m, five points and 1.7 m off.
+const R = 60;
+const R_LAT = R / 111_320;
+const R_LON = R / (111_320 * Math.cos((39.95 * Math.PI) / 180));
+const arc = Array.from({ length: 31 }, (_, i) => {
+  const t = (i / 30) * (Math.PI / 2);
+  return [39.95 + R_LAT * Math.sin(t), -75.17 + R_LON * (1 - Math.cos(t))];
+});
+const round5 = (points) =>
+  points.map(([lat, lon]) => [Math.round(lat * 1e5) / 1e5, Math.round(lon * 1e5) / 1e5]);
+// How far, in meters, the farthest of `points` is from a polyline.
+function farthestFrom(points, polyline) {
+  const nearest = (p) => {
+    const k = Math.cos((p[0] * Math.PI) / 180);
+    let best = Infinity;
+    for (let i = 1; i < polyline.length; i++) {
+      const ax = (polyline[i - 1][1] - p[1]) * 111_320 * k;
+      const ay = (polyline[i - 1][0] - p[0]) * 111_320;
+      const dx = (polyline[i][1] - p[1]) * 111_320 * k - ax;
+      const dy = (polyline[i][0] - p[0]) * 111_320 - ay;
+      const l2 = dx * dx + dy * dy;
+      const t = l2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+      best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+    }
+    return best;
+  };
+  return Math.max(...points.map(nearest));
+}
+
 const line = (lon) => Array.from({ length: 50 }, (_, i) => [39.9 + i * 0.002, lon + i * 1e-7]);
 const shapes = new RouteShapes({
   version: 1,
@@ -69,6 +100,7 @@ describe('publishRouteShapes', () => {
 });
 
 describe('publishSystemMap', () => {
+  // A cache from before the finer copy: only the 6 m shapes.
   const north = line(-75.17);
   const south = [...north].reverse();
   const system = new RouteShapes({
@@ -91,13 +123,47 @@ describe('publishSystemMap', () => {
     const file = await read(dir);
     expect(file).toMatchObject({ schema_version: 1, generated_at: 42 });
     expect(Object.keys(file.routes).sort()).toEqual(['17', 'K', 'L1-OWL']);
-    // A straight line is its two ends.
-    expect(file.routes['L1-OWL']).toEqual([
-      [
-        [39.9, -75.2],
-        [39.998, -75.2],
-      ],
-    ]);
+    // With no finer copy, the cached shapes are published as they are (to a meter).
+    expect(file.routes['L1-OWL']).toEqual([round5(line(-75.2))]);
+  });
+
+  describe('from a cache with the finer copy', () => {
+    const coarse = [arc[0], arc[15], arc[30]];
+    const fine = new RouteShapes({
+      version: 1,
+      built_at: 7,
+      routes: { 17: { 0: coarse }, K: { 0: coarse }, t1: { 0: coarse } },
+      // No finer copy of K (as if its shape had failed), and none of Metro's t1.
+      fine: { 17: { 0: arc } },
+    });
+
+    it('publishes the finer line, not the coarse one', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'system-map-'));
+      await publishSystemMap(dir, fine);
+      const { routes } = await read(dir);
+      expect(routes['17']).toEqual([round5(arc)]);
+      expect(routes['17'][0]).toHaveLength(arc.length);
+    });
+
+    it('falls back to the cached shape for a route that has no finer copy', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'system-map-'));
+      await publishSystemMap(dir, fine);
+      expect((await read(dir)).routes.K).toEqual([round5(coarse)]);
+    });
+
+    it('still leaves Metro out, and keeps one line for a street run both ways', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'system-map-'));
+      const both = new RouteShapes({
+        version: 1,
+        built_at: 7,
+        routes: { 17: { 0: arc, 1: [...arc].reverse() }, t1: { 0: arc } },
+        fine: { 17: { 0: arc, 1: [...arc].reverse() } },
+      });
+      await publishSystemMap(dir, both);
+      const { routes } = await read(dir);
+      expect(Object.keys(routes)).toEqual(['17']);
+      expect(routes['17']).toHaveLength(1);
+    });
   });
 
   it('keeps both directions only when they run on different streets', async () => {
@@ -134,6 +200,7 @@ const bundle = gtfs({
     '17,wk,t3,0,S2',
     '17,wk,t4,1,S3',
     'T1,wk,t5,0,S4',
+    'K,wk,t6,0,S5',
   ].join('\n'),
   'shapes.txt': [
     'shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence',
@@ -146,6 +213,7 @@ const bundle = gtfs({
     'S3,39.95,-75.17,2',
     'S4,39.95,-75.21,1',
     'S4,39.96,-75.21,2',
+    ...arc.map(([lat, lon], i) => `S5,${lat.toFixed(6)},${lon.toFixed(6)},${i + 1}`),
   ].join('\n'),
   // Rows are out of order and the other trips' stops are mixed in.
   'stop_times.txt': [
@@ -176,9 +244,41 @@ describe('buildRouteShapes', () => {
 
   it('keeps the shape most of a route’s trips run, per direction', () => {
     expect(built).toMatchObject({ version: 1, built_at: 123 });
-    expect(Object.keys(built.routes).sort()).toEqual(['17', 't1']);
+    expect(Object.keys(built.routes).sort()).toEqual(['17', 'K', 't1']);
     expect(built.routes['17']['0'][0]).toEqual([39.95, -75.17]);
     expect(built.routes['17']['1'][0]).toEqual([39.97, -75.17]);
+  });
+
+  describe('the finer copy, for the system map', () => {
+    it('is kept for each bus route, and not for Metro, which the site draws itself', () => {
+      expect(Object.keys(built.fine).sort()).toEqual(['17', 'K']);
+      expect(Object.keys(built.fine['17']).sort()).toEqual(['0', '1']);
+    });
+
+    it('is the same line where the shape is straight, and keeps more of a curve', () => {
+      expect(built.fine['17']['0']).toEqual(built.routes['17']['0']);
+      expect(built.fine.K['0'].length).toBeGreaterThan(built.routes.K['0'].length);
+    });
+
+    it('ends where the shape does', () => {
+      expect(built.fine.K['0'][0]).toEqual(built.routes.K['0'][0]);
+      expect(built.fine.K['0'].at(-1)).toEqual(built.routes.K['0'].at(-1));
+    });
+
+    it('keeps the curve within 3 m of the shape, where the cached one is up to 6 m off', () => {
+      // (to the 1 m the coordinates are rounded to, and a little for the flat projection)
+      expect(farthestFrom(arc, built.fine.K['0'])).toBeLessThanOrEqual(3.6);
+      expect(farthestFrom(arc, built.routes.K['0'])).toBeGreaterThan(3.6);
+      expect(farthestFrom(arc, built.routes.K['0'])).toBeLessThanOrEqual(6.6);
+    });
+
+    it('is read back as the system map’s lines, or the coarse ones for an older cache', () => {
+      const shapes2 = new RouteShapes(built);
+      expect(shapes2.systemLines('K')).toEqual([built.fine.K['0']]);
+      const older = new RouteShapes({ ...built, fine: undefined });
+      expect(older.systemLines('K')).toEqual([built.routes.K['0']]);
+      expect(older.systemLines('nope')).toEqual([]);
+    });
   });
 
   it('lists a direction’s stops in order, from a trip that runs that shape', () => {

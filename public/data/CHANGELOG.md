@@ -15,10 +15,13 @@ format.
   system map (`/map`), so it needn't fetch a `shapes/<route>.json` per route:
   `{ schema_version, generated_at, routes: { "<route id>": [[[lat, lon], …], …] } }`.
   A route has one line for each direction that isn't the same street as the
-  other (a route that runs the same street both ways has one), simplified to
-  about 10 m. Metro routes are left out; the site carries those itself. Written
-  by the collector alongside `shapes/<route>.json`, whenever it rebuilds its GTFS
-  cache or the file is missing.
+  other (a route that runs the same street both ways has one). Lines are
+  simplified to about 3 m (about 100 KB compressed), fine enough to follow a
+  street's rounded corners at the map's deepest zoom. Metro routes are left out;
+  the site carries those itself. Written by the collector alongside
+  `shapes/<route>.json`, whenever it rebuilds its GTFS cache (daily, and at once
+  after an update to the collector that changes what the cache holds) or the
+  file is missing.
 
 ## 2026-10-07 — Stops on route shapes
 
