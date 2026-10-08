@@ -12,6 +12,8 @@
 //   snapshot     5 times a day: start the bus and Metro system snapshots
 //   recaps       Sundays and the 1st: bunching hotspots and gaps (bus,
 //                metro), the Regional Rail on-time recap
+//   hall of fame Sundays: each mode account's best and worst five routes of
+//                the week (average speed; Regional Rail by on-time share)
 //   speed maps   every 2 hours by day: one route's speeds per account
 //   speed rollup every 10 minutes: fold new positions into the per-day speed
 //                tallies; the past week's speeds are published hourly with the
@@ -29,6 +31,7 @@ import { maybePostCancellationRoundups } from '../features/cancellations.js';
 import { postCrossBunching } from '../features/crossBunching.js';
 import { linkDetectionPosts, postDetections } from '../features/detections.js';
 import { maybePostGhostRollups } from '../features/ghosts.js';
+import { postHallOfFame } from '../features/halloffame.js';
 import {
   maybePostDigests,
   maybePostRoughHour,
@@ -146,6 +149,11 @@ export function createPipeline({
     /** Post the bus or metro account's weekly or monthly recap. */
     recap(account, period) {
       return postRecap({ db, poster, basemap, account, period, now: now(), log });
+    },
+
+    /** Post an account's weekly Hall of Fame and Wall of Shame thread. */
+    hallOfFame(account) {
+      return postHallOfFame({ db, poster, account, now: now(), log });
     },
 
     /** Map and post one route's past-hour speeds for an account. */

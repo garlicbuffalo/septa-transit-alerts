@@ -8,9 +8,9 @@ The always-on half of the project. It runs on a small server and:
   | Account | Posts |
   |---|---|
   | `alerts` (titled "insights") | SEPTA's significant alerts, with a map when the alert names a stretch of line, and a threaded ✅ reply when SEPTA clears them; a daily and a weekly system digest; rough-hour callouts; reposts of the other accounts' standout posts |
-  | `metro` | SEPTA Metro gaps, bunching, stuck vehicles, and silent routes, each with a map; an hourly roundup of routes with vehicles missing from the tracker; cancelled-trip roundups; timelapse videos; speed maps; weekly and monthly bunching and gap recaps |
+  | `metro` | SEPTA Metro gaps, bunching, stuck vehicles, and silent routes, each with a map; an hourly roundup of routes with vehicles missing from the tracker; cancelled-trip roundups; timelapse videos; speed maps; weekly and monthly bunching and gap recaps; a weekly Hall of Fame and Wall of Shame |
   | `bus` | The same for buses, plus clusters of several routes' buses stopped together |
-  | `rail` | An hourly roundup of Regional Rail cancellations and 15+ min delays; speed maps; weekly and monthly on-time recaps with a chart by line |
+  | `rail` | An hourly roundup of Regional Rail cancellations and 15+ min delays; speed maps; weekly and monthly on-time recaps with a chart by line; a weekly Hall of Fame and Wall of Shame |
 
 - **Publishes the site's data.** It pushes the `data` branch and triggers deploys, and links every incident to its Bluesky post. While the server publishes, the [collect workflow](../.github/workflows/collect.yml) stands down. If the server goes quiet for 20 minutes, the workflow's next scheduled run takes over again by itself (GitHub's cron can be slow to fire; *Actions → Collect SEPTA data → Run workflow* takes over at once).
 
@@ -77,6 +77,7 @@ Each map's tiles are fetched (@2x), stitched to the map's own projection with sh
 | Record and post the system timelapses now | `sudo septa-bots snapshot` (15 minutes; `snapshot 3` for 3) |
 | Post a speed map now | `sudo septa-bots speedmap bus` (or `metro`, `rail`) |
 | Post a recap now | `sudo septa-bots recap rail week` (`bus`, `metro`, `rail`; `week` or `month`) |
+| Post a Hall of Fame thread now | `sudo septa-bots halloffame bus` (`bus`, `metro`, `rail`) |
 | Post the insights digest now | `sudo septa-bots digest day` (or `week`) |
 | Turn videos off | set `VIDEOS=0`, restart |
 | Stop posting at once | set `BOT_MODE=dry-run`, restart |
@@ -115,6 +116,7 @@ features/timelapse.js   timelapse recordings: start, sample, render, post
 features/speedmaps.js   past-hour speeds binned along a route, round-robin
 features/speedhistory.js past week's speeds per route, for the site's pages
 features/recaps.js      weekly and monthly bunching hotspots and gap charts
+features/halloffame.js  weekly Hall of Fame and Wall of Shame: each account's best and worst five routes
 features/cancellations.js  twice-daily cancelled-trip roundups
 features/insights.js    the insights account: reposts, rough hours, daily and weekly digests
 map/               CARTO basemap (tiles stitched in basemap.js) + SVG overlay rendering (projection, drawing, line, route,
@@ -147,6 +149,8 @@ Each route gets at most one post per kind per hour, and a few per day: 3 gaps, 3
 **Cancelled trips.** SEPTA publishes each day's cancelled bus and trolley trips ahead of time. At 6:45 AM and 2:45 PM, the bus and metro accounts post the day's count by route ("Route 16: 14 of 120 trips"). The 12 worst routes are listed and the rest summed in one line ("…and 33 more routes, 107 trips"), since SEPTA can cancel 250+ bus trips on 45 routes in a day. A day with fewer than 3 cancelled trips gets no post, and each route's incident on the site links to the roundup.
 
 **Recaps.** Sunday mornings (the past week) and on the 1st (the past month), the bus and metro accounts post a map of the places vehicles bunched most often, with bubbles sized by count, and a reply charting the routes with the most long gaps. They count every bunching and gap detection the bot saw, posted or not.
+
+**Hall of Fame and Wall of Shame.** Sundays at noon, after the recaps, each of the bus, metro, and rail accounts posts a thread about the week just ended (Sunday through Saturday): the five best routes or lines with a bar chart, then a reply with the five worst. The rail account ranks Regional Rail lines by on-time share, counted as in its recap (under 15 minutes late and not cancelled, lines with 30+ trains). The bus and metro accounts rank by average speed, each route's distance over its time across the week from the speed tallies behind the site's speed maps, so time at stops counts and layovers at the ends of a route don't; a route needs 300 readings on 3 days of the week to be ranked. Both charts of a thread share one scale. Ten routes or lines are needed to fill both lists; with fewer (Metro has about nine that report positions) the ranking splits evenly, so nothing is in both, and with fewer than six there's no thread. A week the bot saw too little of (speeds on fewer than 5 days, or under 200 trains) gets no thread. The posts aren't highlighted, so the insights account doesn't repost them.
 
 **Regional Rail** (rail account). At 14 past each hour, the bot posts a roundup of the trains SEPTA cancelled and the trains running 15+ minutes late that the collector picked up in the hour before, worst delays first, threaded when it runs long. It's silent when there were none, and each train's incident on the site links to the roundup. Every Sunday (the past week) and on the 1st (the past month), a recap gives the share of trains on time (under 15 minutes late and not cancelled), the three least reliable lines, cancellations, and the worst delay, with a bar chart of every line. The recaps count every train on SEPTA's TrainView as the server polls it, not just the ones that were posted.
 
