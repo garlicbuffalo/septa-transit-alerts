@@ -267,14 +267,19 @@ export default function LinePage({ kind, lineId }) {
     // index for the generated_at / data_start_ts the full file used to carry.
     // Skip unknown lines — they render the not-found card without fetching.
     if (!isKnown) return;
-    Promise.all([loadLine(effectiveLineId), loadIndex()])
-      .then(([incidents, index]) =>
+    // A line/route with no incidents yet has no per-line file (the collector
+    // only writes files for keys that appear in an incident), so consult the
+    // index and treat a missing entry as an empty history rather than a 404.
+    loadIndex()
+      .then(async (index) => {
+        const hasFile = (index.lines ?? []).some((l) => l.key === effectiveLineId);
+        const incidents = hasFile ? await loadLine(effectiveLineId) : [];
         setData({
           incidents,
           generated_at: index.generated_at,
           data_start_ts: index.data_start_ts,
-        }),
-      )
+        });
+      })
       .catch(setError);
     fetchAccessibilityData()
       .then(setAccessibilityData)
