@@ -37,6 +37,7 @@ import {
 import { createSources } from './lib/sources.js';
 import { advanceTripCancellations, applyTripCancellations } from './lib/tripCancellations.js';
 import { applyVehicleConditions, findConditions, VEHICLE_SOURCES } from './lib/vehicleDetectors.js';
+import { screenVehicles } from './lib/vehicleScreen.js';
 import { normalizeTransitView } from './lib/vehicles.js';
 
 export const STATE_FILE = '_collector-state.json';
@@ -96,7 +97,7 @@ function countChanges(before, after) {
  *   individual source readers (the bot service passes its latest polled
  *   vehicle positions instead of fetching them again)
  * @param {(ctx: { incidents: Map<string, object>, outages: Map<string, object>,
- *   state: object, schedule: object | null, now: number, summary: object }) => Promise<object>} [opts.beforePublish]
+ *   state: object, schedule: object | null, vehicles: object[], now: number, summary: object }) => Promise<object>} [opts.beforePublish]
  *   runs after every source is applied and before the files are written; the
  *   bot service posts to Bluesky here and links the posts into the incidents
  */
@@ -183,6 +184,7 @@ export async function collect({
   advanceTripCancellations(archive.incidents, now);
 
   // Vehicle-position detectors (gaps, bunching, missing vehicles, held).
+  let vehicles = []; // the positions that passed the screen, for the detectors and beforePublish
   if (transitView.status !== 'fulfilled') {
     summary.sources.transitView = {
       error: String(transitView.reason?.message ?? transitView.reason),
@@ -191,7 +193,17 @@ export async function collect({
     summary.sources.transitView = { error: 'no GTFS schedule available' };
   } else {
     try {
-      const { vehicles, placeholders, stale } = normalizeTransitView(transitView.value, now);
+      const normalized = normalizeTransitView(transitView.value, now);
+      // Positions that can't be right (a trolley 6 km from the tunnel it just entered) are left
+      // out of everything below, so they can't open a detection or be drawn on its map.
+      const screened = screenVehicles(normalized.vehicles, {
+        shapes: await loadRouteShapes({ cacheDir, fixturesDir }),
+        prev: state.screen,
+        now,
+      });
+      state.screen = screened.state;
+      vehicles = screened.vehicles;
+      const { placeholders, stale } = normalized;
       const found = findConditions({ vehicles, schedule: sched, cancelledTripIds, state, now });
       // On a degraded tracker feed, leave detections as they are this tick.
       const applied = found.stats.feedHealthy
@@ -201,6 +213,7 @@ export async function collect({
         ...found.stats,
         placeholders,
         stale,
+        dropped: screened.dropped,
         conditions: found.conditions.size,
         ...applied.stats,
       };
@@ -217,6 +230,7 @@ export async function collect({
         outages: archive.outages,
         state,
         schedule: sched,
+        vehicles,
         now,
         summary,
       });

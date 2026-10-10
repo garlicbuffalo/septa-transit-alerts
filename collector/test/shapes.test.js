@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildRouteShapes,
+  offRouteM,
   publishRouteShapes,
   publishSystemMap,
   RouteShapes,
@@ -294,6 +295,37 @@ describe('buildRouteShapes', () => {
     expect(built.stops.t1['0']).toEqual([[39.95, -75.21, 'Trolley Stop']]);
   });
 
+  describe('every trip’s own shape', () => {
+    const shapes2 = new RouteShapes(built);
+
+    it('is kept for trips on a rare pattern, which the route’s line is not', () => {
+      // t3 runs S2 (west, at -75.2); the route's northbound line is S1 (at -75.17).
+      expect(built.routes['17']['0'][0]).toEqual([39.95, -75.17]);
+      expect(shapes2.tripShape('t3')).toEqual([
+        [39.95, -75.2],
+        [39.96, -75.2],
+      ]);
+      expect(shapes2.tripShape('t1')[0]).toEqual([39.95, -75.17]);
+    });
+
+    it('covers trips of every direction and of Metro, and hands trips of one shape the same line', () => {
+      expect(shapes2.tripShape('t4')[0]).toEqual([39.97, -75.17]);
+      expect(shapes2.tripShape('t5')[0]).toEqual([39.95, -75.21]);
+      expect(shapes2.tripShape('t1')).toBe(shapes2.tripShape('t2'));
+      expect(built.patterns).toHaveLength(5);
+    });
+
+    it('is simplified like the route lines, so a curve keeps its shape', () => {
+      expect(shapes2.tripShape('t6')).toEqual(built.routes.K['0']);
+    });
+
+    it('is null for a trip it does not know, and for a cache built before trips were kept', () => {
+      expect(shapes2.tripShape('nope')).toBeNull();
+      const older = new RouteShapes({ ...built, patterns: undefined, tripPatterns: undefined });
+      expect(older.tripShape('t3')).toBeNull();
+    });
+  });
+
   it('is readable as RouteShapes', () => {
     const shapes2 = new RouteShapes(built);
     expect(shapes2.stops('17', 0)).toHaveLength(3);
@@ -301,5 +333,32 @@ describe('buildRouteShapes', () => {
     expect(shapes2.stops('nope')).toEqual([]);
     // A cache built before stops were kept has none.
     expect(new RouteShapes({ ...built, stops: undefined }).stops('17')).toEqual([]);
+  });
+});
+
+describe('offRouteM', () => {
+  const north = [
+    [39.9, -75.17],
+    [40.0, -75.17],
+  ];
+  const metersPerDegLon = 111_320 * Math.cos((39.95 * Math.PI) / 180);
+
+  it('is the distance to the nearest point on the line, not to its vertices', () => {
+    // 500 m east of the middle of the line, nowhere near either end.
+    const d = offRouteM(north, 39.95, -75.17 + 500 / metersPerDegLon);
+    expect(d).toBeGreaterThan(495);
+    expect(d).toBeLessThan(505);
+    expect(offRouteM(north, 39.95, -75.17)).toBeLessThan(1);
+  });
+
+  it('measures past the end of a line to its end', () => {
+    // 1.11 km north of the end.
+    expect(offRouteM(north, 40.01, -75.17)).toBeGreaterThan(1100);
+    expect(offRouteM(north, 40.01, -75.17)).toBeLessThan(1120);
+  });
+
+  it('is infinite for a line without two points', () => {
+    expect(offRouteM([], 39.95, -75.17)).toBe(Number.POSITIVE_INFINITY);
+    expect(offRouteM([[39.95, -75.17]], 39.95, -75.17)).toBe(Number.POSITIVE_INFINITY);
   });
 });

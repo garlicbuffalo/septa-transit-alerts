@@ -187,7 +187,10 @@ export function vehicle(over = {}) {
 
 export const byLabel = (list) => new Map(list.map((v) => [String(v.label), v]));
 
-/** RouteShapes-like stand-in: one straight north–south line per route. */
+/**
+ * RouteShapes-like stand-in: one straight north–south line per route, and, for `tripShapes`
+ * ({ [tripId]: line }), the shape each of those trips runs (none otherwise).
+ */
 export function fakeShapes(
   routes = {
     23: [
@@ -195,10 +198,12 @@ export function fakeShapes(
       [39.95, -75.17],
     ],
   },
+  tripShapes = {},
 ) {
   return {
     shape: (route) => routes[route] ?? null,
     shapes: (route) => (routes[route] ? [routes[route]] : []),
     directions: (route) => (routes[route] ? [['0', routes[route]]] : []),
+    tripShape: (tripId) => tripShapes[tripId] ?? null,
   };
 }

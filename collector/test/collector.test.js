@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -466,6 +466,56 @@ describe('collect (fixtures end to end)', () => {
     ).toBe('https://bsky.app/profile/did:plc:x/post/hook');
   });
 
+  it('leaves a position that cannot be right out of the detectors and the hook', async () => {
+    // Route 17's trips run a straight north–south shape; bus 7413 reports from 5 km west of it.
+    const fixtures = await mkdtemp(join(tmpdir(), 'collect-fixtures-'));
+    try {
+      await cp(FIXTURES, fixtures, { recursive: true });
+      const tripPatterns = Object.fromEntries([12, 13, 14, 15, 16, 17].map((n) => [`17-${n}`, 0]));
+      await writeFile(
+        join(fixtures, 'route-shapes.json'),
+        JSON.stringify({
+          version: 1,
+          built_at: NOW,
+          routes: {},
+          patterns: [
+            [
+              [39.9, -75.17],
+              [40.0, -75.17],
+            ],
+          ],
+          tripPatterns,
+        }),
+      );
+      const payload = await fixture('transitview.json');
+      const stray = payload.routes[0]['17'].find((v) => v.VehicleID === '7413');
+      stray.lng = '-75.23';
+      let seen = null;
+      const { summary } = await collect({
+        dataDir: dir,
+        fixturesDir: fixtures,
+        now: NOW,
+        log: () => {},
+        sources: { transitView: async () => payload },
+        beforePublish: async ({ vehicles }) => {
+          seen = vehicles.map((v) => v.id);
+          return {};
+        },
+      });
+      expect(summary.sources.transitView).toMatchObject({
+        vehicles: 7,
+        dropped: { offRoute: 1, jump: 0 },
+      });
+      expect(seen).toContain('7412');
+      expect(seen).not.toContain('7413');
+      const state = JSON.parse(await readFile(join(dir, '_collector-state.json'), 'utf8'));
+      expect(state.screen['7412']).toMatchObject({ lat: 39.96 });
+      expect(state.screen).not.toHaveProperty('7413');
+    } finally {
+      await rm(fixtures, { recursive: true, force: true });
+    }
+  });
+
   it('builds a complete data directory from captured SEPTA responses', async () => {
     const { ok, summary } = await collect({
       dataDir: dir,
@@ -499,7 +549,11 @@ describe('collect (fixtures end to end)', () => {
     );
     expect(ids).toContain('trip-cancellations-2026-10-05-t1');
     // A late Route 17 bus opens a gap candidate (confirmed on the next tick).
-    expect(summary.sources.transitView).toMatchObject({ vehicles: 8, conditions: 1 });
+    expect(summary.sources.transitView).toMatchObject({
+      vehicles: 8,
+      dropped: { offRoute: 0, jump: 0 },
+      conditions: 1,
+    });
     const state = JSON.parse(await readFile(join(dir, '_collector-state.json'), 'utf8'));
     expect(Object.keys(state.candidates)).toEqual(['gap|bus|17|0']);
     // Everything is new on the first run.

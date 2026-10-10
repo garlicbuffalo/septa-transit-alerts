@@ -12,6 +12,7 @@
 // capture loses nothing but the polls it missed; the minute-by-minute
 // observations fill those in.
 import { easternDateKey, easternParts } from '../../collector/lib/time.js';
+import { screenVehicles } from '../../collector/lib/vehicleScreen.js';
 import { normalizeTransitView } from '../../collector/lib/vehicles.js';
 import { clockRange } from '../lib/clock.js';
 import { formatDistance, maxPairDistance, metersBetween } from '../lib/geo.js';
@@ -163,10 +164,12 @@ export function startSnapshots(
 /**
  * One sampling tick: poll what the running captures need and record it.
  * Snapshots need the whole feed; detection captures poll just their routes.
+ * Positions that are nowhere near their trip's shape are left out, so a bad fix can't draw a
+ * vehicle across the city in the video.
  * @param {{ db: object, sources: { transitView: Function, transitViewRoute: Function },
- *   now: number, log?: (m: string) => void }} opts
+ *   shapes?: object | null, now: number, log?: (m: string) => void }} opts
  */
-export async function sampleCaptures({ db, sources, now, log = () => {} }) {
+export async function sampleCaptures({ db, sources, shapes = null, now, log = () => {} }) {
   const active = db
     .prepare(
       "SELECT * FROM captures WHERE status = 'capturing' AND start_ts <= ? AND end_ts + ? >= ?",
@@ -198,6 +201,7 @@ export async function sampleCaptures({ db, sources, now, log = () => {} }) {
       else log(`timelapse: route poll failed: ${r.reason?.message ?? r.reason}`);
     }
   }
+  vehicles = screenVehicles(vehicles, { shapes, now }).vehicles;
   const insert = db.prepare(`
     INSERT OR IGNORE INTO capture_samples (capture_id, vehicle_id, label, route, t, lat, lon, late_min)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -339,13 +343,25 @@ export function snapshotText({ mode, tracks, start, end }) {
 
 // ---- Rendering ------------------------------------------------------------
 
-function routeLayers(capture, focus, shapes) {
+export function routeLayers(capture, focus, shapes) {
   const routes = json(capture.routes) ?? [];
   const byRoute = new Map(
     (focus?.vehicles ?? []).filter((v) => v.color).map((v) => [v.route, v.color]),
   );
+  // A route's short-turns, branches and extensions aren't on its busiest shape: draw each
+  // followed vehicle's own trip's shape, as the post's map does.
+  const own = (route) => {
+    const lines = [];
+    for (const v of focus?.vehicles ?? []) {
+      const points = v.route === route && v.tripId ? shapes?.tripShape(v.tripId) : null;
+      if (points && !lines.includes(points)) lines.push(points);
+    }
+    return capture.kind === 'cluster' ? [] : lines;
+  };
   return routes.map((route) => {
     const color = byRoute.get(route) ?? routeColor(capture.mode, route);
+    const ownShapes = own(route);
+    if (ownShapes.length) return { route, color, shapes: ownShapes };
     const dirShape =
       capture.kind !== 'cluster' && focus?.direction_id != null
         ? shapes?.shape(route, focus.direction_id)
