@@ -52,8 +52,9 @@ export function separate(points, minDist = MARKER_R * 2 + 6) {
 
 /**
  * @param {{ routes: Array<{ points: number[][], color: string }>,
- *   markers: Array<{ lat: number, lon: number, tag: string, color?: string }>,
+ *   markers: Array<{ lat: number, lon: number, tag: string, color?: string, estimated?: boolean }>,
  *   stretch?: { points: number[][] } | null, title: string }} opts
+ *   estimated: a vehicle placed by the schedule (an L1 train in the tunnel), drawn dashed
  */
 export function planRouteMap({ routes, markers, stretch = null, title }) {
   const focus = [...markers.map((m) => [m.lat, m.lon]), ...(stretch?.points ?? [])];
@@ -99,8 +100,9 @@ export async function renderRouteMap(plan, { basemap }) {
   }
   const placed = separate(plan.markers.map((m) => ({ ...m, ...px([m.lat, m.lon]) })));
   for (const m of placed) {
+    const dash = m.estimated ? ` stroke-dasharray="10 7" fill-opacity="0.75"` : '';
     body +=
-      `<circle cx="${m.x.toFixed(1)}" cy="${m.y.toFixed(1)}" r="${MARKER_R}" fill="${m.color ?? MARKER}" stroke="#fff" stroke-width="4"/>` +
+      `<circle cx="${m.x.toFixed(1)}" cy="${m.y.toFixed(1)}" r="${MARKER_R}" fill="${m.color ?? MARKER}" stroke="#fff" stroke-width="4"${dash}/>` +
       `<text x="${m.x.toFixed(1)}" y="${(m.y + 8).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="23" font-weight="800" fill="#fff">${escapeXml(m.tag)}</text>`;
   }
   body += titlePill(plan.title, { width: view.width });

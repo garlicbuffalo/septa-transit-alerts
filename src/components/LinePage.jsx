@@ -718,8 +718,9 @@ export default function LinePage({ kind, lineId }) {
                 above. */}
             {!isLine && <RouteMap route={lineId} label={heading} />}
 
-            {/* The past week's speeds along the route or line. Subway lines (L1,
-                B1–B3) don't report positions, so they never have any. */}
+            {/* The past week's speeds along the route or line. The Broad Street
+                Line doesn't report positions, and the L1's tunnel positions are
+                placed by the schedule, so neither has any. */}
             <SpeedMap
               route={effectiveLineId}
               label={isMetro ? `${heading} line` : heading}

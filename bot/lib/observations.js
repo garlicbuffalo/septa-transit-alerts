@@ -3,14 +3,14 @@
 import { railKeyForTrainViewLine } from '../../collector/lib/network.js';
 
 /**
- * Record TransitView vehicles (normalizeTransitView output) and TrainView
- * trains in one transaction.
+ * Record TransitView vehicles (normalizeTransitView output, and the L1's trains from
+ * subwayTrains.js) and TrainView trains in one transaction.
  * @returns {number} rows written
  */
 export function recordObservations(db, ts, { vehicles = [], trains = [] }) {
   const insert = db.prepare(`
-    INSERT INTO observations (ts, mode, route, vehicle_id, trip_id, direction, destination, lat, lon, heading, late_min, next_stop, report_ts)
-    VALUES (@ts, @mode, @route, @vehicle_id, @trip_id, @direction, @destination, @lat, @lon, @heading, @late_min, @next_stop, @report_ts)
+    INSERT INTO observations (ts, mode, route, vehicle_id, trip_id, direction, destination, lat, lon, heading, late_min, next_stop, report_ts, estimated)
+    VALUES (@ts, @mode, @route, @vehicle_id, @trip_id, @direction, @destination, @lat, @lon, @heading, @late_min, @next_stop, @report_ts, @estimated)
   `);
   let n = 0;
   db.transaction(() => {
@@ -29,6 +29,7 @@ export function recordObservations(db, ts, { vehicles = [], trains = [] }) {
         late_min: v.lateMin,
         next_stop: v.nextStopName,
         report_ts: v.reportTs,
+        estimated: v.estimated ? 1 : 0,
       });
       n++;
     }
@@ -52,6 +53,7 @@ export function recordObservations(db, ts, { vehicles = [], trains = [] }) {
         late_min: Number.isFinite(late) && late < 900 ? late : null,
         next_stop: t.nextstop ?? null,
         report_ts: null,
+        estimated: 0,
       });
       n++;
     }

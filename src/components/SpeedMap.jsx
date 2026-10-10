@@ -18,8 +18,9 @@ const plural = (n, word) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' 
 
 // A route's or line's path colored by how fast its vehicles moved along each
 // stretch, averaged over the past 7 days (the bot server's speed history).
-// One map per direction. Left out when there are no speeds for it: Metro's
-// subway lines don't report positions, and some routes are too thinly tracked.
+// One map per direction. Left out when there are no speeds for it: the Broad
+// Street Line doesn't report positions, the L1's are placed by the schedule in
+// the tunnel, and some routes are too thinly tracked.
 export default function SpeedMap({ route, label, mode = 'bus' }) {
   const rail = mode === 'rail';
   const bands = rail ? SPEED_BANDS.rail : SPEED_BANDS.road;

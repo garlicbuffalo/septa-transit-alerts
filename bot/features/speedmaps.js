@@ -32,6 +32,10 @@ export const SPEED_CONFIG = {
   attempts: 6,
 };
 export const MPH_PER_MPS = 2.23694;
+// Lines left out of the speed maps and history. The L1's trains have no GPS in the tunnel (their
+// positions there are placed by the schedule, subwayTrains.js), so a third of the line would be
+// the schedule's speeds or nothing.
+export const NO_SPEEDS = new Set(['l1']);
 
 /**
  * The usable consecutive-report pairs of each vehicle along a measured shape:
@@ -122,7 +126,7 @@ export function speedCandidates(db, account, { since, cfg = SPEED_CONFIG[account
       .map((r) => [r.route, r.ts]),
   );
   return rows
-    .filter((r) => account !== 'metro' || METRO_LINES[r.route])
+    .filter((r) => (account !== 'metro' || METRO_LINES[r.route]) && !NO_SPEEDS.has(r.route))
     .sort((a, b) => (last.get(a.route) ?? 0) - (last.get(b.route) ?? 0) || b.vehicles - a.vehicles);
 }
 

@@ -503,7 +503,7 @@ describe('collect (fixtures end to end)', () => {
         },
       });
       expect(summary.sources.transitView).toMatchObject({
-        vehicles: 7,
+        vehicles: 9, // TransitView's 7 that passed, and the vehicle feed's two L1 trains
         dropped: { offRoute: 1, jump: 0 },
       });
       expect(seen).toContain('7412');
@@ -548,9 +548,17 @@ describe('collect (fixtures end to end)', () => {
       '3 Route 17 trips cancelled — 6:40 PM, 8:20 PM, 9:10 PM (3 of 30 scheduled)',
     );
     expect(ids).toContain('trip-cancellations-2026-10-05-t1');
+    // The MFL's cars on the vehicle feed: two trains of two cars, and one in the yard. The
+    // fixture schedule has no L1 trips, so neither is on one.
+    expect(summary.sources.vehiclePositions).toMatchObject({
+      cars: 5,
+      offLine: 1,
+      trains: 2,
+      matched: 0,
+    });
     // A late Route 17 bus opens a gap candidate (confirmed on the next tick).
     expect(summary.sources.transitView).toMatchObject({
-      vehicles: 8,
+      vehicles: 10, // TransitView's 8, and the two L1 trains
       dropped: { offRoute: 0, jump: 0 },
       conditions: 1,
     });

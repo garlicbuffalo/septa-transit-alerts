@@ -25,7 +25,7 @@ import railShapes from '../../src/lib/railLineShapes.json' with { type: 'json' }
 import { RAIL_LINES } from '../../src/lib/railLines.js';
 import { getMeta, setMeta } from '../lib/db.js';
 import { locateAlong, measureShape } from '../lib/geo.js';
-import { inService, MPH_PER_MPS, SPEED_CONFIG, speedPairs } from './speedmaps.js';
+import { inService, MPH_PER_MPS, NO_SPEEDS, SPEED_CONFIG, speedPairs } from './speedmaps.js';
 
 const MIN_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MIN_MS;
@@ -229,6 +229,7 @@ function tallySlice(db, shapes, from, to) {
     if (r.mode === RAIL) {
       if (!RAIL_LINES[r.route]) continue;
     } else if (!r.direction || (r.mode === 'metro' && !METRO_LINES[r.route])) continue;
+    if (NO_SPEEDS.has(r.route)) continue;
     const key = `${r.mode}|${r.route}`;
     if (!byRoute.has(key)) byRoute.set(key, { mode: r.mode, route: r.route, rows: [] });
     byRoute.get(key).rows.push(r);

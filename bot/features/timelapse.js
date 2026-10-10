@@ -5,8 +5,12 @@
 //   15 seconds) and replies with a video of what happened: did the bunch
 //   spread out, did the gap close, did the cluster clear.
 // - Five times a day, a 15-minute system snapshot of every tracked bus (bus
-//   account) and every Metro trolley and M1 car (metro account), colored by
-//   how late each is running.
+//   account) and every Metro trolley, M1 car and L1 train (metro account),
+//   colored by how late each is running.
+//
+// The L1's trains aren't on TransitView: they come from the GTFS-realtime
+// vehicle feed (collector/lib/subwayTrains.js), and the ones in the tunnel,
+// placed by the schedule, are drawn dashed.
 //
 // Captures live in SQLite (captures, capture_samples), so a restart mid-
 // capture loses nothing but the polls it missed; the minute-by-minute
@@ -30,6 +34,9 @@ import {
 import { renderTimelapse } from '../video/timelapse.js';
 import { buildTracks, positionAt } from '../video/tracks.js';
 import { startOfEasternDay } from './history.js';
+
+// The Metro line whose trains come from the GTFS-realtime vehicle feed, not TransitView.
+const SUBWAY_ROUTE = 'l1';
 
 export const CAPTURE_MS = 10 * 60 * 1000;
 export const SNAPSHOT_MS = 15 * 60 * 1000;
@@ -167,9 +174,18 @@ export function startSnapshots(
  * Positions that are nowhere near their trip's shape are left out, so a bad fix can't draw a
  * vehicle across the city in the video.
  * @param {{ db: object, sources: { transitView: Function, transitViewRoute: Function },
- *   shapes?: object | null, now: number, log?: (m: string) => void }} opts
+ *   shapes?: object | null, subway?: (() => Promise<object[]>) | null, now: number,
+ *   log?: (m: string) => void }} opts
+ *   subway: the L1's trains right now (subwayTrains.js), for a Metro snapshot or an L1 capture
  */
-export async function sampleCaptures({ db, sources, shapes = null, now, log = () => {} }) {
+export async function sampleCaptures({
+  db,
+  sources,
+  shapes = null,
+  subway = null,
+  now,
+  log = () => {},
+}) {
   const active = db
     .prepare(
       "SELECT * FROM captures WHERE status = 'capturing' AND start_ts <= ? AND end_ts + ? >= ?",
@@ -177,6 +193,9 @@ export async function sampleCaptures({ db, sources, shapes = null, now, log = ()
     .all(now, SETTLE_MS, now);
   if (active.length === 0) return { captures: 0, samples: 0 };
   let vehicles = [];
+  const needsL1 = active.some((c) =>
+    c.routes == null ? c.mode === 'metro' : (json(c.routes) ?? []).includes(SUBWAY_ROUTE),
+  );
   if (active.some((c) => c.routes == null)) {
     try {
       vehicles = normalizeTransitView(await sources.transitView(), now).vehicles;
@@ -186,7 +205,10 @@ export async function sampleCaptures({ db, sources, shapes = null, now, log = ()
   } else {
     const wanted = new Map();
     for (const c of active) {
-      for (const route of json(c.routes) ?? []) wanted.set(`${c.mode}|${route}`, [c.mode, route]);
+      for (const route of json(c.routes) ?? []) {
+        // TransitView only has placeholders for the L1.
+        if (route !== SUBWAY_ROUTE) wanted.set(`${c.mode}|${route}`, [c.mode, route]);
+      }
     }
     const results = await Promise.allSettled(
       [...wanted.values()].map(async ([mode, route]) => {
@@ -202,9 +224,17 @@ export async function sampleCaptures({ db, sources, shapes = null, now, log = ()
     }
   }
   vehicles = screenVehicles(vehicles, { shapes, now }).vehicles;
+  if (needsL1 && subway) {
+    try {
+      // A train overdue out of the tunnel (`frozen`) is somewhere unknown: not drawn.
+      vehicles.push(...(await subway()).filter((v) => !v.frozen));
+    } catch (err) {
+      log(`timelapse: L1 trains failed: ${err.message}`);
+    }
+  }
   const insert = db.prepare(`
-    INSERT OR IGNORE INTO capture_samples (capture_id, vehicle_id, label, route, t, lat, lon, late_min)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO capture_samples (capture_id, vehicle_id, label, route, t, lat, lon, late_min, estimated)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   let samples = 0;
   db.transaction(() => {
@@ -222,6 +252,7 @@ export async function sampleCaptures({ db, sources, shapes = null, now, log = ()
           v.lat,
           v.lon,
           v.lateMin,
+          v.estimated ? 1 : 0,
         ).changes;
       }
     }
@@ -246,7 +277,7 @@ export function captureSamples(db, capture) {
   }
   const observed = db
     .prepare(
-      `SELECT vehicle_id, vehicle_id AS label, route, COALESCE(report_ts, ts) AS t, lat, lon, late_min FROM observations WHERE ${where.join(' AND ')}`,
+      `SELECT vehicle_id, vehicle_id AS label, route, COALESCE(report_ts, ts) AS t, lat, lon, late_min, estimated FROM observations WHERE ${where.join(' AND ')}`,
     )
     .all(...params);
   return [...own, ...observed];
@@ -312,7 +343,7 @@ export function snapshotText({ mode, tracks, start, end }) {
   const minutes = `${Math.round((end - start) / 60000)}-minute timelapse`;
   const head =
     mode === 'metro'
-      ? `🚋 SEPTA Metro trolleys and M1 · ${minutes}`
+      ? `🚋 SEPTA Metro trolleys, M1 and L1 · ${minutes}`
       : `🚌 SEPTA buses · ${minutes}`;
   const window = `${clockRange(start, end)} · ${first.length} → ${last.length} ${noun} on the tracker`;
   let detail;
@@ -336,7 +367,7 @@ export function snapshotText({ mode, tracks, start, end }) {
   const text = [head, window, detail].filter(Boolean).join('\n\n');
   const alt =
     mode === 'metro'
-      ? `Timelapse map of every SEPTA Metro trolley and M1 car on SEPTA's tracker, ${clockRange(start, end)}, each dot colored by how late it's running.`
+      ? `Timelapse map of every SEPTA Metro trolley, M1 car and L1 train on SEPTA's trackers, ${clockRange(start, end)}, each dot colored by how late it's running; L1 trains in the tunnel, where they have no GPS, are placed by the schedule and drawn dashed.`
       : `Timelapse map of every bus on SEPTA's tracker, ${clockRange(start, end)}, each dot colored by how late it's running.`;
   return { text, alt };
 }
@@ -429,8 +460,14 @@ export async function buildCaptureVideo(
       : capture.kind === 'cluster'
         ? clusterOutcome(focusTracks, ctx)
         : bunchingOutcome(focusTracks, ctx);
-  const text = `${focus.header}\n\n${outcome}`;
-  const alt = `Timelapse map of the ${Math.round((end - start) / 60000)} minutes after the post: ${outcome}`;
+  // Trains in the tunnel are placed by the schedule; say so when the video shows one.
+  const placed = focusTracks.some((v) =>
+    v.track?.points.some((p) => p.est && p.t >= start && p.t <= end),
+  )
+    ? 'Dashed: in the tunnel, placed by the schedule.'
+    : null;
+  const text = [focus.header, outcome, placed].filter(Boolean).join('\n\n');
+  const alt = `Timelapse map of the ${Math.round((end - start) / 60000)} minutes after the post: ${outcome}${placed ? ` Trains in the tunnel, where they have no GPS, are placed by the schedule and drawn dashed.` : ''}`;
   const video = await renderTimelapse({
     ...scene,
     start,

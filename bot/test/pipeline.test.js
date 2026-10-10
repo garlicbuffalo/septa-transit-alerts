@@ -280,6 +280,27 @@ describe('pipeline', () => {
     expect(bus.n).toBe(5);
   });
 
+  it("records the L1's trains once the collector has loaded a schedule", async () => {
+    // The fixtures' vehicle feed has two MFL trains on the El and a car in the yard.
+    const { db, pipeline, publisher } = setup(fakeLiveClient());
+    await publisher.prepare();
+    await pipeline.observe();
+    const l1 = () =>
+      db
+        .prepare(
+          "SELECT vehicle_id, estimated FROM observations WHERE route = 'l1' ORDER BY vehicle_id",
+        )
+        .all();
+    expect(l1()).toEqual([]); // no schedule yet to place them by
+    const { summary } = await pipeline.collectTick();
+    expect(summary.sources.vehiclePositions).toMatchObject({ trains: 2 });
+    await pipeline.observe();
+    expect(l1()).toEqual([
+      { vehicle_id: 'L1-1011', estimated: 0 },
+      { vehicle_id: 'L1-1020', estimated: 0 },
+    ]);
+  });
+
   it('reads the route shapes again once the collector has rebuilt them', async () => {
     // No fixtures: the shapes come from the cache file the collector writes.
     const stateDir = mkdtempSync(join(tmpdir(), 'bot-'));

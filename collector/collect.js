@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SEPTA data collector — one polling tick. Fetches SEPTA's alerts, TrainView,
-// elevator, TransitView (vehicle positions), and GTFS-realtime trip feeds,
+// elevator, TransitView (vehicle positions), and GTFS-realtime trip and vehicle feeds,
 // folds them into the archive in --data-dir, and rewrites the published files
 // the site reads. Designed to run every ~10 minutes (the collect.yml GitHub
 // Actions workflow), but any scheduler works. Prints a JSON summary to stdout;
@@ -23,7 +23,7 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { loadArchive, publishArchive } from './lib/archive.js';
 import { applyElevators } from './lib/elevators.js';
-import { decodeTripUpdates } from './lib/gtfsRealtime.js';
+import { decodeTripUpdates, decodeVehiclePositions } from './lib/gtfsRealtime.js';
 import { applyOfficialAlerts } from './lib/officialAlerts.js';
 import { advanceCancellations, applyTrainView } from './lib/railTrains.js';
 import { loadSchedule } from './lib/schedule.js';
@@ -35,6 +35,7 @@ import {
   SYSTEM_MAP_FILE,
 } from './lib/shapes.js';
 import { createSources } from './lib/sources.js';
+import { subwayLine, trackSubway } from './lib/subwayTrains.js';
 import { advanceTripCancellations, applyTripCancellations } from './lib/tripCancellations.js';
 import { applyVehicleConditions, findConditions, VEHICLE_SOURCES } from './lib/vehicleDetectors.js';
 import { screenVehicles } from './lib/vehicleScreen.js';
@@ -118,13 +119,14 @@ export async function collect({
   const dataStartTs = archive.dataStartTs ?? now;
   const summary = { now, dataStartTs, sources: {} };
 
-  const [alerts, trainView, elevators, transitView, tripUpdates, schedule] =
+  const [alerts, trainView, elevators, transitView, tripUpdates, vehiclePositions, schedule] =
     await Promise.allSettled([
       sources.alerts(),
       sources.trainView(),
       sources.elevators(),
       sources.transitView(),
       sources.tripUpdates(),
+      sources.vehiclePositions(),
       loadSchedule({ cacheDir, fixturesDir, now, log: warn }),
     ]);
   const sched = schedule.status === 'fulfilled' ? schedule.value : null;
@@ -183,6 +185,32 @@ export async function collect({
   }
   advanceTripCancellations(archive.incidents, now);
 
+  // The Market-Frankford Line's trains, which TransitView doesn't track: their cars' GPS from
+  // the GTFS-realtime vehicle feed, placed by the schedule while they're in the tunnel
+  // (subwayTrains.js). They join the vehicle detectors below.
+  const shapes = sched ? await loadRouteShapes({ cacheDir, fixturesDir }) : null;
+  let subway = null;
+  if (vehiclePositions.status !== 'fulfilled') {
+    summary.sources.vehiclePositions = {
+      error: String(vehiclePositions.reason?.message ?? vehiclePositions.reason),
+    };
+  } else if (!sched) {
+    summary.sources.vehiclePositions = { error: 'no GTFS schedule available' };
+  } else {
+    try {
+      const feed = decodeVehiclePositions(vehiclePositions.value);
+      if (feed.vehicles.length === 0) throw new Error('empty VehiclePositions feed');
+      const line = subwayLine(shapes);
+      if (!line) throw new Error('no L1 line to place trains on');
+      const tracked = trackSubway(feed, { schedule: sched, line, state: state.subway, now });
+      state.subway = tracked.state;
+      subway = tracked.trains;
+      summary.sources.vehiclePositions = tracked.stats;
+    } catch (err) {
+      summary.sources.vehiclePositions = { error: err.message };
+    }
+  }
+
   // Vehicle-position detectors (gaps, bunching, missing vehicles, held).
   let vehicles = []; // the positions that passed the screen, for the detectors and beforePublish
   if (transitView.status !== 'fulfilled') {
@@ -197,17 +225,20 @@ export async function collect({
       // Positions that can't be right (a trolley 6 km from the tunnel it just entered) are left
       // out of everything below, so they can't open a detection or be drawn on its map.
       const screened = screenVehicles(normalized.vehicles, {
-        shapes: await loadRouteShapes({ cacheDir, fixturesDir }),
+        shapes,
         prev: state.screen,
         now,
       });
       state.screen = screened.state;
-      vehicles = screened.vehicles;
+      vehicles = [...screened.vehicles, ...(subway ?? [])];
       const { placeholders, stale } = normalized;
       const found = findConditions({ vehicles, schedule: sched, cancelledTripIds, state, now });
-      // On a degraded tracker feed, leave detections as they are this tick.
+      // On a degraded tracker feed, leave detections as they are this tick; without the L1's
+      // feed, leave the L1's.
       const applied = found.stats.feedHealthy
-        ? applyVehicleConditions(archive.incidents, found.conditions, state, now)
+        ? applyVehicleConditions(archive.incidents, found.conditions, state, now, {
+            hold: subway ? null : (route) => route === 'l1',
+          })
         : { stats: { held: true } };
       summary.sources.transitView = {
         ...found.stats,
@@ -251,14 +282,14 @@ export async function collect({
     // Bus route shapes for the site's route maps and system map, whenever the
     // GTFS cache has been rebuilt (or the files are missing).
     try {
-      const shapes = await loadRouteShapes({ cacheDir, fixturesDir });
-      const builtAt = shapes?.data.built_at ?? null;
+      const routeShapes = shapes ?? (await loadRouteShapes({ cacheDir, fixturesDir }));
+      const builtAt = routeShapes?.data.built_at ?? null;
       const published =
         existsSync(join(dataDir, PUBLISHED_SHAPES_DIR)) &&
         existsSync(join(dataDir, SYSTEM_MAP_FILE));
-      if (shapes && (state.shapesBuiltAt !== builtAt || !published)) {
-        summary.shapes = await publishRouteShapes(dataDir, shapes);
-        summary.systemMap = await publishSystemMap(dataDir, shapes);
+      if (routeShapes && (state.shapesBuiltAt !== builtAt || !published)) {
+        summary.shapes = await publishRouteShapes(dataDir, routeShapes);
+        summary.systemMap = await publishSystemMap(dataDir, routeShapes);
         state.shapesBuiltAt = builtAt;
       }
     } catch (err) {

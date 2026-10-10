@@ -36,7 +36,10 @@ export function hud({ title, readout = null, clock, progress, width, height }) {
   return svg;
 }
 
-/** Dot legend rows at the bottom left, above the progress bar. */
+/**
+ * Dot legend rows at the bottom left, above the progress bar: [{ label, color, dashed? }], dashed
+ * for vehicles placed by the schedule.
+ */
 export function dotLegend(rows, { height, margin = 28, size = 22 }) {
   const rowH = size + 12;
   const w = Math.max(...rows.map((r) => textWidth(r.label, size))) + 64; // + swatch, padding
@@ -45,7 +48,9 @@ export function dotLegend(rows, { height, margin = 28, size = 22 }) {
   let svg = `<rect x="${margin}" y="${top}" width="${w.toFixed(0)}" height="${h}" rx="14" fill="rgba(15,17,21,0.85)"/>`;
   rows.forEach((r, i) => {
     const cy = top + 9 + rowH * i + rowH / 2;
-    svg += `<circle cx="${margin + 24}" cy="${cy}" r="8" fill="${r.color}" stroke="#0b0d10" stroke-width="2"/>`;
+    svg += r.dashed
+      ? `<circle cx="${margin + 24}" cy="${cy}" r="8" fill="${r.color}" fill-opacity="0.45" stroke="#fff" stroke-width="2" stroke-dasharray="4 3"/>`
+      : `<circle cx="${margin + 24}" cy="${cy}" r="8" fill="${r.color}" stroke="#0b0d10" stroke-width="2"/>`;
     svg += `<text x="${margin + 44}" y="${(cy + size * 0.35).toFixed(1)}" font-family="${FONT}" font-size="${size}" fill="#e8eaed">${escapeXml(r.label)}</text>`;
   });
   return svg;
