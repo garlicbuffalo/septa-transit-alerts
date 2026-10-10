@@ -192,7 +192,11 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
     byRoute.get(v.route).vehicles.push(rec);
   }
 
+  // Mid-route, and where it says it is: a frozen trolley (see vehicleScreen.js) is somewhere in
+  // the tunnel, not at the repeated fix, so it neither bunches with a car near that fix nor is
+  // "held" there.
   const midRoute = (v) =>
+    !v.frozen &&
     v.trip &&
     v.nextStopSequence != null &&
     v.nextStopSequence > cfg.terminalStops &&

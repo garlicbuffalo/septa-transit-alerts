@@ -72,6 +72,77 @@ describe('detection post text', () => {
     expect(alt).toMatch(/dashed/);
   });
 
+  describe('the lines under the vehicles', () => {
+    // Route 23's busiest shape runs north–south at -75.17; some trips run an extension at -75.2.
+    const trunk = fakeShapes().shape('23');
+    const extension = [
+      [40.05, -75.2],
+      [39.95, -75.2],
+    ];
+    const onExtension = (label, lat) =>
+      vehicle({ label, lat, lon: -75.2, tripId: 'ext', nextStopName: `Stop ${label}` });
+    const gapOf = (vehicles, shapes) => {
+      const inc = detectionIncident({ details: gapDetails });
+      return composeDetection({ incident: inc, det: inc.detections[0], vehicles, shapes });
+    };
+    const withTrips = fakeShapes(undefined, { ext: extension, main: trunk });
+
+    it('are each vehicle’s own trip’s shape, so a vehicle on an extension is on its line', () => {
+      const { plan, alt } = gapOf(
+        byLabel([onExtension('3787', 39.97), onExtension('3314', 40.03)]),
+        withTrips,
+      );
+      expect(plan.routes.map((r) => r.points)).toEqual([extension]);
+      // The empty stretch is dashed along that line.
+      expect(plan.stretch.points.length).toBeGreaterThanOrEqual(2);
+      expect(plan.stretch.points[0][1]).toBeCloseTo(-75.2, 3);
+      expect(alt).toMatch(/dashed/);
+    });
+
+    it('include both when the vehicles run different patterns, each once', () => {
+      const onMain = vehicle({ label: '3314', lat: 40.03, tripId: 'main' });
+      const { plan } = gapOf(byLabel([onExtension('3787', 39.97), onMain]), withTrips);
+      expect(plan.routes.map((r) => r.points)).toEqual([extension, trunk]);
+      // Not both on one line, so there is no stretch to dash.
+      expect(plan.stretch).toBeNull();
+      const twoOnMain = vehicle({ label: '3787', lat: 39.97, tripId: 'main' });
+      expect(gapOf(byLabel([twoOnMain, onMain]), withTrips).plan.routes).toHaveLength(1);
+    });
+
+    it('fall back to the route’s shape for a vehicle whose trip has none, or with no shapes', () => {
+      const unknown = byLabel([
+        vehicle({ label: '3787', lat: 39.97, tripId: 'nope' }),
+        vehicle({ label: '3314', lat: 40.03, tripId: null }),
+      ]);
+      expect(gapOf(unknown, withTrips).plan.routes.map((r) => r.points)).toEqual([trunk]);
+      expect(gapOf(unknown, null).plan.routes).toEqual([]);
+    });
+
+    it('are the vehicles’ own for bunches and stuck vehicles too', () => {
+      const bunch = detectionIncident({
+        source: 'bunching',
+        details: {
+          direction_id: 0,
+          vehicle_count: 2,
+          scheduled_spacing_min: 20,
+          vehicles: ['a', 'b'],
+        },
+      });
+      const vehicles = byLabel([
+        { ...onExtension('a', 40.0), nextStopSequence: 20 },
+        { ...onExtension('b', 40.001), nextStopSequence: 21 },
+      ]);
+      const compose = (incident) =>
+        composeDetection({ incident, det: incident.detections[0], vehicles, shapes: withTrips });
+      expect(compose(bunch).plan.routes.map((r) => r.points)).toEqual([extension]);
+      const held = detectionIncident({
+        source: 'pulse-held',
+        details: { vehicle_count: 2, stationaryMs: 14 * 60_000, vehicles: ['a', 'b'] },
+      });
+      expect(compose(held).plan.routes.map((r) => r.points)).toEqual([extension]);
+    });
+  });
+
   it('numbers bunched vehicles from the lead one and measures their spread', () => {
     const vehicles = byLabel([
       vehicle({ label: 'a', nextStopSequence: 20, lat: 40.0, lateMin: 5 }),

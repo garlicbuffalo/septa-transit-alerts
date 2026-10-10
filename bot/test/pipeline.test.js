@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -145,9 +145,9 @@ describe('publisher', () => {
 });
 
 describe('pipeline', () => {
-  function setup(client) {
+  function setup(client, fixtures = FIXTURES) {
     const stateDir = mkdtempSync(join(tmpdir(), 'bot-'));
-    const config = loadConfig({ STATE_DIR: stateDir, FIXTURES_DIR: FIXTURES });
+    const config = loadConfig({ STATE_DIR: stateDir, FIXTURES_DIR: fixtures });
     const db = openDb(config.dbPath);
     // Posting since well before the fixtures' alerts began (0 would read as unset).
     setMeta(db, client.dryRun ? 'dry_run_since' : 'live_since', 1);
@@ -206,6 +206,137 @@ describe('pipeline', () => {
     // The next tick posts nothing new.
     const again = await pipeline.collectTick();
     expect(again.summary.hook.alerts.posted).toBe(0);
+  });
+
+  it('keeps positions that cannot be right out of the observations and the maps', async () => {
+    // Route 17's trips run a straight north–south shape; bus 7413 reports from 5 km west of it.
+    const fixtures = mkdtempSync(join(tmpdir(), 'fixtures-'));
+    cpSync(FIXTURES, fixtures, { recursive: true });
+    writeFileSync(
+      join(fixtures, 'route-shapes.json'),
+      JSON.stringify({
+        version: 1,
+        built_at: FIXTURE_NOW,
+        routes: {},
+        patterns: [
+          [
+            [39.9, -75.17],
+            [40.0, -75.17],
+          ],
+        ],
+        tripPatterns: Object.fromEntries([12, 13, 14, 15, 16, 17].map((n) => [`17-${n}`, 0])),
+      }),
+    );
+    const feed = JSON.parse(readFileSync(join(fixtures, 'transitview.json'), 'utf8'));
+    feed.routes[0]['17'].find((v) => v.VehicleID === '7413').lng = '-75.23';
+    writeFileSync(join(fixtures, 'transitview.json'), JSON.stringify(feed));
+
+    const { db, pipeline, publisher } = setup(fakeLiveClient(), fixtures);
+    await publisher.prepare();
+    await pipeline.loadShapes();
+    await pipeline.observe();
+    const observed = db
+      .prepare("SELECT vehicle_id FROM observations WHERE route = '17' ORDER BY vehicle_id")
+      .all()
+      .map((r) => r.vehicle_id);
+    expect(observed).toContain('7412');
+    expect(observed).not.toContain('7413');
+    // The detectors' tick drops it too, and says so.
+    const { summary } = await pipeline.collectTick();
+    expect(summary.sources.transitView.dropped).toEqual({ offRoute: 1, jump: 0 });
+  });
+
+  it('stops recording a trolley whose position has repeated for three minutes', async () => {
+    // The fixtures' T1 car #9101 reports the same position every poll, as a car in the tunnel does.
+    let t = FIXTURE_NOW;
+    const client = fakeLiveClient();
+    const stateDir = mkdtempSync(join(tmpdir(), 'bot-'));
+    const config = loadConfig({ STATE_DIR: stateDir, FIXTURES_DIR: FIXTURES });
+    const db = openDb(config.dbPath);
+    const pipeline = createPipeline({
+      config,
+      db,
+      poster: createPoster({ db, client, now: () => t }),
+      basemap: createBasemap(),
+      publisher: null,
+      log: () => {},
+      now: () => t,
+    });
+    const rows = () =>
+      db.prepare("SELECT COUNT(*) AS n FROM observations WHERE vehicle_id = '9101'").get().n;
+    const counts = [];
+    // (The fixtures' reports are 30 seconds old at minute 0, and go stale after minute 4.)
+    for (let minute = 0; minute <= 4; minute++) {
+      t = FIXTURE_NOW + minute * 60_000;
+      await pipeline.observe();
+      counts.push(rows());
+    }
+    // Recorded at minutes 0–2, while it might just be stopped; frozen from minute 3.
+    expect(counts).toEqual([1, 2, 3, 3, 3]);
+    // A bus in the same feed keeps being recorded.
+    const bus = db
+      .prepare("SELECT COUNT(*) AS n FROM observations WHERE vehicle_id = '7412'")
+      .get();
+    expect(bus.n).toBe(5);
+  });
+
+  it('reads the route shapes again once the collector has rebuilt them', async () => {
+    // No fixtures: the shapes come from the cache file the collector writes.
+    const stateDir = mkdtempSync(join(tmpdir(), 'bot-'));
+    const config = loadConfig({ STATE_DIR: stateDir });
+    const file = join(config.cacheDir, 'route-shapes.json');
+    const cache = (extra = {}) =>
+      JSON.stringify({
+        version: 1,
+        built_at: 1,
+        routes: {
+          17: {
+            0: [
+              [39.9, -75.17],
+              [40, -75.17],
+            ],
+          },
+        },
+        ...extra,
+      });
+    mkdirSync(config.cacheDir, { recursive: true });
+    // A cache from before trips' own shapes were kept.
+    writeFileSync(file, cache());
+    const pipeline = createPipeline({
+      config,
+      db: openDb(':memory:'),
+      poster: null,
+      basemap: createBasemap(),
+      publisher: null,
+      log: () => {},
+      now: () => FIXTURE_NOW,
+    });
+    const before = await pipeline.loadShapes();
+    expect(before.tripShape('17-12')).toBeNull();
+    // Nothing has changed: the same shapes.
+    expect(await pipeline.refreshShapes()).toBe(before);
+    // The collector rebuilds the cache with every trip's shape.
+    writeFileSync(
+      file,
+      cache({
+        patterns: [
+          [
+            [39.9, -75.2],
+            [40, -75.2],
+          ],
+        ],
+        tripPatterns: { '17-12': 0 },
+      }),
+    );
+    const later = new Date(Date.now() + 60_000);
+    utimesSync(file, later, later);
+    const after = await pipeline.refreshShapes();
+    expect(after).not.toBe(before);
+    expect(after.tripShape('17-12')).toEqual([
+      [39.9, -75.2],
+      [40, -75.2],
+    ]);
+    expect(await pipeline.refreshShapes()).toBe(after);
   });
 
   it('keeps dry-run posts out of the published data', async () => {

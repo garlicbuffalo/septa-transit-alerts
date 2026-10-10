@@ -112,6 +112,17 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
   const color = routeColor(mode, route);
   const shape = (dir) => shapes?.shape(route, dir) ?? null;
   const allShapes = () => (shapes?.shapes(route) ?? []).map((points) => ({ points, color }));
+  // The lines to draw under vehicles: the shape each one's own trip runs, once each. A route has
+  // short-turns, branches and extensions its busiest shape doesn't cover, and a vehicle on one
+  // would otherwise be drawn miles from the line. Without a trip shape, `fallback`.
+  const linesFor = (vs, fallback) => {
+    const own = [];
+    for (const v of vs) {
+      const points = v?.tripId ? shapes?.tripShape(v.tripId) : null;
+      if (points && !own.includes(points)) own.push(points);
+    }
+    return own.length ? own.map((points) => ({ points, color })) : fallback;
+  };
 
   if (det.source === 'gap') {
     const [ahead, behind] = [
@@ -134,9 +145,15 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
     let plan = null;
     if (ahead && behind) {
       const line = shape(d.direction_id ?? 0);
-      const stretch = stretchBetween(line, behind, ahead);
+      const lines = linesFor([ahead, behind], line ? [{ points: line, color }] : allShapes());
+      // The empty stretch is dashed along the first line both vehicles are on.
+      let stretch = null;
+      for (const l of lines) {
+        stretch = stretchBetween(l.points, behind, ahead);
+        if (stretch) break;
+      }
       plan = planRouteMap({
-        routes: line ? [{ points: line, color }] : allShapes(),
+        routes: lines,
         markers: [
           { lat: ahead.lat, lon: ahead.lon, tag: 'L' },
           { lat: behind.lat, lon: behind.lon, tag: 'N' },
@@ -176,9 +193,12 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
     const { text, facets } = finish(lines, incident);
     const plan = ordered.length
       ? planRouteMap({
-          routes: shape(d.direction_id ?? 0)
-            ? [{ points: shape(d.direction_id ?? 0), color }]
-            : allShapes(),
+          routes: linesFor(
+            ordered,
+            shape(d.direction_id ?? 0)
+              ? [{ points: shape(d.direction_id ?? 0), color }]
+              : allShapes(),
+          ),
           markers: ordered.map((v, i) => ({ lat: v.lat, lon: v.lon, tag: String(i + 1) })),
           title: `⚠ ${label} · ${d.vehicle_count} ${noun} bunched`,
         })
@@ -200,7 +220,7 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
     const { text, facets } = finish(lines, incident);
     const plan = found.length
       ? planRouteMap({
-          routes: allShapes(),
+          routes: linesFor(found, allShapes()),
           markers: found.map((v, i) => ({ lat: v.lat, lon: v.lon, tag: String(i + 1) })),
           title: `⚠ ${label} · ${n} ${noun} stuck`,
         })
@@ -447,6 +467,7 @@ async function postNew({
           label: String(v.label),
           tag,
           route: v.route,
+          tripId: v.tripId ?? null,
         })),
         post,
         now,

@@ -8,6 +8,7 @@ import {
   gapOutcome,
   rawRouteId,
   renderDueCapture,
+  routeLayers,
   sampleCaptures,
   snapshotText,
   startCapture,
@@ -326,6 +327,33 @@ describe('captures', () => {
     expect(rawRouteId('metro', 't1')).toBe('T1');
   });
 
+  it('leaves out a position nowhere near its trip’s shape', async () => {
+    const { db } = testPoster();
+    startDetectionCapture(db, detection());
+    const line = [
+      [40.05, -75.17],
+      [39.95, -75.17],
+    ];
+    const shapes = fakeShapes(undefined, { 'trip-a': line, 'trip-b': line });
+    const sources = fakeSources(
+      {
+        // b reports from 5 km west of the line its trip runs.
+        23: (now) => [
+          rawVehicle('a', 40.0, -75.17, now - 5000),
+          rawVehicle('b', 40.001, -75.23, now - 5000),
+        ],
+      },
+      () => NOW,
+    );
+    expect(await sampleCaptures({ db, sources, shapes, now: NOW })).toEqual({
+      captures: 1,
+      samples: 1,
+    });
+    expect(db.prepare('SELECT vehicle_id FROM capture_samples').all()).toEqual([
+      { vehicle_id: 'a' },
+    ]);
+  });
+
   it('records the whole feed for a snapshot, per mode', async () => {
     const { db } = testPoster();
     expect(startSnapshots(db, { now: NOW })).toEqual(['bus', 'metro']);
@@ -508,6 +536,8 @@ describe('captures', () => {
     expect(JSON.parse(c.routes)).toEqual(['23']);
     const focus = JSON.parse(c.focus);
     expect(focus.vehicles.map((v) => `${v.tag}:${v.id}`)).toEqual(['L:3787', 'N:3314']);
+    // Each vehicle's trip, so the video draws the shape it runs.
+    expect(focus.vehicles.map((v) => v.tripId)).toEqual(['t1', 't1']);
     expect(focus.header).toBe('🎬 Route 23 — toward 11th-Market · the next 10 minutes');
     expect(focus.title).toBe('Route 23 · ~25 min gap');
   });
@@ -603,6 +633,46 @@ describe('video encoding', () => {
     });
     expect(out.data.subarray(4, 8).toString()).toBe('ftyp');
     expect(out.data.length).toBeGreaterThan(1000);
+  });
+});
+
+describe('the route lines under a timelapse', () => {
+  const trunk = [
+    [40.05, -75.17],
+    [39.95, -75.17],
+  ];
+  const extension = [
+    [40.05, -75.2],
+    [39.95, -75.2],
+  ];
+  const shapes = fakeShapes({ 23: trunk }, { ext: extension, main: trunk });
+  const follow = (route, tripId, over = {}) => ({ id: tripId, route, tripId, ...over });
+  const layers = (kind, vehicles, over = {}) =>
+    routeLayers(
+      { kind, mode: 'bus', routes: JSON.stringify(['23']) },
+      { direction_id: 0, vehicles, ...over },
+      shapes,
+    );
+
+  it('are the shapes the followed vehicles’ own trips run, each once', () => {
+    expect(layers('gap', [follow('23', 'ext'), follow('23', 'ext')])[0].shapes).toEqual([
+      extension,
+    ]);
+    expect(layers('bunching', [follow('23', 'ext'), follow('23', 'main')])[0].shapes).toEqual([
+      extension,
+      trunk,
+    ]);
+  });
+
+  it('are the route’s own shape for a vehicle whose trip has none', () => {
+    expect(layers('gap', [follow('23', 'nope'), follow('23', 'nope')])[0].shapes).toEqual([trunk]);
+    expect(layers('gap', [{ id: 'a', route: '23' }])[0].shapes).toEqual([trunk]);
+  });
+
+  it('leave a cross-route cluster to the routes’ shapes', () => {
+    expect(layers('cluster', [follow('23', 'ext')], { direction_id: null })[0].shapes).toEqual([
+      trunk,
+    ]);
   });
 });
 

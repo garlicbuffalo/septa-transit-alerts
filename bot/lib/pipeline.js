@@ -25,6 +25,7 @@ import { join } from 'node:path';
 import { collect } from '../../collector/collect.js';
 import { loadArchive } from '../../collector/lib/archive.js';
 import { createSources } from '../../collector/lib/sources.js';
+import { screenVehicles } from '../../collector/lib/vehicleScreen.js';
 import { normalizeTransitView } from '../../collector/lib/vehicles.js';
 import { linkAlertPosts, postAlerts } from '../features/alerts.js';
 import { maybePostCancellationRoundups } from '../features/cancellations.js';
@@ -53,7 +54,7 @@ import { renderAlertMap } from '../map/lineMap.js';
 import { ffmpegAvailable } from '../video/encode.js';
 import { pruneDb } from './db.js';
 import { recordObservations } from './observations.js';
-import { ensureRouteShapes } from './shapes.js';
+import { ensureRouteShapes, shapesFileStamp } from './shapes.js';
 
 const ASSET_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const BACKUPS_KEPT = 7;
@@ -77,6 +78,11 @@ export function createPipeline({
 }) {
   const latest = { transitView: null, trainView: null };
   let shapes = null;
+  // When the shapes were last read from the cache file, to read them again once the collector
+  // has rebuilt it (a day's GTFS update, or a release that changes what the cache holds).
+  let shapesStamp = null;
+  // The last position kept for each vehicle (see screenVehicles), for observe().
+  let screenState = {};
   // Timelapses need ffmpeg; checkVideo() confirms it's there.
   let videoReady = false;
   const limits = { ...VIDEO_LIMITS, dailyPerAccount: config.videoDailyCap };
@@ -94,6 +100,22 @@ export function createPipeline({
     }
   }
 
+  async function loadShapes() {
+    shapes = await ensureRouteShapes({
+      cacheDir: config.cacheDir,
+      fixturesDir: config.fixturesDir,
+      log,
+    });
+    shapesStamp = await shapesFileStamp(config);
+    return shapes;
+  }
+
+  async function refreshShapes() {
+    const stamp = await shapesFileStamp(config);
+    if (stamp != null && stamp !== shapesStamp) await loadShapes();
+    return shapes;
+  }
+
   async function ping(suffix = '') {
     if (!config.healthcheckUrl) return;
     try {
@@ -105,14 +127,10 @@ export function createPipeline({
     latest,
 
     /** Load (or build) the route shapes the detection maps draw on. */
-    async loadShapes() {
-      shapes = await ensureRouteShapes({
-        cacheDir: config.cacheDir,
-        fixturesDir: config.fixturesDir,
-        log,
-      });
-      return shapes;
-    },
+    loadShapes,
+
+    /** Read the shapes again if the collector has rebuilt the cache since they were loaded. */
+    refreshShapes,
 
     /** Turn timelapses on if they're enabled and ffmpeg runs. */
     async checkVideo() {
@@ -122,7 +140,7 @@ export function createPipeline({
 
     /** Poll positions for running timelapse captures (every 15 seconds). */
     sampleCaptures() {
-      return sampleCaptures({ db, sources, now: now(), log });
+      return sampleCaptures({ db, sources, shapes, now: now(), log });
     },
 
     /** Render and post the next finished timelapse, if any. */
@@ -183,7 +201,16 @@ export function createPipeline({
       let vehicles = [];
       if (tv.status === 'fulfilled') {
         latest.transitView = { ts: t, payload: tv.value };
-        vehicles = normalizeTransitView(tv.value, t).vehicles;
+        // Positions that can't be right stay out of the observations, so they can't skew the
+        // speed maps or the timelapses, and neither can a trolley's repeated last fix from inside
+        // the tunnel (it would read as a stop at the portal).
+        const screened = screenVehicles(normalizeTransitView(tv.value, t).vehicles, {
+          shapes,
+          prev: screenState,
+          now: t,
+        });
+        screenState = screened.state;
+        vehicles = screened.vehicles.filter((v) => !v.frozen);
       } else {
         log(`observe: TransitView failed: ${tv.reason?.message ?? tv.reason}`);
       }
@@ -200,11 +227,10 @@ export function createPipeline({
     },
 
     async collectTick() {
+      await step('shapes', refreshShapes);
       const t = now();
       const maxAge = config.intervals.observeMs * 1.5;
       const fresh = (x) => (x && t - x.ts <= maxAge ? x.payload : null);
-      // The TransitView payload this tick actually used, for the post maps.
-      let usedTransitView = null;
       const { ok, summary } = await collect({
         dataDir: config.dataDir,
         cacheDir: config.cacheDir,
@@ -213,10 +239,7 @@ export function createPipeline({
         log: () => {},
         warn: log,
         sources: {
-          transitView: async () => {
-            usedTransitView = fresh(latest.transitView) ?? (await sources.transitView());
-            return usedTransitView;
-          },
+          transitView: async () => fresh(latest.transitView) ?? sources.transitView(),
           trainView: async () => fresh(latest.trainView) ?? sources.trainView(),
         },
         beforePublish: async ({
@@ -224,11 +247,11 @@ export function createPipeline({
           outages,
           schedule,
           now: tickNow,
+          vehicles: vehicleList,
           summary: { dataStartTs },
         }) => {
-          const vehicleList = usedTransitView
-            ? normalizeTransitView(usedTransitView, tickNow).vehicles
-            : [];
+          // The positions the detectors used, screened the same way, so a post's map shows the
+          // vehicles where the detection saw them.
           const vehicles = new Map();
           for (const v of vehicleList) {
             vehicles.set(String(v.label), v);

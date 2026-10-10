@@ -30,7 +30,7 @@ const FINE_SIMPLIFY_M = 3;
 const SYSTEM_MAP_VERSION = 1;
 // Bumped when the shapes cache gains something its readers need. schedule.js rebuilds a cache
 // built before the bump on the next tick instead of up to a day late.
-export const SHAPES_REV = 2;
+export const SHAPES_REV = 3;
 // A route's second direction is left out when it runs along the first (the
 // same street both ways), at this distance for this share of its points: at the
 // system map's scale it would only draw the same line twice.
@@ -54,6 +54,20 @@ function offsetM(p, a, b) {
   const len2 = dx * dx + dy * dy;
   const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (p[0] - a[0]) * dy) / len2)) : 0;
   return Math.hypot(px - (ax + t * dx), p[0] - (a[0] + t * dy)) * 111_320;
+}
+
+/**
+ * How far (m) a position is from a [lat, lon] polyline, or Infinity for a polyline with fewer
+ * than two points.
+ */
+export function offRouteM(points, lat, lon) {
+  let best = Infinity;
+  const p = [lat, lon];
+  for (let i = 1; i < points.length; i++) {
+    const d = offsetM(p, points[i - 1], points[i]);
+    if (d < best) best = d;
+  }
+  return best;
 }
 
 /** Douglas–Peucker simplification of [lat, lon] points to `toleranceM`. */
@@ -120,8 +134,12 @@ function stopsOfTrips(zip, tripIds) {
  * @param {{ read(name: string): Buffer }} zip google_bus.zip
  * @returns {{ version: number, built_at: number, routes: Record<string, Record<string, number[][]>>,
  *   stops: Record<string, Record<string, Array<[number, number, string]>>>,
- *   fine: Record<string, Record<string, number[][]>> }}
+ *   fine: Record<string, Record<string, number[][]>>,
+ *   patterns: number[][][], tripPatterns: Record<string, number> }}
  *   routes[routeKey][direction] = [[lat, lon], …];
+ *   patterns = every distinct shape any trip runs, simplified like the route lines, and
+ *   tripPatterns[tripId] = the index in patterns of the shape that trip runs (a route's other
+ *   patterns — short-turns, branches, extensions — are not the shape drawn for the route);
  *   fine[routeKey][direction] = the same line of a bus route, simplified much less (for the
  *   site's system map; absent from a cache built before it);
  *   stops[routeKey][direction] = [[lat, lon, name], …] along the route (from a
@@ -131,9 +149,11 @@ export function buildRouteShapes(zip, now = Date.now()) {
   // Trips per (route, direction, shape): the busiest shape represents the route.
   const counts = new Map();
   const sampleTrip = new Map(); // `${key}|${shape_id}` → a trip that runs it
+  const tripShape = new Map(); // trip_id → shape_id, for every trip
   eachCsvRow(zip.read('trips.txt').toString('utf8'), (r) => {
     const route = classifyRoute(r.route_id);
     if (!route || route.mode === 'regional_rail' || !r.shape_id) return;
+    tripShape.set(r.trip_id, r.shape_id);
     const key = `${route.key}|${r.direction_id || '0'}`;
     if (!counts.has(key)) counts.set(key, new Map());
     const byShape = counts.get(key);
@@ -152,22 +172,38 @@ export function buildRouteShapes(zip, now = Date.now()) {
       stopTrips.get(trip).push(key);
     }
   }
+  const used = new Set(tripShape.values());
   const points = new Map();
   eachCsvRow(zip.read('shapes.txt').toString('utf8'), (r) => {
-    if (!wanted.has(r.shape_id)) return;
+    if (!used.has(r.shape_id)) return;
     if (!points.has(r.shape_id)) points.set(r.shape_id, []);
     points
       .get(r.shape_id)
       .push([Number(r.shape_pt_sequence), Number(r.shape_pt_lat), Number(r.shape_pt_lon)]);
   });
+  const orderedPoints = (shapeId) =>
+    (points.get(shapeId) ?? []).sort((a, b) => a[0] - b[0]).map(([, lat, lon]) => [lat, lon]);
+
+  // Every shape a trip runs, so a vehicle can be placed against its own trip's line.
+  const patterns = [];
+  const patternOf = new Map(); // shape_id → index in patterns
+  for (const shapeId of used) {
+    const pts = orderedPoints(shapeId);
+    if (pts.length < 2) continue;
+    patternOf.set(shapeId, patterns.length);
+    patterns.push(roundPoints(simplify(pts)));
+  }
+  const tripPatterns = {};
+  for (const [tripId, shapeId] of tripShape) {
+    if (patternOf.has(shapeId)) tripPatterns[tripId] = patternOf.get(shapeId);
+  }
+
   const routes = {};
   const fine = {};
   for (const [shapeId, keys] of wanted) {
-    const pts = (points.get(shapeId) ?? [])
-      .sort((a, b) => a[0] - b[0])
-      .map(([, lat, lon]) => [lat, lon]);
+    const pts = orderedPoints(shapeId);
     if (pts.length < 2) continue;
-    const line = roundPoints(simplify(pts));
+    const line = patterns[patternOf.get(shapeId)];
     const finer = roundPoints(simplify(pts, FINE_SIMPLIFY_M));
     for (const key of keys) {
       const [route, dir] = key.split('|');
@@ -186,6 +222,8 @@ export function buildRouteShapes(zip, now = Date.now()) {
     routes,
     stops: buildRouteStops(zip, stopTrips),
     fine,
+    patterns,
+    tripPatterns,
   };
 }
 
@@ -238,6 +276,15 @@ export class RouteShapes {
     const r = this.data.routes[route];
     if (!r) return null;
     return r[String(direction)] ?? r['0'] ?? r['1'] ?? null;
+  }
+
+  /**
+   * The shape a trip runs, [[lat, lon], …], or null: the trip isn't in the feed, or the cache was
+   * built before it kept every trip's shape.
+   */
+  tripShape(tripId) {
+    const i = this.data.tripPatterns?.[tripId];
+    return i == null ? null : (this.data.patterns?.[i] ?? null);
   }
 
   /** Every direction's shape for a route. */
