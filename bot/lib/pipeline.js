@@ -202,14 +202,15 @@ export function createPipeline({
       if (tv.status === 'fulfilled') {
         latest.transitView = { ts: t, payload: tv.value };
         // Positions that can't be right stay out of the observations, so they can't skew the
-        // speed maps or the timelapses.
+        // speed maps or the timelapses, and neither can a trolley's repeated last fix from inside
+        // the tunnel (it would read as a stop at the portal).
         const screened = screenVehicles(normalizeTransitView(tv.value, t).vehicles, {
           shapes,
           prev: screenState,
           now: t,
         });
         screenState = screened.state;
-        vehicles = screened.vehicles;
+        vehicles = screened.vehicles.filter((v) => !v.frozen);
       } else {
         log(`observe: TransitView failed: ${tv.reason?.message ?? tv.reason}`);
       }

@@ -160,6 +160,39 @@ describe('cross-route clusters', () => {
     });
   });
 
+  it('leaves out frozen trolleys: the tunnel is not the portal', async () => {
+    // Four vehicles from three routes at one spot, all stopped for ten minutes; the three trolleys
+    // among them are repeating the last fix before the tunnel.
+    const t = testPoster();
+    const car = (i, route, over = {}) =>
+      at(i, { route, mode: 'metro', nextStopName: '40th St Portal', ...over });
+    const fresh = [car(0, 't2'), car(1, 't3'), car(2, 't4'), at(3, { route: '40' })];
+    for (let m = -10; m <= 6; m++) recordObservations(t.db, NOW - m * 60_000, { vehicles: fresh });
+    const args = {
+      schedule: null,
+      db: t.db,
+      poster: t.poster,
+      shapes: fakeShapes(),
+      basemap: createBasemap(),
+      now: NOW,
+    };
+    const frozen = [car(0, 't2'), car(1, 't3'), car(2, 't4')].map((v) => ({ ...v, frozen: true }));
+    // Not frozen, they are a stopped cluster (the control)...
+    expect(await postCrossBunching({ ...args, vehicles: fresh })).toMatchObject({ posted: 1 });
+    // ...frozen, they are not: one bus left, and no cluster.
+    const t2 = testPoster();
+    for (let m = -10; m <= 6; m++) recordObservations(t2.db, NOW - m * 60_000, { vehicles: fresh });
+    expect(
+      await postCrossBunching({
+        ...args,
+        db: t2.db,
+        poster: t2.poster,
+        vehicles: [...frozen, at(3, { route: '40' })],
+      }),
+    ).toBeNull();
+    expect(t2.client.posts).toHaveLength(0);
+  });
+
   it('colors each route and numbers vehicles across the cluster', () => {
     const vs = [at(0, { route: '17' }), at(1, { route: '33' }), at(2, { route: '17' })];
     const { plan } = composeCluster(

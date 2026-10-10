@@ -223,3 +223,118 @@ describe('screenVehicles: state and one tick’s duplicates', () => {
     expect(out.vehicles[0]).toBe(list[0]);
   });
 });
+
+describe('screenVehicles: a frozen fix', () => {
+  // A trolley that went into the tunnel: the tracker repeats its last position, to the last
+  // decimal, with fresh reports. Ticks a minute apart unless a test says otherwise.
+  const at0 = at(0);
+  const run = (readings, { mode = 'metro', every = MIN, shapes: s = null } = {}) => {
+    let state = {};
+    return readings.map((pos, n) => {
+      const now = NOW + n * every;
+      const out = screenVehicles([vehicle({ mode, tripId: null, ...pos, reportTs: now })], {
+        shapes: s,
+        prev: state,
+        now,
+      });
+      state = out.state;
+      return out;
+    });
+  };
+  const frozenFlags = (outs) => outs.map((o) => o.vehicles[0]?.frozen === true);
+
+  it('is flagged once the position has repeated for frozenMs, and not before', () => {
+    const outs = run([at0, at0, at0, at0, at0]);
+    // Seen at minute 0; identical at 1 and 2 (under 3 minutes); frozen from minute 3.
+    expect(frozenFlags(outs)).toEqual([false, false, false, true, true]);
+    expect(outs.map((o) => o.frozen)).toEqual([0, 0, 0, 1, 1]);
+    expect(SCREEN_CONFIG.frozenMs).toBe(3 * MIN);
+  });
+
+  it('keeps the vehicle (it is flagged, not dropped), as a copy', () => {
+    const [, , , out] = run([at0, at0, at0, at0]);
+    expect(out.vehicles).toHaveLength(1);
+    expect(out.vehicles[0]).toMatchObject({ id: '9066', frozen: true, lat: at0.lat });
+    expect(out.dropped).toEqual({ offRoute: 0, jump: 0 });
+  });
+
+  it('is never flagged for a vehicle whose fix wobbles, as a real stop does', () => {
+    const wobble = Array.from({ length: 10 }, (_, i) => at(i % 2 ? 4 : 0 + i * 0.3));
+    expect(frozenFlags(run(wobble)).some(Boolean)).toBe(false);
+  });
+
+  it('is only for trolleys, since only they go underground', () => {
+    expect(frozenFlags(run([at0, at0, at0, at0, at0], { mode: 'bus' }))).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it('clears when the vehicle moves, and starts counting again from there', () => {
+    const moved = at(40);
+    const outs = run([at0, at0, at0, at0, moved, moved, moved, moved]);
+    expect(frozenFlags(outs)).toEqual([false, false, false, true, false, false, false, true]);
+  });
+
+  it('is judged by time, so a collector polling every 10 minutes flags a single repeat', () => {
+    expect(frozenFlags(run([at0, at0, at0], { every: 10 * MIN }))).toEqual([false, true, true]);
+  });
+
+  describe('coming out of the tunnel', () => {
+    // 3.5 km on in the next minute: fast for a trolley, but from a fix it never measured.
+    const emerged = at(3500);
+
+    it('is not a jump from the frozen fix', () => {
+      const outs = run([at0, at0, at0, at0, emerged]);
+      expect(outs[4].vehicles).toHaveLength(1);
+      expect(outs[4].vehicles[0].frozen).toBeUndefined();
+      expect(outs[4].dropped.jump).toBe(0);
+    });
+
+    it('is a jump from a fix that was being measured', () => {
+      const wobble = [at(0), at(2), at(0.5), at(1.5)];
+      const outs = run([...wobble, emerged]);
+      expect(outs[4].vehicles).toHaveLength(0);
+      expect(outs[4].dropped.jump).toBe(1);
+    });
+
+    it('is still dropped if it is off its trip’s shape', () => {
+      // The City Ave fix: nowhere near the line the trip runs.
+      const stray = { lat: at0.lat + 0.049, lon: at0.lon - 0.039 };
+      const onTrip = { tripShape: () => trunk };
+      let state = {};
+      for (let n = 0; n < 4; n++) {
+        state = screenVehicles(
+          [vehicle({ mode: 'metro', tripId: 'trunk-1', reportTs: NOW + n * MIN })],
+          {
+            shapes: onTrip,
+            prev: state,
+            now: NOW + n * MIN,
+          },
+        ).state;
+      }
+      const out = screenVehicles(
+        [vehicle({ mode: 'metro', tripId: 'trunk-1', ...stray, reportTs: NOW + 4 * MIN })],
+        { shapes: onTrip, prev: state, now: NOW + 4 * MIN },
+      );
+      expect(out.dropped.offRoute).toBe(1);
+    });
+  });
+
+  it('is remembered in state that is plain JSON, from a call to the next', () => {
+    const [, , out] = run([at0, at0, at0]);
+    const state = JSON.parse(JSON.stringify(out.state));
+    expect(state['9066']).toMatchObject({ lat: at0.lat, since: NOW, seen: NOW + 2 * MIN });
+    const next = screenVehicles(
+      [vehicle({ mode: 'metro', tripId: null, reportTs: NOW + 3 * MIN })],
+      {
+        prev: state,
+        now: NOW + 3 * MIN,
+      },
+    );
+    expect(next.vehicles[0].frozen).toBe(true);
+  });
+});

@@ -214,6 +214,7 @@ export async function collect({
         placeholders,
         stale,
         dropped: screened.dropped,
+        frozen: screened.frozen,
         conditions: found.conditions.size,
         ...applied.stats,
       };

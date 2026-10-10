@@ -65,8 +65,10 @@ function transitView(vehicles) {
   return { routes: [routes] };
 }
 
-function tick({ vehicles, sched, cancelled = new Set(), state, incidents, now }) {
-  const { vehicles: list } = normalizeTransitView(transitView(vehicles), now);
+// `frozen`: ids of vehicles the screen has flagged as repeating a frozen fix (vehicleScreen.js).
+function tick({ vehicles, sched, cancelled = new Set(), state, incidents, now, frozen = [] }) {
+  const { vehicles: normalized } = normalizeTransitView(transitView(vehicles), now);
+  const list = normalized.map((v) => (frozen.includes(v.id) ? { ...v, frozen: true } : v));
   const { conditions } = findConditions({
     vehicles: list,
     schedule: sched,
@@ -430,6 +432,56 @@ describe('vehicle detectors', () => {
     const vehicles = running({ 12: { lat: 39.93, seq: 2 }, 13: { lat: 39.9301, seq: 2 } });
     const { conditions } = tick({ vehicles, sched, state: {}, incidents: new Map(), now: NOW });
     expect(conditions.has('bunching|bus|17|0')).toBe(false);
+  });
+
+  describe('a frozen vehicle, whose position is not where it is', () => {
+    it('does not bunch with a vehicle near the position it repeats', () => {
+      const vehicles = running({ 12: { lat: 39.93, late: 12 }, 13: { lat: 39.9301 } });
+      const tickWith = (frozen) =>
+        tick({ vehicles, sched, state: {}, incidents: new Map(), now: NOW, frozen }).conditions;
+      expect(tickWith([]).has('bunching|bus|17|0')).toBe(true);
+      expect(tickWith(['v13']).has('bunching|bus|17|0')).toBe(false);
+      expect(tickWith(['v12', 'v13']).has('bunching|bus|17|0')).toBe(false);
+    });
+
+    it('is not held in place', () => {
+      const stuck = (ts) =>
+        running({
+          11: { ts, lat: 39.95, lon: -75.16 },
+          12: { ts, lat: 39.951, lon: -75.16 },
+        }).map((v) =>
+          v.trip === 'b11' || v.trip === 'b12'
+            ? { ...v, ts }
+            : { ...v, ts, lat: v.lat + ts / 1e13 },
+        );
+      const run = (frozen) => {
+        const state = {};
+        tick({ vehicles: stuck(NOW), sched, state, incidents: new Map(), now: NOW, frozen });
+        return tick({
+          vehicles: stuck(NOW + TICK),
+          sched,
+          state,
+          incidents: new Map(),
+          now: NOW + TICK,
+          frozen,
+        }).conditions;
+      };
+      expect(run([]).has('pulse-held|bus|17')).toBe(true);
+      expect(run(['v11', 'v12']).has('pulse-held|bus|17')).toBe(false);
+    });
+
+    it('still counts for gaps, whose spacing is lateness, not position', () => {
+      const vehicles = running({ 13: { late: 25 } });
+      const { conditions } = tick({
+        vehicles,
+        sched,
+        state: {},
+        incidents: new Map(),
+        now: NOW,
+        frozen: ['v13', 'v12'],
+      });
+      expect(conditions.get('gap|bus|17|0').details.vehicles).toContain('v13');
+    });
   });
 
   it('detects vehicles held in place across ticks', () => {

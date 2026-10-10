@@ -246,6 +246,40 @@ describe('pipeline', () => {
     expect(summary.sources.transitView.dropped).toEqual({ offRoute: 1, jump: 0 });
   });
 
+  it('stops recording a trolley whose position has repeated for three minutes', async () => {
+    // The fixtures' T1 car #9101 reports the same position every poll, as a car in the tunnel does.
+    let t = FIXTURE_NOW;
+    const client = fakeLiveClient();
+    const stateDir = mkdtempSync(join(tmpdir(), 'bot-'));
+    const config = loadConfig({ STATE_DIR: stateDir, FIXTURES_DIR: FIXTURES });
+    const db = openDb(config.dbPath);
+    const pipeline = createPipeline({
+      config,
+      db,
+      poster: createPoster({ db, client, now: () => t }),
+      basemap: createBasemap(),
+      publisher: null,
+      log: () => {},
+      now: () => t,
+    });
+    const rows = () =>
+      db.prepare("SELECT COUNT(*) AS n FROM observations WHERE vehicle_id = '9101'").get().n;
+    const counts = [];
+    // (The fixtures' reports are 30 seconds old at minute 0, and go stale after minute 4.)
+    for (let minute = 0; minute <= 4; minute++) {
+      t = FIXTURE_NOW + minute * 60_000;
+      await pipeline.observe();
+      counts.push(rows());
+    }
+    // Recorded at minutes 0–2, while it might just be stopped; frozen from minute 3.
+    expect(counts).toEqual([1, 2, 3, 3, 3]);
+    // A bus in the same feed keeps being recorded.
+    const bus = db
+      .prepare("SELECT COUNT(*) AS n FROM observations WHERE vehicle_id = '7412'")
+      .get();
+    expect(bus.n).toBe(5);
+  });
+
   it('reads the route shapes again once the collector has rebuilt them', async () => {
     // No fixtures: the shapes come from the cache file the collector writes.
     const stateDir = mkdtempSync(join(tmpdir(), 'bot-'));

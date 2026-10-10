@@ -34,6 +34,8 @@ SEPTA Metro uses the 2025 line names: L1 (Market-Frankford), B1/B2/B3 (Broad Str
 
 **Positions that can't be right are dropped.** SEPTA's tracker sometimes reports a vehicle somewhere it can't be: a trolley just into the tunnel jumping 6 km to City Ave, or a bus alternating between two places 15 km apart for hours. Before anything reads a position, [`vehicleScreen.js`](collector/lib/vehicleScreen.js) drops one that is more than 1.5 km from the shape of the vehicle's own scheduled trip, or one farther from its last kept position than a vehicle can go (over 120 km/h). A trip's shape, not the route's, because a route's short-turns, branches and extensions run other streets; the bot's detection maps and timelapses draw those shapes too. The tick's summary counts what was dropped (`sources.transitView.dropped`).
 
+A trolley in the subway-surface tunnel has no GPS, and the tracker repeats its last fix, to the last decimal, for the minutes it is underground (a working fix wobbles by meters even at a standstill). After 3 minutes at an identical position a trolley is flagged *frozen*: it still counts for gaps and missing vehicles, since its lateness is real, but it is left out of bunching, held-in-place and "stopped together" detections and out of the recorded positions, so the car never reads as bunched or stuck at the portal (`sources.transitView.frozen` counts them).
+
 **Disrupted time** (line pages, system health, compare, homepage) counts unplanned disruptions only: SEPTA maintenance and construction advisories, advance-notice closures, and other planned work are listed but not counted. A route's cancelled trips for the day aren't counted as one long disruption either; the gaps and missing vehicles they cause are.
 
 ## What you see

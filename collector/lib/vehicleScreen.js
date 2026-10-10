@@ -14,6 +14,12 @@
 // A jump is only the vehicle's word against its own history, so a new position that stays
 // consistent for reanchorAfter reports in a row is believed (the vehicle really did go there);
 // one that alternates with the old position never is.
+//
+// A third thing is flagged, not dropped. A trolley in the subway-surface tunnel has no GPS, and
+// the tracker repeats its last fix, to the last decimal, for the 4–10 minutes it is underground:
+// a working fix wobbles by meters even at a standstill. Such a `frozen` vehicle is still on its
+// trip (its lateness is real, so the gap and missing-vehicle checks keep counting it) but its
+// position is not where it is, so the detectors that rely on position leave it out.
 import { offRouteM } from './shapes.js';
 import { distanceM } from './vehicles.js';
 
@@ -33,7 +39,17 @@ export const SCREEN_CONFIG = {
   reanchorAfter: 3,
   // How long a vehicle's last kept position is remembered after its last report.
   keepMs: 15 * 60 * 1000,
+  // A vehicle in one of `frozenModes` whose position has repeated exactly for this long is frozen.
+  // Only trolleys: over three days, 6.9% of trolley readings repeated the one before, 93% of them
+  // at the two tunnel mouths and mostly in runs of 4–10 minutes, against 0.36% of bus readings.
+  frozenMs: 3 * 60 * 1000,
+  frozenModes: ['metro'],
 };
+
+// Whether a vehicle's kept position (a state entry) has repeated for long enough to be a frozen
+// fix rather than a measurement.
+const isFrozen = (entry, mode, cfg) =>
+  cfg.frozenModes.includes(mode) && entry.seen - entry.since >= cfg.frozenMs;
 
 // Whether getting from `a` to `b` takes more than the fastest a vehicle goes.
 function implausible(a, b, cfg) {
@@ -52,9 +68,10 @@ function implausible(a, b, cfg) {
  *   from; without it only the jump check runs
  * @param {Record<string, object>} [opts.prev] `state` from the previous call
  * @param {number} opts.now
- * @returns {{ vehicles: object[], dropped: { offRoute: number, jump: number },
- *   state: Record<string, object> }} the vehicles that passed, how many didn't and why, and the
- *   state to hand the next call (plain JSON)
+ * @returns {{ vehicles: object[], dropped: { offRoute: number, jump: number }, frozen: number,
+ *   state: Record<string, object> }} the vehicles that passed (a frozen one as a copy with
+ *   `frozen: true`), how many didn't and why, how many are frozen, and the state to hand the next
+ *   call (plain JSON)
  */
 export function screenVehicles(vehicles, { shapes = null, prev = {}, now }) {
   const cfg = SCREEN_CONFIG;
@@ -64,6 +81,7 @@ export function screenVehicles(vehicles, { shapes = null, prev = {}, now }) {
   }
   const kept = [];
   const dropped = { offRoute: 0, jump: 0 };
+  let frozen = 0;
   const advanced = new Set(); // ids whose position moved on this call
   for (const v of vehicles) {
     const shape = v.tripId ? shapes?.tripShape(v.tripId) : null;
@@ -72,7 +90,9 @@ export function screenVehicles(vehicles, { shapes = null, prev = {}, now }) {
       continue;
     }
     const p = prev?.[v.id];
-    if (p && implausible(p, v, cfg)) {
+    // A frozen fix says nothing about where the vehicle is now, so a vehicle coming out of the
+    // tunnel is not "jumping" from it.
+    if (p && !isFrozen(p, v.mode, cfg) && implausible(p, v, cfg)) {
       const pending =
         p.pending && !implausible(p.pending, v, cfg)
           ? { lat: v.lat, lon: v.lon, reportTs: v.reportTs, n: p.pending.n + 1 }
@@ -83,9 +103,23 @@ export function screenVehicles(vehicles, { shapes = null, prev = {}, now }) {
         continue;
       }
     }
-    state[v.id] = { lat: v.lat, lon: v.lon, reportTs: v.reportTs };
+    // `since`: when this exact position was first seen; `seen`: the last time it was.
+    const repeat = p && p.lat === v.lat && p.lon === v.lon;
+    const entry = {
+      lat: v.lat,
+      lon: v.lon,
+      reportTs: v.reportTs,
+      since: repeat ? (p.since ?? now) : now,
+      seen: now,
+    };
+    state[v.id] = entry;
     advanced.add(v.id);
-    kept.push(v);
+    if (repeat && isFrozen(entry, v.mode, cfg)) {
+      frozen++;
+      kept.push({ ...v, frozen: true });
+    } else {
+      kept.push(v);
+    }
   }
-  return { vehicles: kept, dropped, state };
+  return { vehicles: kept, dropped, frozen, state };
 }

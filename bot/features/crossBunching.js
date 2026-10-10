@@ -177,7 +177,14 @@ export async function postCrossBunching({
   now,
   log = () => {},
 }) {
-  const group = findCluster({ vehicles, stopped: stoppedVehicles(db, now), schedule, now });
+  // A frozen trolley (see vehicleScreen.js) is in the tunnel, not at the fix it keeps repeating.
+  const located = vehicles.filter((v) => !v.frozen);
+  const group = findCluster({
+    vehicles: located,
+    stopped: stoppedVehicles(db, now),
+    schedule,
+    now,
+  });
   if (!group) return null;
   const place = placeOf(group);
   const account = group.some((v) => v.mode === 'bus') ? 'bus' : 'metro';
