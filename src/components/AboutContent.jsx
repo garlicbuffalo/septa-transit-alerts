@@ -91,8 +91,10 @@ export default function AboutContent() {
 
       <h3 className="font-semibold text-slate-700 dark:text-slate-200 pt-2">Limits</h3>
       <p>
-        The subway lines (L1 and B1–B3) don't report train positions, so gaps and bunching can only
-        be detected on buses, trolleys, and the M1. "Missing vehicles" means missing from SEPTA's
+        The Broad Street Line (B1–B3) doesn't report train positions, so gaps and bunching can only
+        be detected on buses, trolleys, the M1, and the L1. Only some L1 trains report, and in the
+        tunnel between Front St and 45th St none can: there, a train is placed by the schedule from
+        when it went in (dashed on the bots' maps). "Missing vehicles" means missing from SEPTA's
         tracker: a bus with a broken locator looks the same as one that never left the depot, so
         it's only flagged when a route that's normally well tracked suddenly isn't.
       </p>

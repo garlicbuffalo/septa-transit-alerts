@@ -1,6 +1,7 @@
 // Disruptions inferred from live vehicle positions (TransitView) against the
-// GTFS schedule, for buses and the GPS-tracked SEPTA Metro lines (trolleys and
-// the M1). Four signals, named as the site's signal vocabulary names them:
+// GTFS schedule, for buses and the GPS-tracked SEPTA Metro lines (trolleys, the
+// M1, and the L1, whose trains come from subwayTrains.js). Four signals, named
+// as the site's signal vocabulary names them:
 //
 //   gap         two consecutive vehicles of one pattern are far further apart
 //               in time than scheduled — riders wait much longer than the
@@ -79,8 +80,12 @@ export const DETECTOR_CONFIG = {
   maxUpdates: 8,
 };
 
-// The subway lines report no positions at all.
-const NO_POSITIONS = new Set(['l1', 'b1', 'b2', 'b3']);
+// The Broad Street Line reports no positions at all.
+const NO_POSITIONS = new Set(['b1', 'b2', 'b3']);
+// Only some of the L1's trains carry a working locator, so its missing trains are not news:
+// the missing-vehicle and silent-route checks leave it out (gaps and bunching only compare
+// trains that are tracked).
+const PARTLY_TRACKED = new Set(['l1']);
 
 const etFmt = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/New_York',
@@ -194,7 +199,7 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
 
   // Mid-route, and where it says it is: a frozen trolley (see vehicleScreen.js) is somewhere in
   // the tunnel, not at the repeated fix, so it neither bunches with a car near that fix nor is
-  // "held" there.
+  // "held" there. Nor is an L1 train overdue out of the tunnel (`frozen` too).
   const midRoute = (v) =>
     !v.frozen &&
     v.trip &&
@@ -360,7 +365,10 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
         since,
       };
       const stoppedMin = (v.reportTs - since) / 60000;
-      if (stoppedMin >= cfg.held.minStationaryMin && midRoute(v)) stopped.push({ v, stoppedMin });
+      // An L1 train placed by the schedule (`estimated`) is never seen stopped.
+      if (stoppedMin >= cfg.held.minStationaryMin && midRoute(v) && !v.estimated) {
+        stopped.push({ v, stoppedMin });
+      }
     }
     if (stopped.length < cfg.held.minVehicles) continue;
     // Largest group of stopped vehicles within clusterM of one of them.
@@ -397,7 +405,7 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
   const perRoute = [];
   for (const key of schedule.byRouteDir.keys()) {
     const [route, dirStr] = key.split('|');
-    if (NO_POSITIONS.has(route)) continue;
+    if (NO_POSITIONS.has(route) || PARTLY_TRACKED.has(route)) continue;
     const active = schedule.activeTrips(route, Number(dirStr), now);
     if (active.length === 0) continue;
     let entry = perRoute.find((r) => r.route === route);
@@ -596,9 +604,11 @@ function uniqueId(incidents, base) {
  * @param {Map<string, object>} conditions findConditions().conditions
  * @param {object} state detector state
  * @param {number} now
+ * @param {{ hold?: ((route: string) => boolean) | null }} [opts] hold: routes whose
+ *   detections stay as they are this tick (their feed failed), neither seen nor missed
  * @returns {{ changed: Set<string>, stats: object }}
  */
-export function applyVehicleConditions(incidents, conditions, state, now) {
+export function applyVehicleConditions(incidents, conditions, state, now, { hold = null } = {}) {
   const cfg = DETECTOR_CONFIG;
   const changed = new Set();
   const stats = { opened: 0, resolved: 0, active: 0 };
@@ -756,7 +766,7 @@ export function applyVehicleConditions(incidents, conditions, state, now) {
 
   // Conditions that didn't show this tick: resolve after clearTicks misses.
   for (const [key, st] of Object.entries(active)) {
-    if (conditions.has(key)) continue;
+    if (conditions.has(key) || hold?.(key.split('|')[2])) continue;
     st.misses = (st.misses ?? 0) + 1;
     if (st.misses === 1) st.firstMissTs = now;
     const firstMiss = st.firstMissTs ?? now;

@@ -494,7 +494,7 @@ describe('captures', () => {
       ['metro', null],
     ]);
     expect(t.client.posts[1].opts.text).toMatch(
-      /^🚋 SEPTA Metro trolleys and M1 · 15-minute timelapse/,
+      /^🚋 SEPTA Metro trolleys, M1 and L1 · 15-minute timelapse/,
     );
 
     startSnapshots(t.db, { now: NOW + 3 * 3_600_000 });
@@ -585,10 +585,9 @@ describe('captures', () => {
       start: NOW,
       durationMs: MIN,
     });
-    db.prepare("INSERT INTO capture_samples VALUES (?, 'a', 'a', '23', ?, 40, -75, 0)").run(
-      id,
-      NOW,
-    );
+    db.prepare(
+      "INSERT INTO capture_samples (capture_id, vehicle_id, label, route, t, lat, lon, late_min) VALUES (?, 'a', 'a', '23', ?, 40, -75, 0)",
+    ).run(id, NOW);
     db.prepare("UPDATE captures SET status = 'done'").run();
     expect(pruneDb(db, NOW + 2 * MIN, { observationRetentionDays: 3 }).samples).toBe(1);
   });

@@ -30,6 +30,7 @@ export const CROSS_CONFIG = {
   dailyCapTotal: 4,
 };
 const KEYCAPS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+const OFF_STREET = new Set(['l1']);
 const SITE_HOST = new URL(SITE_ORIGIN).host;
 
 /** Ids of vehicles that have barely moved over the last few minutes. */
@@ -83,6 +84,8 @@ export function clusters(vehicles, linkM) {
 export function findCluster({ vehicles, stopped, schedule, now, cfg = CROSS_CONFIG }) {
   const candidates = vehicles.filter((v) => {
     if (v.mode === 'regional_rail' || v.nextStopSequence == null) return false;
+    // The El and the subway share no street with the buses.
+    if (OFF_STREET.has(v.route)) return false;
     if (v.nextStopSequence <= cfg.endStops) return false;
     const trip = v.tripId && schedule ? schedule.tripTimes(v.tripId, now) : null;
     if (trip?.lastSequence && v.nextStopSequence >= trip.lastSequence - cfg.endStops + 1)

@@ -1,7 +1,8 @@
 // The server's main loop, one job per concern:
 //
-//   observe      every minute: poll TransitView (buses, trolleys, M1) and
-//                TrainView (Regional Rail), record every position
+//   observe      every minute: poll TransitView (buses, trolleys, M1), the
+//                GTFS-realtime vehicle feed (the L1's trains), and TrainView
+//                (Regional Rail), record every position
 //   collect      every 2 minutes: run the collector on the latest positions,
 //                post to Bluesky from its beforePublish hook (the insights
 //                account's reposts, rough hours, and digests too), link the
@@ -24,7 +25,9 @@ import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { collect } from '../../collector/collect.js';
 import { loadArchive } from '../../collector/lib/archive.js';
+import { decodeVehiclePositions } from '../../collector/lib/gtfsRealtime.js';
 import { createSources } from '../../collector/lib/sources.js';
+import { subwayLine, trackSubway } from '../../collector/lib/subwayTrains.js';
 import { screenVehicles } from '../../collector/lib/vehicleScreen.js';
 import { normalizeTransitView } from '../../collector/lib/vehicles.js';
 import { linkAlertPosts, postAlerts } from '../features/alerts.js';
@@ -76,8 +79,15 @@ export function createPipeline({
   sources = createSources({ fixturesDir: config.fixturesDir }),
   fetchFn = fetch,
 }) {
-  const latest = { transitView: null, trainView: null };
+  const latest = { transitView: null, trainView: null, vehiclePositions: null };
   let shapes = null;
+  // The schedule the collector last loaded, for placing the L1's trains between its ticks.
+  let schedule = null;
+  // The L1's trains are tracked here as well as in the collector (subwayTrains.js), so the
+  // minute-by-minute observations and the timelapses follow them too.
+  let subwayState = {};
+  let subwayAt = 0;
+  let subway = null; // { shapes, line }: the L1's line, from the shapes it was built from
   // When the shapes were last read from the cache file, to read them again once the collector
   // has rebuilt it (a day's GTFS update, or a release that changes what the cache holds).
   let shapesStamp = null;
@@ -116,6 +126,23 @@ export function createPipeline({
     return shapes;
   }
 
+  /** The L1's trains in a VehiclePositions feed (raw bytes) at t; [] until there's a schedule. */
+  function subwayTrains(buffer, t) {
+    if (!schedule || !buffer) return [];
+    if (!subway || subway.shapes !== shapes) subway = { shapes, line: subwayLine(shapes) };
+    if (!subway.line) return [];
+    // The 15-second timelapse polls and the minute's observe can finish out of order.
+    subwayAt = Math.max(subwayAt, t);
+    const tracked = trackSubway(decodeVehiclePositions(buffer), {
+      schedule,
+      line: subway.line,
+      state: subwayState,
+      now: subwayAt,
+    });
+    subwayState = tracked.state;
+    return tracked.trains;
+  }
+
   async function ping(suffix = '') {
     if (!config.healthcheckUrl) return;
     try {
@@ -140,7 +167,15 @@ export function createPipeline({
 
     /** Poll positions for running timelapse captures (every 15 seconds). */
     sampleCaptures() {
-      return sampleCaptures({ db, sources, shapes, now: now(), log });
+      const t = now();
+      return sampleCaptures({
+        db,
+        sources,
+        shapes,
+        subway: async () => subwayTrains(await sources.vehiclePositions(), t),
+        now: t,
+        log,
+      });
     },
 
     /** Render and post the next finished timelapse, if any. */
@@ -197,7 +232,11 @@ export function createPipeline({
 
     async observe() {
       const t = now();
-      const [tv, rr] = await Promise.allSettled([sources.transitView(), sources.trainView()]);
+      const [tv, rr, vp] = await Promise.allSettled([
+        sources.transitView(),
+        sources.trainView(),
+        sources.vehiclePositions(),
+      ]);
       let vehicles = [];
       if (tv.status === 'fulfilled') {
         latest.transitView = { ts: t, payload: tv.value };
@@ -213,6 +252,17 @@ export function createPipeline({
         vehicles = screened.vehicles.filter((v) => !v.frozen);
       } else {
         log(`observe: TransitView failed: ${tv.reason?.message ?? tv.reason}`);
+      }
+      if (vp.status === 'fulfilled') {
+        latest.vehiclePositions = { ts: t, payload: vp.value };
+        try {
+          // A train overdue out of the tunnel (`frozen`) is somewhere unknown: not recorded.
+          vehicles.push(...subwayTrains(vp.value, t).filter((v) => !v.frozen));
+        } catch (err) {
+          log(`observe: L1 trains failed: ${err.message}`);
+        }
+      } else {
+        log(`observe: vehicle feed failed: ${vp.reason?.message ?? vp.reason}`);
       }
       let trains = [];
       if (rr.status === 'fulfilled' && Array.isArray(rr.value)) {
@@ -241,15 +291,22 @@ export function createPipeline({
         sources: {
           transitView: async () => fresh(latest.transitView) ?? sources.transitView(),
           trainView: async () => fresh(latest.trainView) ?? sources.trainView(),
+          vehiclePositions: async () =>
+            fresh(latest.vehiclePositions) ?? sources.vehiclePositions(),
         },
         beforePublish: async ({
           incidents,
           outages,
-          schedule,
+          state,
+          schedule: tickSchedule,
           now: tickNow,
           vehicles: vehicleList,
           summary: { dataStartTs },
         }) => {
+          if (tickSchedule) schedule = tickSchedule;
+          // After a restart, pick up where the collector's tracking of the L1 is (the cars in
+          // the tunnel, how long trains are taking through it).
+          if (!subwayState.cars && state?.subway) subwayState = state.subway;
           // The positions the detectors used, screened the same way, so a post's map shows the
           // vehicles where the detection saw them.
           const vehicles = new Map();
@@ -293,7 +350,7 @@ export function createPipeline({
           const crossRoute = await step('cross-bunching', () =>
             postCrossBunching({
               vehicles: vehicleList,
-              schedule,
+              schedule: tickSchedule,
               db,
               poster,
               shapes,

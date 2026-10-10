@@ -71,9 +71,14 @@ function lateness(v) {
 }
 
 function vehicleRef(v, tag = null) {
-  const extra = [tag, lateness(v)].filter(Boolean).join(', ');
+  // An L1 train in the tunnel has no GPS: it's placed by the schedule (subwayTrains.js).
+  const extra = [tag, lateness(v), v.estimated ? 'in the tunnel' : null].filter(Boolean).join(', ');
   return `#${v.label}${extra ? ` (${extra})` : ''}`;
 }
+
+// Said under a map with a train placed by the schedule.
+const PLACED_ALT =
+  ' Dashed markers are trains in the tunnel, where they have no GPS, placed by the schedule.';
 
 // Assemble a post: the first two lines (headline and main fact) and the
 // footer always; the optional lines after them only while the post still
@@ -155,8 +160,8 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
       plan = planRouteMap({
         routes: lines,
         markers: [
-          { lat: ahead.lat, lon: ahead.lon, tag: 'L' },
-          { lat: behind.lat, lon: behind.lon, tag: 'N' },
+          { lat: ahead.lat, lon: ahead.lon, tag: 'L', estimated: Boolean(ahead.estimated) },
+          { lat: behind.lat, lon: behind.lon, tag: 'N', estimated: Boolean(behind.estimated) },
         ],
         stretch: stretch ? { points: stretch } : null,
         title: `⚠ ${label} · ~${d.gap_min} min gap`,
@@ -164,7 +169,8 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
     }
     const alt =
       `Map of ${label} with the last ${noun.replace(/s$/, '')} seen (L) and the next one up (N) ` +
-      `~${d.gap_min} minutes apart${plan?.stretch ? ', the empty stretch between them dashed' : ''}.`;
+      `~${d.gap_min} minutes apart${plan?.stretch ? ', the empty stretch between them dashed' : ''}.` +
+      (plan && (ahead.estimated || behind.estimated) ? PLACED_ALT : '');
     const focus =
       ahead && behind
         ? [
@@ -199,11 +205,18 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
               ? [{ points: shape(d.direction_id ?? 0), color }]
               : allShapes(),
           ),
-          markers: ordered.map((v, i) => ({ lat: v.lat, lon: v.lon, tag: String(i + 1) })),
+          markers: ordered.map((v, i) => ({
+            lat: v.lat,
+            lon: v.lon,
+            tag: String(i + 1),
+            estimated: Boolean(v.estimated),
+          })),
           title: `⚠ ${label} · ${d.vehicle_count} ${noun} bunched`,
         })
       : null;
-    const alt = `Map of ${label} with ${d.vehicle_count} ${noun} numbered in order, running together${near ? ` near ${near}` : ''}.`;
+    const alt =
+      `Map of ${label} with ${d.vehicle_count} ${noun} numbered in order, running together${near ? ` near ${near}` : ''}.` +
+      (plan && ordered.some((v) => v.estimated) ? PLACED_ALT : '');
     const focus = ordered.map((v, i) => ({ v, tag: String(i + 1) }));
     return { text, facets, alt, plan, focus };
   }

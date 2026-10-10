@@ -26,6 +26,10 @@ export const ENDPOINTS = {
   // trips carry schedule_relationship CANCELED — the day's cancellations are
   // published ahead of time.
   tripUpdates: 'https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb',
+  // GTFS-realtime VehiclePositions (protobuf): the same buses and trolleys as TransitView, and
+  // the Market-Frankford Line's cars, which TransitView only shows as placeholders. Those report
+  // by car number with no trip (see subwayTrains.js).
+  vehiclePositions: 'https://www3.septa.org/gtfsrt/septa-pa-us/Vehicle/rtVehiclePosition.pb',
   // One train's stops for today with scheduled / estimated / actual times.
   railSchedule: (trainNo) =>
     `https://www3.septa.org/api/RRSchedules/index.php?req1=${encodeURIComponent(trainNo)}`,
@@ -37,6 +41,7 @@ const FIXTURE_FILES = {
   elevators: 'elevators.json',
   transitView: 'transitview.json',
   tripUpdates: 'trip-updates.pb',
+  vehiclePositions: 'vehicle-positions.pb',
 };
 
 async function fetchJson(url, { timeoutMs = 20000, retries = 2 } = {}) {
@@ -77,7 +82,7 @@ async function fetchBinary(url, { timeoutMs = 20000, retries = 2 } = {}) {
 }
 
 /**
- * Build the source readers. Each returns parsed JSON (tripUpdates: raw
+ * Build the source readers. Each returns parsed JSON (tripUpdates, vehiclePositions: raw
  * protobuf bytes) or throws.
  * @param {{ fixturesDir?: string | null }} [opts]
  */
@@ -95,6 +100,10 @@ export function createSources({ fixturesDir = null } = {}) {
     async tripUpdates() {
       if (fixturesDir) return readFile(join(fixturesDir, FIXTURE_FILES.tripUpdates));
       return fetchBinary(ENDPOINTS.tripUpdates);
+    },
+    async vehiclePositions() {
+      if (fixturesDir) return readFile(join(fixturesDir, FIXTURE_FILES.vehiclePositions));
+      return fetchBinary(ENDPOINTS.vehiclePositions);
     },
     /** One route's vehicles, as { bus: vehicle[] } (route: a raw SEPTA route id). */
     async transitViewRoute(route) {

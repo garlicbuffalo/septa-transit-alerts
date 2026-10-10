@@ -1,8 +1,9 @@
 // What each timelapse shows. A detection timelapse follows the vehicles from
 // its post (numbered, or L and N for a gap) along their route for the next
 // ten minutes, with the route's other vehicles as small dots. A system
-// snapshot shows every tracked bus, or every Metro trolley and M1 car, colored
-// by how late it's running.
+// snapshot shows every tracked bus, or every Metro trolley, M1 car and L1
+// train, colored by how late it's running. An L1 train in the tunnel, placed
+// by the schedule rather than its GPS, is drawn dashed.
 import metroShapes from '../../src/lib/metroLineShapes.json' with { type: 'json' };
 import { METRO_LINES } from '../../src/lib/metroLines.js';
 import { clockLabel } from '../lib/clock.js';
@@ -14,8 +15,11 @@ import { dotLegend, elapsedLabel, hud, VIDEO_SIZE } from './timelapse.js';
 import { positionAt, trailAt } from './tracks.js';
 
 const MIN_SPAN_DEG = 0.012;
-// Metro lines on SEPTA's live tracker (the subway lines aren't).
-export const TRACKED_METRO = ['t1', 't2', 't3', 't4', 't5', 'g1', 'd1', 'd2', 'm1'];
+// Metro lines on SEPTA's live trackers (the L1 from the GTFS-realtime vehicle feed; the Broad
+// Street Line isn't tracked).
+export const TRACKED_METRO = ['l1', 't1', 't2', 't3', 't4', 't5', 'g1', 'd1', 'd2', 'm1'];
+// The dashes around a vehicle placed by the schedule.
+const EST_DASH = 'stroke-dasharray="6 5"';
 
 export const LATENESS = [
   { key: 'early', label: 'Early (3+ min)', color: '#c06cff' },
@@ -173,7 +177,9 @@ export function focusScene({ capture, focus, routes, tracks, size = VIDEO_SIZE }
       const p = positionAt(o, t);
       if (!p) continue;
       const q = px(p);
-      svg += `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="9" fill="${routeColor.get(o.route)}" fill-opacity="${(0.9 * p.opacity).toFixed(2)}" stroke="#0b0d10" stroke-width="3" stroke-opacity="${p.opacity.toFixed(2)}"/>`;
+      svg += p.est
+        ? `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="9" fill="${routeColor.get(o.route)}" fill-opacity="${(0.45 * p.opacity).toFixed(2)}" stroke="#fff" stroke-width="2.5" ${EST_DASH} stroke-opacity="${p.opacity.toFixed(2)}"/>`
+        : `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="9" fill="${routeColor.get(o.route)}" fill-opacity="${(0.9 * p.opacity).toFixed(2)}" stroke="#0b0d10" stroke-width="3" stroke-opacity="${p.opacity.toFixed(2)}"/>`;
     }
     const positions = focusTracks.map((v) => positionAt(v.track, t));
     if (capture.kind === 'gap' && gapShape && positions[0] && positions[1]) {
@@ -195,8 +201,9 @@ export function focusScene({ capture, focus, routes, tracks, size = VIDEO_SIZE }
     );
     for (const m of placed) {
       const o = m.p.opacity.toFixed(2);
+      const dash = m.p.est ? ` stroke-dasharray="10 7" fill-opacity="0.75"` : '';
       svg +=
-        `<g opacity="${o}"><circle cx="${m.x.toFixed(1)}" cy="${m.y.toFixed(1)}" r="${MARKER_R}" fill="${m.color ?? MARKER}" stroke="#fff" stroke-width="4"/>` +
+        `<g opacity="${o}"><circle cx="${m.x.toFixed(1)}" cy="${m.y.toFixed(1)}" r="${MARKER_R}" fill="${m.color ?? MARKER}" stroke="#fff" stroke-width="4"${dash}/>` +
         `<text x="${m.x.toFixed(1)}" y="${(m.y + 8).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="23" font-weight="800" fill="#fff">${escapeXml(m.tag)}</text></g>`;
     }
     svg += hud({
@@ -275,9 +282,13 @@ export function snapshotScene({ capture, mode, title, noun, tracks, lines, size 
       l,
     );
   }
-  const legend = dotLegend([...LATENESS, { label: 'Not matched to a trip', color: NO_SCHEDULE }], {
-    height: view.height,
-  });
+  const placedRow = all.some((t) => t.points.some((p) => p.est))
+    ? [{ label: 'In the tunnel, placed by the schedule', color: NO_SCHEDULE, dashed: true }]
+    : [];
+  const legend = dotLegend(
+    [...LATENESS, { label: 'Not matched to a trip', color: NO_SCHEDULE }, ...placedRow],
+    { height: view.height },
+  );
   const r = mode === 'metro' ? 9 : 5.5;
 
   function drawFrame(t, progress) {
@@ -288,7 +299,9 @@ export function snapshotScene({ capture, mode, title, noun, tracks, lines, size 
       if (!p || p.opacity <= 0) continue;
       count++;
       const q = project(view, p.lat, p.lon);
-      svg += `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="${r}" fill="${latenessColor(p.late)}" fill-opacity="${p.opacity.toFixed(2)}" stroke="#0b0d10" stroke-width="1.5" stroke-opacity="${p.opacity.toFixed(2)}"/>`;
+      svg += p.est
+        ? `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="${r}" fill="${latenessColor(p.late)}" fill-opacity="${(0.45 * p.opacity).toFixed(2)}" stroke="#fff" stroke-width="2" stroke-dasharray="4 3" stroke-opacity="${p.opacity.toFixed(2)}"/>`
+        : `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="${r}" fill="${latenessColor(p.late)}" fill-opacity="${p.opacity.toFixed(2)}" stroke="#0b0d10" stroke-width="1.5" stroke-opacity="${p.opacity.toFixed(2)}"/>`;
     }
     svg += legend;
     svg += hud({

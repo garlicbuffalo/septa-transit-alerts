@@ -2,7 +2,7 @@
 
 The always-on half of the project. It runs on a small server and:
 
-- **Collects.** It polls SEPTA's vehicle positions every minute and runs the collector (`../collector/`) every two minutes, a 5× tighter loop than the GitHub Actions schedule.
+- **Collects.** It polls SEPTA's vehicle positions every minute (TransitView, and the GTFS-realtime vehicle feed for the L1's trains) and runs the collector (`../collector/`) every two minutes, a 5× tighter loop than the GitHub Actions schedule.
 - **Posts to Bluesky.** It uses four accounts, one per stream:
 
   | Account | Posts |

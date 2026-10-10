@@ -13,6 +13,11 @@
 //     stops: [stop name, …],                 // origin/destination names, by index
 //     trips: { [trip_id]: [route, direction_id, service_id, start_sec, end_sec,
 //                          origin_stop_idx, dest_stop_idx, last_stop_sequence] },
+//     timed: { [route]: {                   // TIMED_ROUTES only: every stop's time
+//       stops: [[lat, lon, name], …],        // by index
+//       patterns: [[[stop_idx, stop_sequence], …], …],   // each distinct run of stops
+//       trips: { [trip_id]: [pattern_idx, sec, sec, …] },  // the time at each stop
+//     } },
 //   }
 //
 // `route` is the published route key (classifyRoute) and *_sec are seconds past
@@ -26,7 +31,11 @@ import { classifyRoute } from './network.js';
 import { buildRouteShapes, SHAPES_FILE, SHAPES_REV } from './shapes.js';
 import { easternParts, easternToEpoch } from './time.js';
 
-export const SCHEDULE_VERSION = 1;
+export const SCHEDULE_VERSION = 2;
+// Routes whose every stop time is kept, not just each trip's ends: the Market-Frankford Line's
+// trains report with no trip, and are placed along the line and matched to their trips from
+// these (subwayTrains.js).
+export const TIMED_ROUTES = new Set(['l1']);
 const CACHE_FILE = 'schedule-index.json';
 const MAX_CACHE_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -56,6 +65,7 @@ export function buildScheduleIndex(zip, now = Date.now()) {
   // stop_times.txt is the big one: scan it line by line, keeping only each
   // trip's first and last stop, without materializing every row.
   const ends = new Map(); // trip_id → [minSeq, startSec, originStop, maxSeq, endSec, destStop]
+  const timedRows = new Map(); // trip_id → [[seq, stopId, sec], …], TIMED_ROUTES only
   const text = zip.read('stop_times.txt').toString('utf8');
   let pos = text.charCodeAt(0) === 0xfeff ? 1 : 0;
   let nl = text.indexOf('\n', pos);
@@ -75,8 +85,13 @@ export function buildScheduleIndex(zip, now = Date.now()) {
     if (!line) continue;
     const cells = line.includes('"') ? parseCsvLine(line) : line.split(',');
     const tripId = cells[iTrip];
-    if (!trips.has(tripId)) continue;
+    const trip = trips.get(tripId);
+    if (!trip) continue;
     const seq = Number(cells[iSeq]);
+    if (TIMED_ROUTES.has(trip.route)) {
+      if (!timedRows.has(tripId)) timedRows.set(tripId, []);
+      timedRows.get(tripId).push([seq, cells[iStop], gtfsSeconds(cells[iDep] || cells[iArr])]);
+    }
     let e = ends.get(tripId);
     if (!e) {
       e = [Infinity, null, null, -Infinity, null, null];
@@ -95,7 +110,14 @@ export function buildScheduleIndex(zip, now = Date.now()) {
   }
 
   const stopNames = new Map();
-  eachCsvRow(zip.read('stops.txt').toString('utf8'), (r) => stopNames.set(r.stop_id, r.stop_name));
+  const stopPlaces = new Map(); // stop_id → [lat, lon]
+  eachCsvRow(zip.read('stops.txt').toString('utf8'), (r) => {
+    stopNames.set(r.stop_id, r.stop_name);
+    const lat = Number(r.stop_lat);
+    const lon = Number(r.stop_lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon) && lat && lon)
+      stopPlaces.set(r.stop_id, [lat, lon]);
+  });
   const stops = [];
   const stopIdx = new Map();
   const stopRef = (id) => {
@@ -113,6 +135,8 @@ export function buildScheduleIndex(zip, now = Date.now()) {
     if (!e || e[1] == null || e[4] == null) continue;
     out[tripId] = [t.route, t.dir, t.service, e[1], e[4], stopRef(e[2]), stopRef(e[5]), e[3]];
   }
+
+  const timed = buildTimed(trips, timedRows, stopNames, stopPlaces);
 
   const services = {};
   const service = (id) => {
@@ -150,7 +174,52 @@ export function buildScheduleIndex(zip, now = Date.now()) {
     services,
     stops,
     trips: out,
+    timed,
   };
+}
+
+// The `timed` part of the index: each TIMED_ROUTES trip's time at every stop, its stops shared
+// with the other trips that run the same ones.
+function buildTimed(trips, timedRows, stopNames, stopPlaces) {
+  const timed = {};
+  for (const [tripId, rows] of timedRows) {
+    const route = trips.get(tripId).route;
+    if (!timed[route]) {
+      timed[route] = {
+        stops: [],
+        patterns: [],
+        trips: {},
+        stopIdx: new Map(),
+        patternIdx: new Map(),
+      };
+    }
+    const r = timed[route];
+    rows.sort((a, b) => a[0] - b[0]);
+    if (rows.some(([, stopId, sec]) => sec == null || !stopPlaces.has(stopId))) continue;
+    const pattern = rows.map(([seq, stopId]) => {
+      if (!r.stopIdx.has(stopId)) {
+        const [lat, lon] = stopPlaces.get(stopId);
+        r.stopIdx.set(stopId, r.stops.length);
+        r.stops.push([
+          Math.round(lat * 1e5) / 1e5,
+          Math.round(lon * 1e5) / 1e5,
+          stopNames.get(stopId) ?? stopId,
+        ]);
+      }
+      return [r.stopIdx.get(stopId), seq];
+    });
+    const key = JSON.stringify(pattern);
+    if (!r.patternIdx.has(key)) {
+      r.patternIdx.set(key, r.patterns.length);
+      r.patterns.push(pattern);
+    }
+    r.trips[tripId] = [r.patternIdx.get(key), ...rows.map(([, , sec]) => sec)];
+  }
+  for (const r of Object.values(timed)) {
+    delete r.stopIdx;
+    delete r.patternIdx;
+  }
+  return timed;
 }
 
 function safeRead(zip, name) {
@@ -170,13 +239,17 @@ export async function downloadBusFeed() {
 }
 
 /**
- * Whether a cached index can be used as it is: under a day old, and built when the shapes cache
- * held everything it does now (see SHAPES_REV). The second part is so that a collector updated
- * with a new kind of shape data has it on its next tick, not up to a day later.
+ * Whether a cached index can be used as it is: under a day old, and built by this version of the
+ * index and when the shapes cache held everything it does now (see SHAPES_REV). The last two are
+ * so that a collector updated to keep something new has it on its next tick, not up to a day
+ * later.
  */
 export function cacheIsCurrent(cached, now) {
   return (
-    Boolean(cached) && now - cached.built_at < MAX_CACHE_AGE_MS && cached.shapes_rev === SHAPES_REV
+    Boolean(cached) &&
+    cached.version === SCHEDULE_VERSION &&
+    now - cached.built_at < MAX_CACHE_AGE_MS &&
+    cached.shapes_rev === SHAPES_REV
   );
 }
 
@@ -198,7 +271,9 @@ export async function loadSchedule({ cacheDir, fixturesDir, now = Date.now(), lo
   if (cacheDir) {
     try {
       cached = JSON.parse(await readFile(join(cacheDir, CACHE_FILE), 'utf8'));
-      if (cached?.version !== SCHEDULE_VERSION) cached = null;
+      // An index from an earlier version still has every trip (version 1 lacks only the L1's
+      // stop times): rebuilt, but the fallback if the download fails.
+      if (!(cached?.version >= 1 && cached.version <= SCHEDULE_VERSION)) cached = null;
     } catch {
       cached = null;
     }
@@ -360,6 +435,59 @@ export class Schedule {
     for (let i = 1; i < starts.length; i++) gaps.push((starts[i] - starts[i - 1]) / 60000);
     gaps.sort((a, b) => a - b);
     return gaps[Math.floor(gaps.length / 2)];
+  }
+
+  /**
+   * A TIMED_ROUTES trip's stops and its scheduled time at each (seconds past its service date's
+   * midnight), or null for a trip whose stop times weren't kept.
+   * @returns {{ stops: Array<{ lat: number, lon: number, name: string, seq: number }>,
+   *   secs: number[] } | null}
+   */
+  stopTimes(tripId) {
+    const t = this.index.trips[tripId];
+    const r = t ? this.index.timed?.[t[0]] : null;
+    const row = r?.trips[tripId];
+    const pattern = row ? r.patterns[row[0]] : null;
+    if (!pattern) return null;
+    const stops = pattern.map(([i, seq]) => {
+      const [lat, lon, name] = r.stops[i];
+      return { lat, lon, name, seq };
+    });
+    return { stops, secs: row.slice(1) };
+  }
+
+  /** Every stop any of a TIMED_ROUTES route's trips serves: [{ lat, lon, name }]. */
+  timedStops(route) {
+    return (this.index.timed?.[route]?.stops ?? []).map(([lat, lon, name]) => ({ lat, lon, name }));
+  }
+
+  /**
+   * A route+direction's trips running at any point of [from, to], each with absolute scheduled
+   * start/end times — activeTrips over a window, for a vehicle running late (its trip's
+   * scheduled end already past) or early (its trip not yet due to start).
+   */
+  tripsBetween(route, direction, from, to) {
+    const list = this.byRouteDir.get(`${route}|${direction}`) ?? [];
+    const out = [];
+    const seen = new Set();
+    for (const day of this.serviceDays(to)) {
+      const fromSec = day.sec - Math.round((to - from) / 1000);
+      for (const t of list) {
+        if (t.start > day.sec) break;
+        if (t.end < fromSec || !this.serviceRuns(t.service, day.date)) continue;
+        const startTs = day.midnight + t.start * 1000;
+        if (seen.has(`${t.tripId}|${startTs}`)) continue;
+        seen.add(`${t.tripId}|${startTs}`);
+        out.push({
+          tripId: t.tripId,
+          origin: t.origin,
+          startTs,
+          endTs: day.midnight + t.end * 1000,
+          midnight: day.midnight,
+        });
+      }
+    }
+    return out.sort((a, b) => a.startTs - b.startTs);
   }
 
   /** Trips a route is scheduled to run (both directions) on a service date. */

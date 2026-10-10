@@ -14,9 +14,10 @@ const LEAD_MS = 90 * 1000; // show a vehicle this long before its first report
 /**
  * Group samples into tracks by vehicle.
  * @param {Iterable<{ vehicle_id: string, label?: string, route: string, t: number,
- *   lat: number, lon: number, late_min?: number | null }>} samples
+ *   lat: number, lon: number, late_min?: number | null, estimated?: number | boolean }>} samples
  * @returns {Map<string, { id: string, label: string, route: string,
- *   points: Array<{ t: number, lat: number, lon: number, late: number | null }> }>}
+ *   points: Array<{ t: number, lat: number, lon: number, late: number | null, est: boolean }> }>}
+ *   est: placed by the schedule (an L1 train in the tunnel), not measured
  */
 export function buildTracks(samples) {
   const tracks = new Map();
@@ -26,7 +27,13 @@ export function buildTracks(samples) {
     if (!tracks.has(id)) {
       tracks.set(id, { id, label: String(s.label ?? id), route: s.route, points: [] });
     }
-    tracks.get(id).points.push({ t: s.t, lat: s.lat, lon: s.lon, late: s.late_min ?? null });
+    tracks.get(id).points.push({
+      t: s.t,
+      lat: s.lat,
+      lon: s.lon,
+      late: s.late_min ?? null,
+      est: Boolean(s.estimated),
+    });
   }
   for (const track of tracks.values()) {
     track.points.sort((a, b) => a.t - b.t);
@@ -37,7 +44,7 @@ export function buildTracks(samples) {
 }
 
 /**
- * Where to draw a vehicle at time t: { lat, lon, opacity, late }, or null
+ * Where to draw a vehicle at time t: { lat, lon, opacity, late, est }, or null
  * when it shouldn't be drawn.
  */
 export function positionAt(track, t) {
@@ -76,6 +83,7 @@ export function positionAt(track, t) {
     lat: a.lat + (b.lat - a.lat) * f,
     lon: a.lon + (b.lon - a.lon) * f,
     late: f < 0.5 ? a.late : b.late,
+    est: f < 0.5 ? a.est : b.est,
     opacity: span > DIM_AFTER_MS ? 0.5 : 1,
   };
 }

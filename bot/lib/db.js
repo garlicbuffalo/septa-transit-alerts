@@ -189,6 +189,13 @@ const MIGRATIONS = [
     PRIMARY KEY (mode, route, text)
   ) WITHOUT ROWID;
   `,
+  `
+  -- Positions placed by the schedule rather than measured: the L1's trains in the
+  -- tunnel, where their cars have no GPS (collector/lib/subwayTrains.js). The
+  -- timelapses draw them differently.
+  ALTER TABLE observations ADD COLUMN estimated INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE capture_samples ADD COLUMN estimated INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /**
