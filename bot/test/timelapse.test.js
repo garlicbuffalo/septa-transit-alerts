@@ -694,7 +694,7 @@ describe('route shapes for gaps', () => {
   });
 });
 
-describe('G1 vehicles in timelapses', () => {
+describe('vehicles in timelapses', () => {
   const t0 = NOW;
   const samples = (list) =>
     list.flatMap(([label, route, lon]) =>
@@ -709,18 +709,20 @@ describe('G1 vehicles in timelapses', () => {
       })),
     );
   const frame = (scene) => scene.staticSvg + scene.drawFrame(t0 + 30_000, 0.5);
-
-  it('draw the G1 as PCC and bus outlines, with a legend, and the rest as dots', async () => {
-    const { focusScene, snapshotScene } = await import('../video/scenes.js');
-    const tracks = buildTracks(
+  const tracks = () =>
+    buildTracks(
       samples([
         ['8433', 'g1', -75.2],
         ['3698', 'g1', -75.17],
         ['2324', 'g1', -75.14],
         ['9051', 't1', -75.19],
+        ['3112', '23', -75.16],
       ]),
     );
-    const focus = frame(
+
+  it('are outlines of what they are on a line timelapse, with a legend', async () => {
+    const { focusScene } = await import('../video/scenes.js');
+    const svg = frame(
       focusScene({
         capture: { kind: 'gap', start_ts: t0, end_ts: t0 + 60_000 },
         focus: {
@@ -731,32 +733,32 @@ describe('G1 vehicles in timelapses', () => {
           ],
         },
         routes: [{ route: 'g1', color: '#FFD700', shapes: [] }],
-        tracks,
+        tracks: tracks(),
       }),
     );
     // The two buses (L, N) and the PCC behind them are outlines; a PCC has a trolley pole.
-    expect(focus.match(/<g opacity/g).length).toBeGreaterThanOrEqual(3);
-    expect(focus).toContain('<line');
-    expect(focus).toContain('PCC trolley');
-    expect(focus).toContain('>Bus<');
-
-    const snapshot = frame(
-      snapshotScene({
-        capture: { start_ts: t0, end_ts: t0 + 60_000 },
-        mode: 'metro',
-        title: 'SEPTA Metro',
-        noun: 'vehicles',
-        tracks,
-        lines: [],
-      }),
-    );
-    expect(snapshot).toContain('G1 PCC trolley');
-    expect(snapshot).toContain('G1 bus');
-    // The T1's trolley stays a dot: no Kawasaki outline in a timelapse.
-    expect(snapshot).not.toContain('Kawasaki');
+    expect(svg.match(/<g opacity/g).length).toBeGreaterThanOrEqual(3);
+    expect(svg).toContain('<line');
+    expect(svg).toContain('PCC trolley');
+    expect(svg).toContain('>Bus<');
   });
 
-  it('leave a route without G1 vehicles all dots, with no outline legend', async () => {
+  it('are outlines on any line: a bus route, a Kawasaki trolley line', async () => {
+    const { focusScene } = await import('../video/scenes.js');
+    const scene = (route, id) =>
+      frame(
+        focusScene({
+          capture: { kind: 'bunching', start_ts: t0, end_ts: t0 + 60_000 },
+          focus: { title: 'bunched', vehicles: [{ id, tag: '1' }] },
+          routes: [{ route, color: '#00c2e0', shapes: [] }],
+          tracks: tracks(),
+        }),
+      );
+    expect(scene('23', '3112')).toContain('<g opacity'); // a bus outline
+    expect(scene('t1', '9051')).toContain('<path'); // the Kawasaki's angled cabs
+  });
+
+  it('are dots in a system snapshot, the G1 included', async () => {
     const { snapshotScene } = await import('../video/scenes.js');
     const svg = frame(
       snapshotScene({
@@ -764,11 +766,12 @@ describe('G1 vehicles in timelapses', () => {
         mode: 'metro',
         title: 'SEPTA Metro',
         noun: 'vehicles',
-        tracks: buildTracks(samples([['9051', 't1', -75.19]])),
+        tracks: tracks(),
         lines: [],
       }),
     );
-    expect(svg).not.toContain('G1 ');
     expect(svg).not.toContain('<g opacity');
+    expect(svg).not.toContain('PCC');
+    expect(svg.match(/<circle/g).length).toBeGreaterThanOrEqual(5);
   });
 });

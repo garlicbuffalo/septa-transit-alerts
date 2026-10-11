@@ -3,14 +3,15 @@
 // ten minutes, with the route's other vehicles as small dots. A system
 // snapshot shows every tracked bus, or every Metro trolley, M1 car and L1
 // train, colored by how late it's running. An L1 train in the tunnel, placed
-// by the schedule rather than its GPS, is drawn dashed. Every vehicle is a dot,
-// except on the G1, which runs PCC trolleys among its buses: there each is an
-// outline of what it is (lib/routes.js vehicleShape), with a legend.
+// by the schedule rather than its GPS, is drawn dashed. A detection timelapse
+// draws each vehicle as an outline of what it is, a bus, a PCC or Kawasaki
+// trolley, a subway car, or an M1 car (lib/routes.js vehicleShape), with a
+// legend when it shows more than one kind; a system snapshot draws dots.
 import metroShapes from '../../src/lib/metroLineShapes.json' with { type: 'json' };
 import { METRO_LINES } from '../../src/lib/metroLines.js';
 import { clockLabel } from '../lib/clock.js';
 import { formatDistance, maxPairDistance, metersBetween, pathLength } from '../lib/geo.js';
-import { isG1, vehicleLegendRows, vehicleShape } from '../lib/routes.js';
+import { vehicleLegendRows, vehicleShape } from '../lib/routes.js';
 import { escapeXml, FONT, line, MARK_WIDTH, vehicleMark } from '../map/draw.js';
 import { bboxOf, fitView, project } from '../map/projection.js';
 import { MARKER, MARKER_R, STRETCH, separate, stretchBetween } from '../map/routeMap.js';
@@ -39,9 +40,6 @@ export function latenessKey(late) {
   if (late < 10) return 'late';
   return 'verylate';
 }
-
-// A G1 vehicle's outline (a PCC trolley or a bus); every other vehicle is a dot.
-const g1Shape = (track) => (isG1(track.route) ? vehicleShape(track) : 'circle');
 
 const latenessColor = (late) =>
   LATENESS.find((b) => b.key === latenessKey(late))?.color ?? NO_SCHEDULE;
@@ -157,11 +155,9 @@ export function focusScene({ capture, focus, routes, tracks, size = VIDEO_SIZE }
   }
 
   const others = [...tracks.values()].filter((t) => !focusIds.has(t.id) && routeColor.has(t.route));
-  // On the G1, which vehicle is a PCC trolley and which a bus (a legend once both are on screen).
-  const g1Legend = vehicleLegendRows(
-    [...focusTracks.map((v) => v.track), ...others].filter((t) => isG1(t.route)),
-  );
-  const legend = g1Legend.length ? dotLegend(g1Legend, { height: view.height }) : '';
+  // Which vehicle is which kind, once more than one kind is on screen (a PCC among the G1's buses).
+  const kinds = vehicleLegendRows([...focusTracks.map((v) => v.track), ...others]);
+  const legend = kinds.length ? dotLegend(kinds, { height: view.height }) : '';
 
   function readout(positions) {
     const live = positions.filter(Boolean);
@@ -188,7 +184,7 @@ export function focusScene({ capture, focus, routes, tracks, size = VIDEO_SIZE }
       const p = positionAt(o, t);
       if (!p) continue;
       const q = px(p);
-      const shape = g1Shape(o);
+      const shape = vehicleShape(o);
       if (shape !== 'circle') {
         svg += vehicleMark(q.x, q.y, 11, {
           shape,
@@ -198,6 +194,8 @@ export function focusScene({ capture, focus, routes, tracks, size = VIDEO_SIZE }
           strokeWidth: 2.5,
           opacity: p.opacity,
           detail: true,
+          // Placed by the schedule (an L1 train in the tunnel): dashed, as on the still maps.
+          ...(p.est && { stroke: '#fff', fillOpacity: 0.45, dash: '6 5', detail: false }),
         });
         continue;
       }
@@ -221,7 +219,7 @@ export function focusScene({ capture, focus, routes, tracks, size = VIDEO_SIZE }
     const marks = focusTracks
       .map((v, i) =>
         positions[i]
-          ? { ...v, ...px(positions[i]), p: positions[i], shape: g1Shape(v.track) }
+          ? { ...v, ...px(positions[i]), p: positions[i], shape: vehicleShape(v.track) }
           : null,
       )
       .filter(Boolean);
@@ -319,17 +317,8 @@ export function snapshotScene({ capture, mode, title, noun, tracks, lines, size 
   const placedRow = all.some((t) => t.points.some((p) => p.est))
     ? [{ label: 'In the tunnel, placed by the schedule', color: NO_SCHEDULE, dashed: true }]
     : [];
-  // The G1's PCC trolleys and buses are outlines (Metro snapshots only).
-  const g1Kinds = new Set(mode === 'metro' ? all.map(g1Shape).filter((s) => s !== 'circle') : []);
-  const g1Rows = ['pcc', 'bus']
-    .filter((shape) => g1Kinds.has(shape))
-    .map((shape) => ({
-      label: shape === 'pcc' ? 'G1 PCC trolley' : 'G1 bus',
-      color: NO_SCHEDULE,
-      shape,
-    }));
   const legend = dotLegend(
-    [...LATENESS, { label: 'Not matched to a trip', color: NO_SCHEDULE }, ...placedRow, ...g1Rows],
+    [...LATENESS, { label: 'Not matched to a trip', color: NO_SCHEDULE }, ...placedRow],
     { height: view.height },
   );
   const r = mode === 'metro' ? 9 : 5.5;
@@ -342,17 +331,6 @@ export function snapshotScene({ capture, mode, title, noun, tracks, lines, size 
       if (!p || p.opacity <= 0) continue;
       count++;
       const q = project(view, p.lat, p.lon);
-      const shape = mode === 'metro' ? g1Shape(track) : 'circle';
-      if (shape !== 'circle') {
-        svg += vehicleMark(q.x, q.y, r + 1, {
-          shape,
-          fill: latenessColor(p.late),
-          stroke: '#0b0d10',
-          strokeWidth: 1.5,
-          opacity: p.opacity,
-        });
-        continue;
-      }
       svg += p.est
         ? `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="${r}" fill="${latenessColor(p.late)}" fill-opacity="${(0.45 * p.opacity).toFixed(2)}" stroke="#fff" stroke-width="2" stroke-dasharray="4 3" stroke-opacity="${p.opacity.toFixed(2)}"/>`
         : `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="${r}" fill="${latenessColor(p.late)}" fill-opacity="${p.opacity.toFixed(2)}" stroke="#0b0d10" stroke-width="1.5" stroke-opacity="${p.opacity.toFixed(2)}"/>`;
