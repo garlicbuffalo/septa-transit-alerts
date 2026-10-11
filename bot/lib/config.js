@@ -96,6 +96,9 @@ export function loadConfig(env = process.env) {
     videos: bool(env.VIDEOS, true),
     ffmpegPath: env.FFMPEG_PATH?.trim() || 'ffmpeg',
     videoDailyCap: num(env.VIDEO_DAILY_CAP, 20),
+    // Posts on the metro account when the G1's vintage PCC trolleys come out
+    // (features/pcc.js). PCC_POSTS=0 turns them off.
+    pccPosts: bool(env.PCC_POSTS, true),
     // Never post an incident first seen longer ago than this (covers restarts
     // and the first start, so a backlog never floods the feed).
     postMaxAgeMs: num(env.POST_MAX_AGE_MIN, 30) * 60 * 1000,

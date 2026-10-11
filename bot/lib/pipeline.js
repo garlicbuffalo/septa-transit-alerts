@@ -5,7 +5,8 @@
 //                (Regional Rail), record every position
 //   collect      every 2 minutes: run the collector on the latest positions,
 //                post to Bluesky from its beforePublish hook (the insights
-//                account's reposts, rough hours, and digests too), link the
+//                account's reposts, rough hours, and digests too, and posts
+//                when the G1's vintage PCC trolleys come out), link the
 //                posts into the data, and publish the data branch
 //   sample       every 15 seconds while a timelapse is recording: poll the
 //                routes it follows (or the whole feed, for a snapshot)
@@ -42,6 +43,7 @@ import {
   postDigest,
   repostHighlights,
 } from '../features/insights.js';
+import { maybePostPcc } from '../features/pcc.js';
 import { maybePostRailRollup, postRailRecap, recordTrains } from '../features/rail.js';
 import { postRecap } from '../features/recaps.js';
 import { maybePublishSpeeds, rollupSpeeds } from '../features/speedhistory.js';
@@ -301,6 +303,7 @@ export function createPipeline({
           schedule: tickSchedule,
           now: tickNow,
           vehicles: vehicleList,
+          pcc: pccStatus,
           summary: { dataStartTs },
         }) => {
           if (tickSchedule) schedule = tickSchedule;
@@ -347,6 +350,19 @@ export function createPipeline({
           const cancellations = await step('cancellations', () =>
             maybePostCancellationRoundups({ incidents, poster, db, now: tickNow, log }),
           );
+          const pcc = config.pccPosts
+            ? await step('pcc', () =>
+                maybePostPcc({
+                  poster,
+                  pcc: pccStatus,
+                  vehicles: vehicleList,
+                  shapes,
+                  basemap,
+                  now: tickNow,
+                  log,
+                }),
+              )
+            : null;
           const crossRoute = await step('cross-bunching', () =>
             postCrossBunching({
               vehicles: vehicleList,
@@ -376,6 +392,7 @@ export function createPipeline({
             ghosts,
             rail,
             cancellations,
+            pcc,
             crossRoute,
             reposts,
             roughHour,
@@ -416,6 +433,7 @@ export function createPipeline({
           (summary.hook?.cancellations?.posts
             ? `, cancelled-trip roundup ${summary.hook.cancellations.routes} routes`
             : '') +
+          (summary.hook?.pcc?.posted ? `, PCC post (${summary.hook.pcc.posted} cars)` : '') +
           (summary.hook?.crossRoute?.posted ? ', cross-route cluster posted' : '') +
           (summary.hook?.reposts?.reposted ? `, reposted ${summary.hook.reposts.reposted}` : '') +
           (summary.hook?.roughHour?.posted ? ', rough hour posted' : '') +

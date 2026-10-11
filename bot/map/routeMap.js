@@ -3,7 +3,17 @@
 // them. Also draws several routes at once (cross-route clusters). Modeled on
 // cta-insights' bunching and gap maps (ISC).
 import { METRO_LINES } from '../../src/lib/metroLines.js';
-import { composite, escapeXml, FONT, line, titlePill } from './draw.js';
+import { vehicleLegendRows, vehicleShape } from '../lib/routes.js';
+import {
+  composite,
+  dotLegend,
+  escapeXml,
+  FONT,
+  line,
+  MARK_WIDTH,
+  titlePill,
+  vehicleMark,
+} from './draw.js';
 import { sliceBranch } from './lineMap.js';
 import { bboxOf, fitView, project } from './projection.js';
 
@@ -52,13 +62,51 @@ export function separate(points, minDist = MARKER_R * 2 + 6) {
 
 /**
  * @param {{ routes: Array<{ points: number[][], color: string }>,
- *   markers: Array<{ lat: number, lon: number, tag: string, color?: string, estimated?: boolean }>,
- *   stretch?: { points: number[][] } | null, title: string }} opts
- *   estimated: a vehicle placed by the schedule (an L1 train in the tunnel), drawn dashed
+ *   markers: Array<{ lat: number, lon: number, tag: string, color?: string, estimated?: boolean,
+ *     mode?: string, route?: string, label?: string }>,
+ *   dots?: Array<{ lat: number, lon: number, color?: string, mode?: string, route?: string,
+ *     label?: string }>,
+ *   stretch?: { points: number[][] } | null, title: string,
+ *   legend?: Array<{ label: string, color: string, shape?: string }> | null,
+ *   fit?: number[][] | null }} opts
+ *   estimated: a vehicle placed by the schedule (an L1 train in the tunnel), drawn dashed;
+ *   mode, route, and label: the vehicle's, so it's drawn as an outline of what it is, a bus, a
+ *   trolley, an M1 car, or a Regional Rail train (lib/routes.js vehicleShape), with a legend when
+ *   the map shows more than one kind; dots: unnumbered
+ *   vehicles drawn small, for context; fit: [lat, lon] points the view must show instead of
+ *   framing the markers (a whole line)
  */
-export function planRouteMap({ routes, markers, stretch = null, title }) {
+export function planRouteMap({
+  routes,
+  markers: rawMarkers,
+  dots: rawDots = [],
+  stretch = null,
+  title,
+  legend = null,
+  fit = null,
+}) {
+  const shaped = (m) => ({ ...m, shape: vehicleShape(m) });
+  const markers = rawMarkers.map(shaped);
+  const dots = rawDots.map(shaped);
   const focus = [...markers.map((m) => [m.lat, m.lon]), ...(stretch?.points ?? [])];
   if (focus.length === 0) return null;
+  const legendRows = legend ?? vehicleLegendRows([...markers, ...dots]);
+  const plan = {
+    routes,
+    markers,
+    dots,
+    stretch,
+    title,
+    legend: legendRows.length ? legendRows : null,
+  };
+  if (fit?.length) {
+    const view = fitView(bboxOf([...fit, ...focus]), MAP_SIZE, MAP_SIZE, {
+      pad: 120,
+      minZoom: 11,
+      maxZoom: 16,
+    });
+    return { ...plan, view };
+  }
   const bb = bboxOf(focus);
   const spanLat = Math.max(MIN_SPAN_DEG, bb.maxLat - bb.minLat);
   const spanLon = Math.max(MIN_SPAN_DEG, bb.maxLon - bb.minLon);
@@ -71,10 +119,7 @@ export function planRouteMap({ routes, markers, stretch = null, title }) {
     maxLon: cLon + spanLon * 0.65,
   };
   return {
-    routes,
-    markers,
-    stretch,
-    title,
+    ...plan,
     view: fitView(bbox, MAP_SIZE, MAP_SIZE, { pad: 120, minZoom: 11, maxZoom: 17 }),
   };
 }
@@ -98,13 +143,34 @@ export async function renderRouteMap(plan, { basemap }) {
     body += line(pts, { color: '#000', width: 16, opacity: 0.6 });
     body += line(pts, { color: STRETCH, width: 10, opacity: 1, dash: '20 14' });
   }
-  const placed = separate(plan.markers.map((m) => ({ ...m, ...px([m.lat, m.lon]) })));
+  // Unnumbered context vehicles (`dots`: { lat, lon, color?, shape? }), under the markers.
+  for (const d of plan.dots ?? []) {
+    const p = px([d.lat, d.lon]);
+    body += vehicleMark(p.x, p.y, 11, {
+      shape: d.shape,
+      fill: d.color ?? '#e8eaed',
+      fillOpacity: 0.9,
+      stroke: '#0b0d10',
+      detail: true,
+    });
+  }
+  // Vehicle outlines are wider than a circle: give them more room.
+  const widest = Math.max(2, ...plan.markers.map((m) => MARK_WIDTH[m.shape] ?? 2));
+  const placed = separate(
+    plan.markers.map((m) => ({ ...m, ...px([m.lat, m.lon]) })),
+    MARKER_R * widest + 6,
+  );
   for (const m of placed) {
-    const dash = m.estimated ? ` stroke-dasharray="10 7" fill-opacity="0.75"` : '';
     body +=
-      `<circle cx="${m.x.toFixed(1)}" cy="${m.y.toFixed(1)}" r="${MARKER_R}" fill="${m.color ?? MARKER}" stroke="#fff" stroke-width="4"${dash}/>` +
+      vehicleMark(m.x, m.y, MARKER_R, {
+        shape: m.shape,
+        fill: m.color ?? MARKER,
+        strokeWidth: 4,
+        ...(m.estimated && { dash: '10 7', fillOpacity: 0.75 }),
+      }) +
       `<text x="${m.x.toFixed(1)}" y="${(m.y + 8).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="23" font-weight="800" fill="#fff">${escapeXml(m.tag)}</text>`;
   }
+  if (plan.legend?.length) body += dotLegend(plan.legend, { height: view.height, bottom: 0 });
   body += titlePill(plan.title, { width: view.width });
   return composite(await basemap(view), body, { width: view.width, height: view.height });
 }

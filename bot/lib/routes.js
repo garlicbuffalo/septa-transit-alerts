@@ -1,7 +1,9 @@
 // Rider-facing names and emoji for routes in post text, built on the site's
 // own route tables so the bots and the site always agree.
+import { vehicleNoun } from '../../collector/lib/vehicles.js';
 import { busRouteDisplayId, busRouteName } from '../../src/lib/busRoutes.js';
 import { METRO_LINES } from '../../src/lib/metroLines.js';
+import { isPccLabel, PCC_LINE } from '../../src/lib/pcc.js';
 import { RAIL_LINES } from '../../src/lib/railLines.js';
 
 const TROLLEY = /^(t\d|g1|d\d)$/;
@@ -14,6 +16,73 @@ export function routeEmoji(mode, route = null) {
   if (TROLLEY.test(key)) return '🚋';
   if (key === 'm1') return '🚈';
   return '🚇';
+}
+
+/**
+ * The outline a vehicle gets on still maps (map/draw.js vehicleMark): `bus` for a bus, including
+ * the buses that run most G1 trips; `pcc` for the G1's PCC trolleys (told apart from its buses by
+ * fleet number); `lrv` for the Kawasaki trolleys of T1–T5, D1, and D2; `subway` for the L1's (and
+ * Broad Street's) trains; `m1` for an M1 car; `rail` for a Regional Rail train. Timelapses draw
+ * dots for everything.
+ * @param {{ mode?: string, route?: string, label?: string }} v
+ */
+export function vehicleShape({ mode, route, label } = {}) {
+  const key = String(route ?? '').toLowerCase();
+  const m = mode ?? (METRO_LINES[key] ? 'metro' : RAIL_LINES[key] ? 'regional_rail' : null);
+  if (m === 'bus') return 'bus';
+  if (m === 'regional_rail') return 'rail';
+  if (m !== 'metro') return 'circle';
+  if (key === PCC_LINE) return isPccLabel(label) ? 'pcc' : 'bus';
+  if (TROLLEY.test(key)) return 'lrv';
+  if (key === 'm1') return 'm1';
+  if (/^(l1|b\d)$/.test(key)) return 'subway';
+  return 'circle';
+}
+
+/** True for a G1 vehicle, which may be a PCC trolley or a bus. */
+export function isG1(route) {
+  return String(route ?? '').toLowerCase() === PCC_LINE;
+}
+
+/**
+ * What to call vehicles on a route in post text: on the G1, what they are ("buses", "trolleys",
+ * or "vehicles" for a mix, or when none is known); elsewhere vehicleNoun's word.
+ * @param {Array<{ label: string }>} vehicles the ones the post is about
+ */
+export function vehiclesNoun(mode, route, vehicles = [], plural = true) {
+  if (!isG1(route)) return vehicleNoun(mode, route, plural);
+  const kinds = new Set(vehicles.map((v) => vehicleShape({ mode, route, label: v.label })));
+  const word = kinds.size === 1 ? (kinds.has('pcc') ? 'trolley' : 'bus') : 'vehicle';
+  if (!plural) return word;
+  return word === 'bus' ? 'buses' : `${word}s`;
+}
+
+// In legend order.
+const LEGEND_LABELS = {
+  pcc: 'PCC trolley',
+  lrv: 'Kawasaki trolley',
+  subway: 'Subway train',
+  m1: 'M1 train',
+  rail: 'Regional Rail train',
+  bus: 'Bus',
+};
+
+/**
+ * Legend rows for a map's vehicles ({ mode, route, label, shape? }) when they're of more than one
+ * kind (a map of one route's buses needs none).
+ */
+export function vehicleLegendRows(vehicles, { color = '#e8eaed' } = {}) {
+  const kinds = new Map();
+  for (const v of vehicles) {
+    const shape = v.shape ?? vehicleShape(v);
+    if (shape === 'circle') continue;
+    if (!kinds.has(shape)) kinds.set(shape, []);
+    kinds.get(shape).push(v);
+  }
+  if (kinds.size < 2) return [];
+  return Object.keys(LEGEND_LABELS)
+    .filter((shape) => kinds.has(shape))
+    .map((shape) => ({ label: LEGEND_LABELS[shape], color, shape }));
 }
 
 /** "Route 17", "L1", "Paoli/Thorndale Line". */

@@ -4,10 +4,22 @@ Breaking and notable changes to the published data under `/data/` —
 `alerts-recent.json`, the monthly `alerts/<YYYY-MM>.json` shards,
 `incidents/by-line/<key>.json`, `alerts-index.json`, `aggregates.json`,
 `daily-counts.json`, `accessibility.json`, `shapes/<route>.json`,
-`system-map.json`, `speeds/<route>.json`, `speeds/rail/<line>.json`, and `alerts.csv` — and to the
+`system-map.json`, `pcc.json`, `speeds/<route>.json`, `speeds/rail/<line>.json`, and `alerts.csv` — and to the
 syndication feeds (`/feed.xml` and the per-line/route feeds under `/feed/`).
 Newest first. If you build on this data, watch this file before pinning to the
 format.
+
+## 2026-10-11 — PCC trolleys on the G1
+
+- New **`pcc.json`**: the vintage PCC trolleys out on the G1 now, told apart
+  from its buses by fleet number (four digits starting with 23):
+  `{ schema_version: 1, updated_ts, cars: [{ id, direction, destination,
+  next_stop, lat, lon, late_min, first_seen_ts }], buses }`. `direction` is
+  `Eastbound`, `Westbound`, or null; `first_seen_ts` is when the car's current
+  spell on the line began (a car missing from the feed under 15 minutes keeps
+  it); `buses` counts the G1's other tracked vehicles. Rewritten by the
+  collector every tick that TransitView comes through, so `updated_ts` says
+  how current it is. `cars` is empty when no PCC is out.
 
 ## 2026-10-08 — System map shapes
 
