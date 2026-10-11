@@ -91,16 +91,17 @@ describe('vehicle outlines', () => {
   it('draw each vehicle as what it is', async () => {
     const { vehicleShape } = await import('../lib/routes.js');
     expect(vehicleShape({ mode: 'bus', route: '23', label: '3676' })).toBe('bus');
-    expect(vehicleShape({ mode: 'metro', route: 't1', label: '9051' })).toBe('trolley');
-    expect(vehicleShape({ mode: 'metro', route: 'd2', label: '113' })).toBe('trolley');
-    expect(vehicleShape({ mode: 'metro', route: 'g1', label: '2324' })).toBe('trolley'); // a PCC
+    expect(vehicleShape({ mode: 'metro', route: 't1', label: '9051' })).toBe('lrv'); // Kawasaki
+    expect(vehicleShape({ mode: 'metro', route: 'd2', label: '113' })).toBe('lrv');
+    expect(vehicleShape({ mode: 'metro', route: 'g1', label: '2324' })).toBe('pcc');
     expect(vehicleShape({ mode: 'metro', route: 'g1', label: '3676' })).toBe('bus');
     expect(vehicleShape({ mode: 'metro', route: 'm1', label: '154' })).toBe('m1');
     expect(vehicleShape({ mode: 'regional_rail', route: 'pao', label: '9233' })).toBe('rail');
-    expect(vehicleShape({ mode: 'metro', route: 'l1', label: '1001' })).toBe('circle');
+    expect(vehicleShape({ mode: 'metro', route: 'l1', label: '1001' })).toBe('subway');
     // Without a mode, from the route.
     expect(vehicleShape({ route: 'm1' })).toBe('m1');
     expect(vehicleShape({ route: 'pao' })).toBe('rail');
+    expect(vehicleShape({ route: 'b2' })).toBe('subway');
     expect(vehicleShape({})).toBe('circle');
   });
 
@@ -117,7 +118,7 @@ describe('vehicle outlines', () => {
         v('metro', 'g1', '2337'),
         v('bus', '64', '1'),
       ]).map((r) => r.label),
-    ).toEqual(['Trolley', 'Bus']);
+    ).toEqual(['PCC trolley', 'Kawasaki trolley', 'Bus']);
     expect(
       vehicleLegendRows([v('metro', 'm1', '154'), v('regional_rail', 'pao', '9233')]).map(
         (r) => r.shape,
@@ -139,8 +140,13 @@ describe('vehicle outlines', () => {
   it('carry each vehicle’s features', async () => {
     const { vehicleMark } = await import('../map/draw.js');
     const mark = (shape) => vehicleMark(100, 100, 22, { shape, fill: '#f00' });
-    expect(mark('trolley')).toContain('<line'); // the trolley pole
-    expect(mark('trolley').match(/<circle/g)).toHaveLength(4); // two pairs of small wheels
+    expect(mark('pcc')).toContain('<line'); // the trolley pole
+    expect(mark('pcc').match(/<circle/g)).toHaveLength(4); // two pairs of small wheels
+    expect(mark('lrv')).toContain('<line'); // its pole too
+    expect(mark('lrv').match(/<circle/g)).toHaveLength(5); // and a third truck under the joint
+    expect(mark('lrv')).toContain('<path'); // angled cabs
+    expect(mark('subway')).not.toContain('<line'); // no pole
+    expect(mark('subway').match(/<circle/g)).toHaveLength(4);
     expect(mark('bus')).not.toContain('<line');
     expect(mark('bus').match(/<circle/g)).toHaveLength(2); // two big wheels
     expect(mark('m1').match(/<circle/g)).toHaveLength(4); // two bogies

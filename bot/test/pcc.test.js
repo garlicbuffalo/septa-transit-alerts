@@ -55,7 +55,7 @@ describe('PCC post text', () => {
         mode: 'metro',
         route: 'g1',
         label: '2324',
-        shape: 'trolley',
+        shape: 'pcc',
       },
     ]);
     // One kind of vehicle on the map: no legend.

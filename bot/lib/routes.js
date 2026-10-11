@@ -20,9 +20,10 @@ export function routeEmoji(mode, route = null) {
 
 /**
  * The outline a vehicle gets on still maps (map/draw.js vehicleMark): `bus` for a bus, including
- * the buses that run most G1 trips; `trolley` for a trolley (T1–T5, D1, D2, and the G1's PCC cars,
- * told apart from its buses by fleet number); `m1` for an M1 car; `rail` for a Regional Rail
- * train; a circle for anything else (the L1's trains). Timelapses draw dots for everything.
+ * the buses that run most G1 trips; `pcc` for the G1's PCC trolleys (told apart from its buses by
+ * fleet number); `lrv` for the Kawasaki trolleys of T1–T5, D1, and D2; `subway` for the L1's (and
+ * Broad Street's) trains; `m1` for an M1 car; `rail` for a Regional Rail train. Timelapses draw
+ * dots for everything.
  * @param {{ mode?: string, route?: string, label?: string }} v
  */
 export function vehicleShape({ mode, route, label } = {}) {
@@ -31,9 +32,10 @@ export function vehicleShape({ mode, route, label } = {}) {
   if (m === 'bus') return 'bus';
   if (m === 'regional_rail') return 'rail';
   if (m !== 'metro') return 'circle';
-  if (key === PCC_LINE) return isPccLabel(label) ? 'trolley' : 'bus';
-  if (TROLLEY.test(key)) return 'trolley';
+  if (key === PCC_LINE) return isPccLabel(label) ? 'pcc' : 'bus';
+  if (TROLLEY.test(key)) return 'lrv';
   if (key === 'm1') return 'm1';
+  if (/^(l1|b\d)$/.test(key)) return 'subway';
   return 'circle';
 }
 
@@ -50,22 +52,24 @@ export function isG1(route) {
 export function vehiclesNoun(mode, route, vehicles = [], plural = true) {
   if (!isG1(route)) return vehicleNoun(mode, route, plural);
   const kinds = new Set(vehicles.map((v) => vehicleShape({ mode, route, label: v.label })));
-  const word = kinds.size === 1 ? (kinds.has('trolley') ? 'trolley' : 'bus') : 'vehicle';
+  const word = kinds.size === 1 ? (kinds.has('pcc') ? 'trolley' : 'bus') : 'vehicle';
   if (!plural) return word;
   return word === 'bus' ? 'buses' : `${word}s`;
 }
 
+// In legend order.
 const LEGEND_LABELS = {
-  trolley: 'Trolley',
-  bus: 'Bus',
+  pcc: 'PCC trolley',
+  lrv: 'Kawasaki trolley',
+  subway: 'Subway train',
   m1: 'M1 train',
   rail: 'Regional Rail train',
+  bus: 'Bus',
 };
 
 /**
  * Legend rows for a map's vehicles ({ mode, route, label, shape? }) when they're of more than one
- * kind (a map of one route's buses needs none). The G1's trolleys are its PCC cars: "PCC trolley"
- * when they're the only trolleys on the map.
+ * kind (a map of one route's buses needs none).
  */
 export function vehicleLegendRows(vehicles, { color = '#e8eaed' } = {}) {
   const kinds = new Map();
@@ -76,16 +80,9 @@ export function vehicleLegendRows(vehicles, { color = '#e8eaed' } = {}) {
     kinds.get(shape).push(v);
   }
   if (kinds.size < 2) return [];
-  return ['trolley', 'm1', 'rail', 'bus']
+  return Object.keys(LEGEND_LABELS)
     .filter((shape) => kinds.has(shape))
-    .map((shape) => ({
-      label:
-        shape === 'trolley' && kinds.get(shape).every((v) => isG1(v.route))
-          ? 'PCC trolley'
-          : LEGEND_LABELS[shape],
-      color,
-      shape,
-    }));
+    .map((shape) => ({ label: LEGEND_LABELS[shape], color, shape }));
 }
 
 /** "Route 17", "L1", "Paoli/Thorndale Line". */

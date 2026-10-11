@@ -46,19 +46,31 @@ export function line(points, { color, width = 8, opacity = 1, casing = 0, dash =
 }
 
 // How much wider than a circle of the same radius each outline is (for spacing markers apart).
-export const MARK_WIDTH = { circle: 2, trolley: 2.7, bus: 2.7, m1: 2.9, rail: 3.4 };
+export const MARK_WIDTH = {
+  circle: 2,
+  pcc: 2.7,
+  lrv: 3.2,
+  bus: 2.7,
+  subway: 3,
+  m1: 2.9,
+  rail: 3.4,
+};
 
 /**
  * A vehicle's mark centered on (x, y), about as heavy as a circle of radius r: a circle, or a
  * side-view outline of the vehicle, facing right:
- *   trolley  rounded ends, a trolley pole raked back to the wire, paired wheels
+ *   pcc      a PCC trolley: one rounded body, a trolley pole raked back to the wire, paired wheels
+ *   lrv      a Kawasaki trolley (T1–T5, D1, D2): two articulated sections with angled cabs at
+ *            both ends, a trolley pole, and a third truck under the joint
  *   bus      a boxy body on two big wheels
+ *   subway   a subway car: flat ends with couplers, wheels at each end, no pole or roof gear
  *   m1       an M1 (Norristown High Speed Line) car: a squared-off body with a raked cab, roof
  *            equipment, and two bogies (third rail, so no pole)
  *   rail     a two-car Regional Rail train: a long body with a sloped nose, a pantograph, and the
  *            coupling between the cars
  * `detail` adds the windows (left off when a number is drawn on top).
- * @param {{ shape?: 'circle' | 'trolley' | 'bus' | 'm1' | 'rail', fill: string, stroke?: string,
+ * @param {{ shape?: 'circle' | 'pcc' | 'lrv' | 'bus' | 'subway' | 'm1' | 'rail', fill: string,
+ *   stroke?: string,
  *   strokeWidth?: number, fillOpacity?: number, opacity?: number, dash?: string | null,
  *   detail?: boolean }} opts
  */
@@ -101,8 +113,44 @@ export function vehicleMark(
   const poly = (pts) =>
     `<path d="M${pts.map(([px, py]) => `${f(px)},${f(py)}`).join(' L')} Z" ${paint}/>`;
   let svg = `<g opacity="${opacity}">`;
-  if (shape === 'trolley') {
-    svg += `<line x1="${f(left + w * 0.34)}" y1="${f(top)}" x2="${f(left + w * 0.06)}" y2="${f(top - h * 0.62)}" stroke="${light}" stroke-width="${thin}" stroke-linecap="round"/>`;
+  const pole = (at) =>
+    `<line x1="${f(left + w * at)}" y1="${f(top)}" x2="${f(left + w * (at - 0.26))}" y2="${f(top - h * 0.62)}" stroke="${light}" stroke-width="${thin}" stroke-linecap="round"/>`;
+  if (shape === 'lrv') {
+    svg += pole(0.32);
+    for (const at of [0.13, 0.23, 0.5, 0.77, 0.87]) svg += wheel(at, 0.12);
+    const cab = h * 0.36;
+    svg += poly([
+      [left, top + h * 0.32],
+      [left + cab, top],
+      [right - cab, top],
+      [right, top + h * 0.32],
+      [right, bottom],
+      [left, bottom],
+    ]);
+    // The articulation, marked at the roof and the floor so a number drawn across the middle stays clear.
+    const jw = f(Math.max(1, strokeWidth * 0.6));
+    svg += `<line x1="${f(x)}" y1="${f(top)}" x2="${f(x)}" y2="${f(top + h * 0.13)}" stroke="${stroke}" stroke-width="${jw}"/>`;
+    svg += `<line x1="${f(x)}" y1="${f(bottom - h * 0.13)}" x2="${f(x)}" y2="${f(bottom)}" stroke="${stroke}" stroke-width="${jw}"/>`;
+    if (detail) {
+      for (const at of [0.14, 0.29, 0.58, 0.73]) {
+        svg += pane(left + w * at, top + h * 0.24, w * 0.11, h * 0.28);
+      }
+    }
+  } else if (shape === 'subway') {
+    // Couplers at both ends, then the wheels, then the flat-ended body.
+    for (const end of [left - h * 0.16, right]) {
+      svg += `<rect x="${f(end)}" y="${f(bottom - h * 0.36)}" width="${f(h * 0.16)}" height="${f(h * 0.14)}" fill="${light}"/>`;
+    }
+    for (const at of [0.1, 0.21, 0.79, 0.9]) svg += wheel(at, 0.12);
+    svg += `<rect x="${f(left)}" y="${f(top)}" width="${f(w)}" height="${f(h)}" rx="${f(h * 0.08)}" ${paint}/>`;
+    if (detail) {
+      // Windows between the doors.
+      for (const at of [0.06, 0.29, 0.52, 0.75]) {
+        svg += pane(left + w * at, top + h * 0.18, w * 0.17, h * 0.3);
+      }
+    }
+  } else if (shape === 'pcc') {
+    svg += pole(0.34);
     for (const at of [0.17, 0.3, 0.7, 0.83]) svg += wheel(at, 0.13);
     svg += `<rect x="${f(left)}" y="${f(top)}" width="${f(w)}" height="${f(h)}" rx="${f(h * 0.48)}" ${paint}/>`;
     if (detail) svg += pane(left + w * 0.12, top + h * 0.18, w * 0.76, h * 0.3, h * 0.15);
@@ -221,22 +269,25 @@ export function legend(rows, { height, margin = 28, size = 24 }) {
  * kept clear beneath it.
  */
 export function dotLegend(rows, { height, margin = 28, size = 22, bottom = 24 }) {
-  const rowH = size + 12;
-  const w = Math.max(...rows.map((r) => textWidth(r.label, size))) + 72; // + swatch, padding
-  const h = rows.length * rowH + 18;
+  // Vehicle outlines stand taller than a dot (a trolley pole, a pantograph): give them room.
+  const outlines = rows.some((r) => r.shape && r.shape !== 'circle');
+  const rowH = size + (outlines ? 22 : 12);
+  const pad = outlines ? 14 : 9;
+  const w = Math.max(...rows.map((r) => textWidth(r.label, size))) + (outlines ? 80 : 72); // + swatch, padding
+  const h = rows.length * rowH + pad * 2;
   const top = height - margin - bottom - h;
   let svg = `<rect x="${margin}" y="${top}" width="${w.toFixed(0)}" height="${h}" rx="14" fill="rgba(15,17,21,0.85)"/>`;
   rows.forEach((r, i) => {
-    const cy = top + 9 + rowH * i + rowH / 2;
+    const cy = top + pad + rowH * i + rowH / 2 + (outlines ? 3 : 0);
     svg += vehicleMark(
-      margin + 24,
+      margin + (outlines ? 30 : 24),
       cy,
       r.shape && r.shape !== 'circle' ? 11 : 8,
       r.dashed
         ? { shape: r.shape, fill: r.color, fillOpacity: 0.45, strokeWidth: 2, dash: '4 3' }
         : { shape: r.shape, fill: r.color, stroke: '#0b0d10', strokeWidth: 2, detail: true },
     );
-    svg += `<text x="${margin + 52}" y="${(cy + size * 0.35).toFixed(1)}" font-family="${FONT}" font-size="${size}" fill="#e8eaed">${escapeXml(r.label)}</text>`;
+    svg += `<text x="${margin + (outlines ? 60 : 52)}" y="${(cy + size * 0.35).toFixed(1)}" font-family="${FONT}" font-size="${size}" fill="#e8eaed">${escapeXml(r.label)}</text>`;
   });
   return svg;
 }
