@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Seasonal alternate to favicon.svg (see index.html).
+       New Year's (Dec 31 – Jan 2): a Mummers strutter mid-strut, feathered
+       backpiece fanned in SEPTA line colors, in golden slippers. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2330"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <ellipse cx="17.48" cy="23.38" rx="9" ry="3.3" transform="rotate(-165.0 17.48 23.38)" fill="#0097D6"/>
+  <ellipse cx="21.10" cy="17.10" rx="9" ry="3.3" transform="rotate(-135.0 21.10 17.10)" fill="#F26100"/>
+  <ellipse cx="27.38" cy="13.48" rx="9" ry="3.3" transform="rotate(-105.0 27.38 13.48)" fill="#5F249F"/>
+  <ellipse cx="34.62" cy="13.48" rx="9" ry="3.3" transform="rotate(-75.0 34.62 13.48)" fill="#5A960A"/>
+  <ellipse cx="40.90" cy="17.10" rx="9" ry="3.3" transform="rotate(-45.0 40.90 17.10)" fill="#DC2E6B"/>
+  <ellipse cx="44.52" cy="23.38" rx="9" ry="3.3" transform="rotate(-15.0 44.52 23.38)" fill="#4F758B"/>
+  <g stroke="#f1f5f9" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M30.5 37L26 46l-.5 7"/>
+    <path d="M33.5 37l8 2-1.5 7"/>
+    <path d="M29 28l-6.5-6"/>
+    <path d="M35 28l6 4.5"/>
+  </g>
+  <path d="M28 26h8l-1 12h-6Z" fill="#f1f5f9" stroke="#161c26" stroke-width="1" stroke-linejoin="round"/>
+  <circle cx="32" cy="21" r="3.3" fill="#f1f5f9" stroke="#161c26" stroke-width="1"/>
+  <g transform="rotate(0 26.5 55)"><path d="M23.30 55.00H29.70C31.70 55.00 32.90 53.72 33.38 51.48C32.42 52.28 31.30 52.44 30.18 52.12C28.90 51.64 27.30 51.16 25.70 51.16H23.30A1.92 1.92 0 0 0 23.30 55.00Z" fill="#FFD700" stroke="#161c26" stroke-width=".8" stroke-linejoin="round"/><circle cx="33.38" cy="51.32" r="1.12" fill="#FFD700" stroke="#161c26" stroke-width=".7"/></g>
+  <g transform="rotate(-20 40.8 48)"><path d="M37.60 48.00H44.00C46.00 48.00 47.20 46.72 47.68 44.48C46.72 45.28 45.60 45.44 44.48 45.12C43.20 44.64 41.60 44.16 40.00 44.16H37.60A1.92 1.92 0 0 0 37.60 48.00Z" fill="#FFD700" stroke="#161c26" stroke-width=".8" stroke-linejoin="round"/><circle cx="47.68" cy="44.32" r="1.12" fill="#FFD700" stroke="#161c26" stroke-width=".7"/></g>
+  <path d="M50 42l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9Z" fill="#FFD700"/>
+</svg>

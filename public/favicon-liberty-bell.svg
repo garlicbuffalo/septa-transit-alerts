@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Seasonal alternate to favicon.svg (see index.html).
+       Juneteenth through July 4 (Jun 19 – Jul 4): the Liberty Bell, its cast
+       bands in line colors and its crack drawn as a route between two stations. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2330"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+    <clipPath id="bell"><path d="M23 17h18c4.5 0 5.5 6 5.5 13 0 9 3.5 13 8 17v4H9.5v-4c4.5-4 8-8 8-17 0-7 1-13 5.5-13Z"/></clipPath>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <rect x="13" y="7" width="38" height="6" rx="2" fill="#4F758B"/>
+  <rect x="29" y="12" width="6" height="6" fill="#4F758B"/>
+  <path d="M23 17h18c4.5 0 5.5 6 5.5 13 0 9 3.5 13 8 17v4H9.5v-4c4.5-4 8-8 8-17 0-7 1-13 5.5-13Z" fill="#F26100"/>
+  <g clip-path="url(#bell)"><rect x="0" y="21" width="64" height="4" fill="#0097D6"/><rect x="0" y="41" width="64" height="3.5" fill="#5A960A"/></g>
+  <rect x="29" y="12" width="6" height="6" fill="#5F249F"/>
+  <rect x="8" y="49" width="48" height="6" rx="2" fill="#FFD700"/>
+  <path d="M30 52l3-8-3-6 3-8" stroke="#DC2E6B" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="33" cy="30" r="2.4" fill="#fff" stroke="#0d1117" stroke-width="1.2"/>
+  <circle cx="30" cy="52" r="2.4" fill="#fff" stroke="#0d1117" stroke-width="1.2"/>
+</svg>
