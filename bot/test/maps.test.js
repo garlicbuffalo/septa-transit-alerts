@@ -162,3 +162,61 @@ describe('vehicle outlines', () => {
     expect(vehicleMark(100, 100, 22, { fill: '#f00' })).toMatch(/^<circle /);
   });
 });
+
+describe('station labels on line maps', () => {
+  const boxes = (svg) =>
+    [...svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/g)].map(
+      ([, x, y, w, h]) => ({ left: +x, top: +y, right: +x + +w, bottom: +y + +h }),
+    );
+  const overlap = (a, b) =>
+    a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
+  it('puts labels on either side of the line so a run of stations stays readable', async () => {
+    const { placeLabels } = await import('../map/lineMap.js');
+    // Six stations 30 px apart down a straight line: one side alone can't fit them.
+    const stations = Array.from({ length: 6 }, (_, i) => ({
+      name: `Station ${i + 1}`,
+      x: 600,
+      y: 400 + i * 30,
+    }));
+    const svg = placeLabels(stations, {
+      width: 1200,
+      height: 1200,
+      dots: stations.map((s) => ({ x: s.x, y: s.y, r: 13 })),
+    });
+    const placed = boxes(svg);
+    expect(placed.length).toBe(6);
+    expect(placed.some((b) => b.right <= 600)).toBe(true); // some to the left of the line
+    expect(placed.some((b) => b.left >= 600)).toBe(true); // and some to the right
+    for (const a of placed) for (const b of placed) if (a !== b) expect(overlap(a, b)).toBe(false);
+  });
+
+  it("keeps the stretch's ends and leaves off a label with nowhere to go", async () => {
+    const { placeLabels } = await import('../map/lineMap.js');
+    // Twenty stations crammed into 60 px: not all of them fit.
+    const stations = Array.from({ length: 20 }, (_, i) => ({
+      name: `A rather long station name ${i + 1}`,
+      x: 600,
+      y: 500 + i * 3,
+      keep: i === 0 || i === 19,
+    }));
+    const svg = placeLabels(stations, { width: 1200, height: 1200 });
+    expect(svg).toContain('station name 1<');
+    expect(svg).toContain('station name 20<');
+    expect(boxes(svg).length).toBeLessThan(20);
+  });
+
+  it('keeps labels clear of the title and on the image', async () => {
+    const { placeLabels } = await import('../map/lineMap.js');
+    const svg = placeLabels(
+      [
+        { name: 'Under the title', x: 600, y: 60, keep: true },
+        { name: 'At the right edge', x: 1180, y: 600, keep: true },
+      ],
+      { width: 1200, height: 1200 },
+    );
+    const [top, right] = boxes(svg);
+    expect(top.top).toBeGreaterThanOrEqual(100);
+    expect(right.right).toBeLessThanOrEqual(1200);
+  });
+});
