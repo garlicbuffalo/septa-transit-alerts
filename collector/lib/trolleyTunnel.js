@@ -288,7 +288,9 @@ export function placeTunnelTrolleys(
     const portalAt = into.stops.findIndex((s) => s.name === portal.name);
     if (portalAt < 0) return null;
     // How late it went in, and the schedule time it's at now on that trip.
-    // SEPTA's tracker couldn't match it to its trip: not a trolley running its schedule.
+    // First seen with no schedule match (TransitView's late "998"): there's no lateness to go in
+    // with. Underground, that's how a trolley reads near the end of its eastbound trip, so one
+    // already placed keeps its lateness from going in; one first seen like this isn't placed.
     if (car.late0 == null) return null;
     const late = car.t0 - into.ts[portalAt];
     if (late > cfg.maxLateMs || late < -cfg.maxEarlyMs) return null;

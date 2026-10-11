@@ -1,8 +1,15 @@
 // @vitest-environment node
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildScheduleIndex, Schedule } from '../lib/schedule.js';
 import { easternToEpoch } from '../lib/time.js';
 import { placeTunnelTrolleys, tunnelTrouble } from '../lib/trolleyTunnel.js';
+import { screenVehicles } from '../lib/vehicleScreen.js';
+import { distanceM, normalizeTransitView } from '../lib/vehicles.js';
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 
 // Sunday, Oct 11, 2026, in Philadelphia.
 const at = (h, m, s = 0) => easternToEpoch(2026, 10, 11, h, m, s);
@@ -200,7 +207,7 @@ describe('trolleys in the tunnel', () => {
     expect(out[2].v).toMatchObject({ estimated: true, lateMin: 3.7 });
   });
 
-  it("doesn't place one SEPTA's tracker can't match to its schedule (a GPS stuck at the portal)", () => {
+  it("doesn't place one first seen with no schedule match (TransitView's late 998)", () => {
     const out = run([
       [at(8, 58, 0), [trolley({ lateMin: null })]],
       [at(8, 59, 0), [trolley({ lateMin: null })]],
@@ -255,5 +262,90 @@ describe('trolleys in the tunnel', () => {
     ]);
     expect(out[1].v.tripId).toBe('e1'); // still on its way to 13th St
     expect(out[1].stats.underground).toBe(1);
+  });
+});
+
+// 25 minutes of TransitView's T2–T5 trolleys near the 40th St Portal (Sunday 2026-10-11,
+// 9:00–9:25 AM, every 20 seconds), with the schedule for their trips: #9082 already underground
+// at 9:00, on its way to 13th St and (from 9:05:50, TransitView says) back out; #9080 coming up
+// Woodland Av and going in at about 9:07:40.
+describe('the recorded portal', () => {
+  const RECORDED = JSON.parse(readFileSync(join(FIXTURES, 'trolleys-2026-10-11.json'), 'utf8'));
+  const recordedSchedule = Schedule.from(RECORDED.schedule);
+  const payload = (rows) => {
+    const routes = {};
+    for (const [route, label, lat, lng, timestamp, late, trip, Direction, seq] of rows) {
+      (routes[route] ??= []).push({
+        label,
+        VehicleID: label,
+        lat,
+        lng,
+        timestamp,
+        late,
+        trip,
+        Direction,
+        next_stop_sequence: seq,
+      });
+    }
+    return { routes: [routes] };
+  };
+  // Every poll through the screen and the tunnel, as the collector runs them.
+  const ticks = [];
+  let screen = {};
+  let tunnel = {};
+  for (const [ts, rows] of RECORDED.polls) {
+    const now = ts * 1000;
+    const vehicles = rows.length ? normalizeTransitView(payload(rows), now).vehicles : [];
+    const sc = screenVehicles(vehicles, { prev: screen, now });
+    screen = sc.state;
+    const r = placeTunnelTrolleys(sc.vehicles, { schedule: recordedSchedule, state: tunnel, now });
+    tunnel = r.state;
+    ticks.push({ now, vehicles: r.vehicles });
+  }
+  const find = (label, h, m, s = 0) => {
+    const t = at(h, m, s);
+    const tick = ticks.reduce((a, b) => (Math.abs(b.now - t) < Math.abs(a.now - t) ? b : a));
+    return tick.vehicles.find((v) => v.label === label) ?? null;
+  };
+
+  it('takes #9082 through to 13th St and back out on its next trip', () => {
+    // In by 8:57:53 (its fix's report then) for its 8:54 time at the portal.
+    expect(find('9082', 9, 0, 30)).toMatchObject({
+      estimated: true,
+      tripId: '971099',
+      lateMin: 3.9,
+    });
+    expect(find('9082', 9, 8, 45)).toMatchObject({ tripId: '971099', nextStopName: '13th St' });
+    expect(find('9082', 9, 12, 0)).toMatchObject({
+      estimated: true,
+      tripId: '971141',
+      directionName: 'WestBound',
+      lateMin: 2.9,
+    });
+    // TransitView stopped listing it at 9:06:30: placed from memory, and held at the portal once
+    // it should have been out.
+    expect(find('9082', 9, 21, 0)).toMatchObject({ estimated: true, frozen: true });
+  });
+
+  it('places #9080 as it goes in, and holds it at 13th St for its trip back', () => {
+    expect(find('9080', 9, 6, 0).estimated).toBeUndefined();
+    expect(find('9080', 9, 8, 0)).toMatchObject({ estimated: true, tripId: '972707' });
+    expect(find('9080', 9, 8, 0).lateMin).toBeCloseTo(-3.8, 0);
+    // Due at 13th St at 9:22, 3.8 min early, while TransitView (late "998" from 9:16) still has
+    // it on that trip.
+    expect(find('9080', 9, 21, 0)).toMatchObject({ estimated: true, nextStopName: '13th St' });
+  });
+
+  it('never leaves two trolleys stacked on the point SEPTA parks them at', () => {
+    for (const { vehicles } of ticks) {
+      // Out in the open, trolleys pass each other a few meters apart on Baltimore Av; at the mouth
+      // of the tunnel, two can't be.
+      const atPortal = vehicles.filter(
+        (v) => !v.estimated && !v.frozen && distanceM(v, PARKED) <= 60,
+      );
+      for (const a of atPortal) {
+        for (const b of atPortal) if (a !== b) expect(distanceM(a, b)).toBeGreaterThan(10);
+      }
+    }
   });
 });
