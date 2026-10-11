@@ -275,7 +275,8 @@ describe('the recorded portal', () => {
   const payload = (rows) => {
     const routes = {};
     for (const [route, label, lat, lng, timestamp, late, trip, Direction, seq] of rows) {
-      (routes[route] ??= []).push({
+      if (!routes[route]) routes[route] = [];
+      routes[route].push({
         label,
         VehicleID: label,
         lat,
