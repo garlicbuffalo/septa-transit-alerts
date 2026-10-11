@@ -70,8 +70,8 @@ function lateness(v) {
   return 'on time';
 }
 
-// A vehicle's place on a map, with what tells its mark apart (a bus or a PCC trolley on the G1).
-const markerOf = (v) => ({ lat: v.lat, lon: v.lon, route: v.route, label: v.label });
+// A vehicle's place on a map, with what its outline is drawn from (lib/routes.js vehicleShape).
+const markerOf = (v) => ({ lat: v.lat, lon: v.lon, mode: v.mode, route: v.route, label: v.label });
 
 function vehicleRef(v, tag = null) {
   // An L1 train in the tunnel has no GPS: it's placed by the schedule (subwayTrains.js).

@@ -87,20 +87,42 @@ describe('alert maps', () => {
   });
 });
 
-describe('G1 vehicle outlines', () => {
-  it('tell PCC trolleys from buses on the G1 only', async () => {
-    const { vehicleShape, g1LegendRows } = await import('../lib/routes.js');
-    expect(vehicleShape('g1', '2324')).toBe('pcc');
-    expect(vehicleShape('G1', '3676')).toBe('bus');
-    expect(vehicleShape('t1', '9051')).toBe('circle');
-    expect(vehicleShape('23', '2324')).toBe('circle');
-    expect(g1LegendRows([{ route: 't1', label: '1' }])).toEqual([]);
+describe('vehicle outlines', () => {
+  it('draw each vehicle as what it is', async () => {
+    const { vehicleShape } = await import('../lib/routes.js');
+    expect(vehicleShape({ mode: 'bus', route: '23', label: '3676' })).toBe('bus');
+    expect(vehicleShape({ mode: 'metro', route: 't1', label: '9051' })).toBe('trolley');
+    expect(vehicleShape({ mode: 'metro', route: 'd2', label: '113' })).toBe('trolley');
+    expect(vehicleShape({ mode: 'metro', route: 'g1', label: '2324' })).toBe('trolley'); // a PCC
+    expect(vehicleShape({ mode: 'metro', route: 'g1', label: '3676' })).toBe('bus');
+    expect(vehicleShape({ mode: 'metro', route: 'm1', label: '154' })).toBe('m1');
+    expect(vehicleShape({ mode: 'regional_rail', route: 'pao', label: '9233' })).toBe('rail');
+    expect(vehicleShape({ mode: 'metro', route: 'l1', label: '1001' })).toBe('circle');
+    // Without a mode, from the route.
+    expect(vehicleShape({ route: 'm1' })).toBe('m1');
+    expect(vehicleShape({ route: 'pao' })).toBe('rail');
+    expect(vehicleShape({})).toBe('circle');
+  });
+
+  it('get a legend only when a map mixes kinds', async () => {
+    const { vehicleLegendRows } = await import('../lib/routes.js');
+    const v = (mode, route, label) => ({ mode, route, label });
+    expect(vehicleLegendRows([v('bus', '23', '1'), v('bus', '23', '2')])).toEqual([]);
     expect(
-      g1LegendRows([
-        { route: 'g1', label: '3676' },
-        { route: 'g1', label: '2337' },
-      ]).map((r) => r.shape),
-    ).toEqual(['pcc', 'bus']);
+      vehicleLegendRows([v('metro', 'g1', '3676'), v('metro', 'g1', '2337')]).map((r) => r.label),
+    ).toEqual(['PCC trolley', 'Bus']);
+    expect(
+      vehicleLegendRows([
+        v('metro', 't1', '9051'),
+        v('metro', 'g1', '2337'),
+        v('bus', '64', '1'),
+      ]).map((r) => r.label),
+    ).toEqual(['Trolley', 'Bus']);
+    expect(
+      vehicleLegendRows([v('metro', 'm1', '154'), v('regional_rail', 'pao', '9233')]).map(
+        (r) => r.shape,
+      ),
+    ).toEqual(['m1', 'rail']);
   });
 
   it('name what the G1 vehicles in a post are', async () => {
@@ -114,14 +136,17 @@ describe('G1 vehicle outlines', () => {
     expect(vehiclesNoun('bus', '23', [], false)).toBe('bus');
   });
 
-  it('draw a trolley pole on a PCC and big wheels on a bus', async () => {
+  it('carry each vehicle’s features', async () => {
     const { vehicleMark } = await import('../map/draw.js');
-    const pcc = vehicleMark(100, 100, 22, { shape: 'pcc', fill: '#f00' });
-    const bus = vehicleMark(100, 100, 22, { shape: 'bus', fill: '#f00' });
-    expect(pcc).toContain('<line'); // the pole
-    expect(bus).not.toContain('<line');
-    expect(pcc.match(/<circle/g)).toHaveLength(4); // two pairs of small wheels
-    expect(bus.match(/<circle/g)).toHaveLength(2);
+    const mark = (shape) => vehicleMark(100, 100, 22, { shape, fill: '#f00' });
+    expect(mark('trolley')).toContain('<line'); // the trolley pole
+    expect(mark('trolley').match(/<circle/g)).toHaveLength(4); // two pairs of small wheels
+    expect(mark('bus')).not.toContain('<line');
+    expect(mark('bus').match(/<circle/g)).toHaveLength(2); // two big wheels
+    expect(mark('m1').match(/<circle/g)).toHaveLength(4); // two bogies
+    expect(mark('m1')).not.toContain('<line'); // third rail: no pole
+    expect(mark('rail').match(/<circle/g)).toHaveLength(6); // two cars' bogies
+    expect(mark('rail')).toMatch(/fill="none"/); // the pantograph
     expect(vehicleMark(100, 100, 22, { fill: '#f00' })).toMatch(/^<circle /);
   });
 });

@@ -45,13 +45,22 @@ export function line(points, { color, width = 8, opacity = 1, casing = 0, dash =
   return `${under}<path d="${d}" ${common} stroke="${color}" stroke-opacity="${opacity}" stroke-width="${width}"${dashAttr}/>`;
 }
 
+// How much wider than a circle of the same radius each outline is (for spacing markers apart).
+export const MARK_WIDTH = { circle: 2, trolley: 2.7, bus: 2.7, m1: 2.9, rail: 3.4 };
+
 /**
- * A vehicle's mark centered on (x, y), about as heavy as a circle of radius r: a circle, or on the
- * G1, which runs both, a side-view outline of the vehicle (facing right): `pcc`, a PCC trolley
- * (rounded ends, trolley pole, paired wheels), or `bus` (a boxy body on two big wheels).
- * `detail` adds the window band (left off when a number is drawn on top).
- * @param {{ shape?: 'circle' | 'pcc' | 'bus', fill: string, stroke?: string, strokeWidth?: number,
- *   fillOpacity?: number, opacity?: number, dash?: string | null, detail?: boolean }} opts
+ * A vehicle's mark centered on (x, y), about as heavy as a circle of radius r: a circle, or a
+ * side-view outline of the vehicle, facing right:
+ *   trolley  rounded ends, a trolley pole raked back to the wire, paired wheels
+ *   bus      a boxy body on two big wheels
+ *   m1       an M1 (Norristown High Speed Line) car: a squared-off body with a raked cab, roof
+ *            equipment, and two bogies (third rail, so no pole)
+ *   rail     a two-car Regional Rail train: a long body with a sloped nose, a pantograph, and the
+ *            coupling between the cars
+ * `detail` adds the windows (left off when a number is drawn on top).
+ * @param {{ shape?: 'circle' | 'trolley' | 'bus' | 'm1' | 'rail', fill: string, stroke?: string,
+ *   strokeWidth?: number, fillOpacity?: number, opacity?: number, dash?: string | null,
+ *   detail?: boolean }} opts
  */
 export function vehicleMark(
   x,
@@ -69,39 +78,79 @@ export function vehicleMark(
   },
 ) {
   const f = (n) => n.toFixed(1);
-  // The pole and wheel rims take the outline's color, or the fill's when the outline is dark (small
-  // marks on the dark map), so they stay visible.
+  // The pole, roof gear, and wheel rims take the outline's color, or the fill's when the outline
+  // is dark (small marks on the dark map), so they stay visible.
   const light = /^#(0b0d10|000|000000)$/i.test(stroke) ? fill : stroke;
   const paint =
-    `fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${strokeWidth}"` +
+    `fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="round"` +
     (dash ? ` stroke-dasharray="${dash}"` : '');
-  if (shape !== 'pcc' && shape !== 'bus') {
+  if (!MARK_WIDTH[shape] || shape === 'circle') {
     return `<circle cx="${f(x)}" cy="${f(y)}" r="${r}" ${paint} opacity="${opacity}"/>`;
   }
-  const w = r * 2.7;
+  const w = r * MARK_WIDTH[shape];
   const h = r * 1.45;
   const left = x - w / 2;
+  const right = x + w / 2;
   const top = y - h / 2 - h * 0.08; // nudged up, so the wheels below keep it centered
-  const wheel = (cx, wr) =>
-    `<circle cx="${f(cx)}" cy="${f(top + h)}" r="${f(wr)}" fill="#0b0d10" stroke="${light}" stroke-width="${f(Math.max(1, strokeWidth * 0.6))}"/>`;
+  const bottom = top + h;
+  const thin = f(Math.max(1.5, strokeWidth * 0.8));
+  const wheel = (at, wr) =>
+    `<circle cx="${f(left + w * at)}" cy="${f(bottom)}" r="${f(h * wr)}" fill="#0b0d10" stroke="${light}" stroke-width="${f(Math.max(1, strokeWidth * 0.6))}"/>`;
+  const pane = (x0, y0, pw, ph, rr = h * 0.05) =>
+    `<rect x="${f(x0)}" y="${f(y0)}" width="${f(pw)}" height="${f(ph)}" rx="${f(rr)}" fill="#0b0d10" fill-opacity="0.55"/>`;
+  const poly = (pts) =>
+    `<path d="M${pts.map(([px, py]) => `${f(px)},${f(py)}`).join(' L')} Z" ${paint}/>`;
   let svg = `<g opacity="${opacity}">`;
-  if (shape === 'pcc') {
-    // The trolley pole, raked back from the roof to the wire.
-    svg += `<line x1="${f(left + w * 0.34)}" y1="${f(top)}" x2="${f(left + w * 0.06)}" y2="${f(top - h * 0.62)}" stroke="${light}" stroke-width="${f(Math.max(1.5, strokeWidth * 0.8))}" stroke-linecap="round"/>`;
-    for (const at of [0.17, 0.3, 0.7, 0.83]) svg += wheel(left + w * at, h * 0.13);
+  if (shape === 'trolley') {
+    svg += `<line x1="${f(left + w * 0.34)}" y1="${f(top)}" x2="${f(left + w * 0.06)}" y2="${f(top - h * 0.62)}" stroke="${light}" stroke-width="${thin}" stroke-linecap="round"/>`;
+    for (const at of [0.17, 0.3, 0.7, 0.83]) svg += wheel(at, 0.13);
     svg += `<rect x="${f(left)}" y="${f(top)}" width="${f(w)}" height="${f(h)}" rx="${f(h * 0.48)}" ${paint}/>`;
-    if (detail) {
-      svg += `<rect x="${f(left + w * 0.12)}" y="${f(top + h * 0.18)}" width="${f(w * 0.76)}" height="${f(h * 0.3)}" rx="${f(h * 0.15)}" fill="#0b0d10" fill-opacity="0.55"/>`;
-    }
-  } else {
-    for (const at of [0.22, 0.78]) svg += wheel(left + w * at, h * 0.21);
+    if (detail) svg += pane(left + w * 0.12, top + h * 0.18, w * 0.76, h * 0.3, h * 0.15);
+  } else if (shape === 'bus') {
+    for (const at of [0.22, 0.78]) svg += wheel(at, 0.21);
     svg += `<rect x="${f(left)}" y="${f(top)}" width="${f(w)}" height="${f(h)}" rx="${f(h * 0.14)}" ${paint}/>`;
     if (detail) {
-      // Side windows, and the windshield at the front (right).
-      for (let i = 0; i < 4; i++) {
-        svg += `<rect x="${f(left + w * (0.08 + i * 0.19))}" y="${f(top + h * 0.16)}" width="${f(w * 0.15)}" height="${f(h * 0.32)}" rx="${f(h * 0.05)}" fill="#0b0d10" fill-opacity="0.55"/>`;
+      for (let i = 0; i < 4; i++)
+        svg += pane(left + w * (0.08 + i * 0.19), top + h * 0.16, w * 0.15, h * 0.32);
+      svg += pane(left + w * 0.86, top + h * 0.16, w * 0.08, h * 0.5, h * 0.04);
+    }
+  } else if (shape === 'm1') {
+    // Roof equipment, then the bogies, then the body with its raked cab at the front.
+    svg += `<rect x="${f(left + w * 0.32)}" y="${f(top - h * 0.2)}" width="${f(w * 0.3)}" height="${f(h * 0.24)}" rx="${f(h * 0.05)}" fill="${light}"/>`;
+    for (const at of [0.14, 0.26, 0.7, 0.82]) svg += wheel(at, 0.12);
+    svg += poly([
+      [left, top + h * 0.06],
+      [right - h * 0.42, top],
+      [right, top + h * 0.38],
+      [right, bottom],
+      [left, bottom],
+    ]);
+    if (detail) {
+      for (let i = 0; i < 3; i++)
+        svg += pane(left + w * (0.07 + i * 0.22), top + h * 0.2, w * 0.17, h * 0.3);
+    }
+  } else {
+    // Regional Rail: the pantograph, the bogies, the body with a sloped nose, the coupling.
+    const px = left + w * 0.3;
+    const pw = w * 0.09;
+    const ph = h * 0.5;
+    svg += `<path d="M${f(px - pw)},${f(top)} L${f(px)},${f(top - ph)} L${f(px + pw)},${f(top)} M${f(px - pw * 1.2)},${f(top - ph)} L${f(px + pw * 1.2)},${f(top - ph)}" fill="none" stroke="${light}" stroke-width="${thin}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    for (const at of [0.08, 0.17, 0.5, 0.59, 0.76, 0.86]) svg += wheel(at, 0.11);
+    svg += poly([
+      [left, top + h * 0.08],
+      [right - h * 0.7, top],
+      [right, top + h * 0.55],
+      [right, bottom],
+      [left, bottom],
+    ]);
+    // The coupling, off center so a number drawn on the train stays clear of it.
+    const cx = left + w * 0.66;
+    svg += `<line x1="${f(cx)}" y1="${f(top + h * 0.02)}" x2="${f(cx)}" y2="${f(bottom)}" stroke="${stroke}" stroke-width="${f(Math.max(1, strokeWidth * 0.6))}"/>`;
+    if (detail) {
+      // Four windows in the first car, one in the cab car behind its sloped nose.
+      for (const at of [0.06, 0.19, 0.32, 0.45, 0.72]) {
+        svg += pane(left + w * at, top + h * 0.22, w * 0.1, h * 0.28);
       }
-      svg += `<rect x="${f(left + w * 0.86)}" y="${f(top + h * 0.16)}" width="${f(w * 0.08)}" height="${f(h * 0.5)}" rx="${f(h * 0.04)}" fill="#0b0d10" fill-opacity="0.55"/>`;
     }
   }
   return `${svg}</g>`;

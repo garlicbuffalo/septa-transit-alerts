@@ -3,8 +3,17 @@
 // them. Also draws several routes at once (cross-route clusters). Modeled on
 // cta-insights' bunching and gap maps (ISC).
 import { METRO_LINES } from '../../src/lib/metroLines.js';
-import { g1LegendRows, vehicleShape } from '../lib/routes.js';
-import { composite, dotLegend, escapeXml, FONT, line, titlePill, vehicleMark } from './draw.js';
+import { vehicleLegendRows, vehicleShape } from '../lib/routes.js';
+import {
+  composite,
+  dotLegend,
+  escapeXml,
+  FONT,
+  line,
+  MARK_WIDTH,
+  titlePill,
+  vehicleMark,
+} from './draw.js';
 import { sliceBranch } from './lineMap.js';
 import { bboxOf, fitView, project } from './projection.js';
 
@@ -54,14 +63,16 @@ export function separate(points, minDist = MARKER_R * 2 + 6) {
 /**
  * @param {{ routes: Array<{ points: number[][], color: string }>,
  *   markers: Array<{ lat: number, lon: number, tag: string, color?: string, estimated?: boolean,
- *     route?: string, label?: string }>,
- *   dots?: Array<{ lat: number, lon: number, color?: string, route?: string, label?: string }>,
+ *     mode?: string, route?: string, label?: string }>,
+ *   dots?: Array<{ lat: number, lon: number, color?: string, mode?: string, route?: string,
+ *     label?: string }>,
  *   stretch?: { points: number[][] } | null, title: string,
  *   legend?: Array<{ label: string, color: string, shape?: string }> | null,
  *   fit?: number[][] | null }} opts
  *   estimated: a vehicle placed by the schedule (an L1 train in the tunnel), drawn dashed;
- *   route and label: the vehicle's, so a G1 vehicle is drawn as an outline of a PCC trolley or a
- *   bus (lib/routes.js vehicleShape), with a legend saying which is which; dots: unnumbered
+ *   mode, route, and label: the vehicle's, so it's drawn as an outline of what it is, a bus, a
+ *   trolley, an M1 car, or a Regional Rail train (lib/routes.js vehicleShape), with a legend when
+ *   the map shows more than one kind; dots: unnumbered
  *   vehicles drawn small, for context; fit: [lat, lon] points the view must show instead of
  *   framing the markers (a whole line)
  */
@@ -74,12 +85,12 @@ export function planRouteMap({
   legend = null,
   fit = null,
 }) {
-  const shaped = (m) => ({ ...m, shape: vehicleShape(m.route, m.label) });
+  const shaped = (m) => ({ ...m, shape: vehicleShape(m) });
   const markers = rawMarkers.map(shaped);
   const dots = rawDots.map(shaped);
   const focus = [...markers.map((m) => [m.lat, m.lon]), ...(stretch?.points ?? [])];
   if (focus.length === 0) return null;
-  const legendRows = legend ?? g1LegendRows([...markers, ...dots]);
+  const legendRows = legend ?? vehicleLegendRows([...markers, ...dots]);
   const plan = {
     routes,
     markers,
@@ -144,10 +155,10 @@ export async function renderRouteMap(plan, { basemap }) {
     });
   }
   // Vehicle outlines are wider than a circle: give them more room.
-  const outlines = plan.markers.some((m) => m.shape && m.shape !== 'circle');
+  const widest = Math.max(2, ...plan.markers.map((m) => MARK_WIDTH[m.shape] ?? 2));
   const placed = separate(
     plan.markers.map((m) => ({ ...m, ...px([m.lat, m.lon]) })),
-    outlines ? MARKER_R * 2.7 + 6 : undefined,
+    MARKER_R * widest + 6,
   );
   for (const m of placed) {
     body +=

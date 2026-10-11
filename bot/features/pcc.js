@@ -45,7 +45,14 @@ function planPccMap({ cars, buses = [], shapes, title }) {
   const markers = cars
     .map((car, i) => ({ car, tag: String(i + 1) }))
     .filter(({ car }) => hasPosition(car))
-    .map(({ car, tag }) => ({ lat: car.lat, lon: car.lon, tag, route: PCC_LINE, label: car.id }));
+    .map(({ car, tag }) => ({
+      lat: car.lat,
+      lon: car.lon,
+      tag,
+      mode: 'metro',
+      route: PCC_LINE,
+      label: car.id,
+    }));
   if (!markers.length || !lines.length) return null;
   const color = routeColor('metro', PCC_LINE);
   return planRouteMap({
@@ -155,7 +162,7 @@ export async function maybePostPcc({
     buses: pcc.buses,
     busPositions: vehicles
       .filter((v) => v.route === PCC_LINE && !isPccLabel(v.label))
-      .map((v) => ({ lat: v.lat, lon: v.lon, route: v.route, label: v.label })),
+      .map((v) => ({ lat: v.lat, lon: v.lon, mode: v.mode, route: v.route, label: v.label })),
     shapes,
   });
   let image = null;

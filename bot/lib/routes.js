@@ -19,16 +19,25 @@ export function routeEmoji(mode, route = null) {
 }
 
 /**
- * The mark a vehicle gets on maps and timelapses: on the G1, which runs buses on most trips and
- * PCC trolleys on some (told apart by fleet number), an outline of a PCC (`pcc`) or a bus (`bus`);
- * every other vehicle, a circle. See map/draw.js vehicleMark.
+ * The outline a vehicle gets on still maps (map/draw.js vehicleMark): `bus` for a bus, including
+ * the buses that run most G1 trips; `trolley` for a trolley (T1–T5, D1, D2, and the G1's PCC cars,
+ * told apart from its buses by fleet number); `m1` for an M1 car; `rail` for a Regional Rail
+ * train; a circle for anything else (the L1's trains). Timelapses draw dots for everything.
+ * @param {{ mode?: string, route?: string, label?: string }} v
  */
-export function vehicleShape(route, label) {
-  if (!isG1(route)) return 'circle';
-  return isPccLabel(label) ? 'pcc' : 'bus';
+export function vehicleShape({ mode, route, label } = {}) {
+  const key = String(route ?? '').toLowerCase();
+  const m = mode ?? (METRO_LINES[key] ? 'metro' : RAIL_LINES[key] ? 'regional_rail' : null);
+  if (m === 'bus') return 'bus';
+  if (m === 'regional_rail') return 'rail';
+  if (m !== 'metro') return 'circle';
+  if (key === PCC_LINE) return isPccLabel(label) ? 'trolley' : 'bus';
+  if (TROLLEY.test(key)) return 'trolley';
+  if (key === 'm1') return 'm1';
+  return 'circle';
 }
 
-/** True for a G1 vehicle, whose mark says whether it's a PCC trolley or a bus. */
+/** True for a G1 vehicle, which may be a PCC trolley or a bus. */
 export function isG1(route) {
   return String(route ?? '').toLowerCase() === PCC_LINE;
 }
@@ -40,21 +49,43 @@ export function isG1(route) {
  */
 export function vehiclesNoun(mode, route, vehicles = [], plural = true) {
   if (!isG1(route)) return vehicleNoun(mode, route, plural);
-  const kinds = new Set(vehicles.map((v) => vehicleShape(route, v.label)));
-  const word = kinds.size === 1 ? (kinds.has('pcc') ? 'trolley' : 'bus') : 'vehicle';
+  const kinds = new Set(vehicles.map((v) => vehicleShape({ mode, route, label: v.label })));
+  const word = kinds.size === 1 ? (kinds.has('trolley') ? 'trolley' : 'bus') : 'vehicle';
   if (!plural) return word;
   return word === 'bus' ? 'buses' : `${word}s`;
 }
 
-/** Legend rows for the G1 vehicles among `vehicles` ({ route, label }), kinds present only. */
-export function g1LegendRows(vehicles, { color = '#e8eaed' } = {}) {
-  const shapes = new Set(
-    vehicles.filter((v) => isG1(v?.route)).map((v) => vehicleShape(v.route, v.label)),
-  );
-  const rows = [];
-  if (shapes.has('pcc')) rows.push({ label: 'PCC trolley', color, shape: 'pcc' });
-  if (shapes.has('bus')) rows.push({ label: 'Bus', color, shape: 'bus' });
-  return rows;
+const LEGEND_LABELS = {
+  trolley: 'Trolley',
+  bus: 'Bus',
+  m1: 'M1 train',
+  rail: 'Regional Rail train',
+};
+
+/**
+ * Legend rows for a map's vehicles ({ mode, route, label, shape? }) when they're of more than one
+ * kind (a map of one route's buses needs none). The G1's trolleys are its PCC cars: "PCC trolley"
+ * when they're the only trolleys on the map.
+ */
+export function vehicleLegendRows(vehicles, { color = '#e8eaed' } = {}) {
+  const kinds = new Map();
+  for (const v of vehicles) {
+    const shape = v.shape ?? vehicleShape(v);
+    if (shape === 'circle') continue;
+    if (!kinds.has(shape)) kinds.set(shape, []);
+    kinds.get(shape).push(v);
+  }
+  if (kinds.size < 2) return [];
+  return ['trolley', 'm1', 'rail', 'bus']
+    .filter((shape) => kinds.has(shape))
+    .map((shape) => ({
+      label:
+        shape === 'trolley' && kinds.get(shape).every((v) => isG1(v.route))
+          ? 'PCC trolley'
+          : LEGEND_LABELS[shape],
+      color,
+      shape,
+    }));
 }
 
 /** "Route 17", "L1", "Paoli/Thorndale Line". */

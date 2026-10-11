@@ -48,9 +48,18 @@ describe('PCC post text', () => {
     expect(facets[0].features[0].uri).toBe('https://septa-g-trolley-tracker.netlify.app/');
     expect(plan.title).toBe('G1 · PCC #2324 out now');
     expect(plan.markers).toEqual([
-      { lat: 39.9719, lon: -75.1635, tag: '1', route: 'g1', label: '2324', shape: 'pcc' },
+      {
+        lat: 39.9719,
+        lon: -75.1635,
+        tag: '1',
+        mode: 'metro',
+        route: 'g1',
+        label: '2324',
+        shape: 'trolley',
+      },
     ]);
-    expect(plan.legend).toEqual([{ label: 'PCC trolley', color: '#e8eaed', shape: 'pcc' }]);
+    // One kind of vehicle on the map: no legend.
+    expect(plan.legend).toBeNull();
     expect(alt).toBe('Map of the G1 along Girard Avenue with PCC trolley #2324 marked.');
   });
 
@@ -61,8 +70,8 @@ describe('PCC post text', () => {
       first: true,
       buses: 2,
       busPositions: [
-        { lat: 39.972, lon: -75.2, route: 'g1', label: '3676' },
-        { lat: 39.98, lon: -75.11, route: 'g1', label: '3400' },
+        { lat: 39.972, lon: -75.2, mode: 'metro', route: 'g1', label: '3676' },
+        { lat: 39.98, lon: -75.11, mode: 'metro', route: 'g1', label: '3400' },
       ],
       shapes,
     });
