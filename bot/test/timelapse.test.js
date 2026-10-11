@@ -693,3 +693,82 @@ describe('route shapes for gaps', () => {
     expect(nearestShape([], on)).toBeNull();
   });
 });
+
+describe('G1 vehicles in timelapses', () => {
+  const t0 = NOW;
+  const samples = (list) =>
+    list.flatMap(([label, route, lon]) =>
+      [0, 1].map((k) => ({
+        vehicle_id: label,
+        label,
+        route,
+        t: t0 + k * 60_000,
+        lat: 39.97,
+        lon: lon + k * 0.001,
+        late_min: 1,
+      })),
+    );
+  const frame = (scene) => scene.staticSvg + scene.drawFrame(t0 + 30_000, 0.5);
+
+  it('draw the G1 as PCC and bus outlines, with a legend, and the rest as dots', async () => {
+    const { focusScene, snapshotScene } = await import('../video/scenes.js');
+    const tracks = buildTracks(
+      samples([
+        ['8433', 'g1', -75.2],
+        ['3698', 'g1', -75.17],
+        ['2324', 'g1', -75.14],
+        ['9051', 't1', -75.19],
+      ]),
+    );
+    const focus = frame(
+      focusScene({
+        capture: { kind: 'gap', start_ts: t0, end_ts: t0 + 60_000 },
+        focus: {
+          title: 'G1 gap',
+          vehicles: [
+            { id: '8433', tag: 'L' },
+            { id: '3698', tag: 'N' },
+          ],
+        },
+        routes: [{ route: 'g1', color: '#FFD700', shapes: [] }],
+        tracks,
+      }),
+    );
+    // The two buses (L, N) and the PCC behind them are outlines; a PCC has a trolley pole.
+    expect(focus.match(/<g opacity/g).length).toBeGreaterThanOrEqual(3);
+    expect(focus).toContain('<line');
+    expect(focus).toContain('PCC trolley');
+    expect(focus).toContain('>Bus<');
+
+    const snapshot = frame(
+      snapshotScene({
+        capture: { start_ts: t0, end_ts: t0 + 60_000 },
+        mode: 'metro',
+        title: 'SEPTA Metro',
+        noun: 'vehicles',
+        tracks,
+        lines: [],
+      }),
+    );
+    expect(snapshot).toContain('G1 PCC trolley');
+    expect(snapshot).toContain('G1 bus');
+    // The T1's trolley stays a dot: no Kawasaki outline in a timelapse.
+    expect(snapshot).not.toContain('Kawasaki');
+  });
+
+  it('leave a route without G1 vehicles all dots, with no outline legend', async () => {
+    const { snapshotScene } = await import('../video/scenes.js');
+    const svg = frame(
+      snapshotScene({
+        capture: { start_ts: t0, end_ts: t0 + 60_000 },
+        mode: 'metro',
+        title: 'SEPTA Metro',
+        noun: 'vehicles',
+        tracks: buildTracks(samples([['9051', 't1', -75.19]])),
+        lines: [],
+      }),
+    );
+    expect(svg).not.toContain('G1 ');
+    expect(svg).not.toContain('<g opacity');
+  });
+});
