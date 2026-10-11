@@ -13,7 +13,7 @@
 //     stops: [stop name, …],                 // origin/destination names, by index
 //     trips: { [trip_id]: [route, direction_id, service_id, start_sec, end_sec,
 //                          origin_stop_idx, dest_stop_idx, last_stop_sequence] },
-//     timed: { [route]: {                   // TIMED_ROUTES only: every stop's time
+//     timed: { [route]: {                   // TIMED_ROUTES only: its kept stops' times
 //       stops: [[lat, lon, name], …],        // by index
 //       patterns: [[[stop_idx, stop_sequence], …], …],   // each distinct run of stops
 //       trips: { [trip_id]: [pattern_idx, sec, sec, …] },  // the time at each stop
@@ -30,12 +30,18 @@ import { eachCsvRow, GTFS_URL, parseCsvLine, readZip } from './gtfsFiles.js';
 import { classifyRoute } from './network.js';
 import { buildRouteShapes, SHAPES_FILE, SHAPES_REV } from './shapes.js';
 import { easternParts, easternToEpoch } from './time.js';
+import { TUNNEL_ROUTES, TUNNEL_STOP_NAMES } from './tunnelStops.js';
 
-export const SCHEDULE_VERSION = 2;
-// Routes whose every stop time is kept, not just each trip's ends: the Market-Frankford Line's
-// trains report with no trip, and are placed along the line and matched to their trips from
-// these (subwayTrains.js).
-export const TIMED_ROUTES = new Set(['l1']);
+export const SCHEDULE_VERSION = 3;
+// Routes whose stop times are kept, not just each trip's ends, and which stops: the
+// Market-Frankford Line's trains report with no trip, and are placed along the line and matched
+// to their trips from every stop's time (subwayTrains.js); a subway-surface trolley underground is
+// placed by its trip's times through the tunnel, portal to 13th St (trolleyTunnel.js). A null
+// filter keeps every stop.
+export const TIMED_ROUTES = new Map([
+  ['l1', null],
+  ...TUNNEL_ROUTES.map((route) => [route, TUNNEL_STOP_NAMES]),
+]);
 const CACHE_FILE = 'schedule-index.json';
 const MAX_CACHE_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -182,7 +188,7 @@ export function buildScheduleIndex(zip, now = Date.now()) {
 // with the other trips that run the same ones.
 function buildTimed(trips, timedRows, stopNames, stopPlaces) {
   const timed = {};
-  for (const [tripId, rows] of timedRows) {
+  for (let [tripId, rows] of timedRows) {
     const route = trips.get(tripId).route;
     if (!timed[route]) {
       timed[route] = {
@@ -194,7 +200,10 @@ function buildTimed(trips, timedRows, stopNames, stopPlaces) {
       };
     }
     const r = timed[route];
+    const keep = TIMED_ROUTES.get(route);
+    if (keep) rows = rows.filter(([, stopId]) => keep.has(stopNames.get(stopId)));
     rows.sort((a, b) => a[0] - b[0]);
+    if (rows.length < 2) continue;
     if (rows.some(([, stopId, sec]) => sec == null || !stopPlaces.has(stopId))) continue;
     const pattern = rows.map(([seq, stopId]) => {
       if (!r.stopIdx.has(stopId)) {
@@ -439,7 +448,8 @@ export class Schedule {
 
   /**
    * A TIMED_ROUTES trip's stops and its scheduled time at each (seconds past its service date's
-   * midnight), or null for a trip whose stop times weren't kept.
+   * midnight), or null for a trip whose stop times weren't kept. For a subway-surface trolley,
+   * only its stops in the tunnel (see TIMED_ROUTES).
    * @returns {{ stops: Array<{ lat: number, lon: number, name: string, seq: number }>,
    *   secs: number[] } | null}
    */

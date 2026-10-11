@@ -62,8 +62,10 @@ export function recordObservations(db, ts, { vehicles = [], trains = [] }) {
 }
 
 /** Observations for routes since a time, oldest first. */
-export function observationsSince(db, { routes = null, mode = null, since }) {
+export function observationsSince(db, { routes = null, mode = null, since, measured = false }) {
   const where = ['ts >= @since'];
+  // Measured positions only: not a train or trolley underground, placed by the schedule.
+  if (measured) where.push('estimated = 0');
   if (mode) where.push('mode = @mode');
   if (routes?.length) where.push(`route IN (${routes.map((_, i) => `@r${i}`).join(', ')})`);
   const params = { since, mode };

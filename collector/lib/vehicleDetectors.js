@@ -197,9 +197,10 @@ export function findConditions({ vehicles, schedule, cancelledTripIds, state, no
     byRoute.get(v.route).vehicles.push(rec);
   }
 
-  // Mid-route, and where it says it is: a frozen trolley (see vehicleScreen.js) is somewhere in
-  // the tunnel, not at the repeated fix, so it neither bunches with a car near that fix nor is
-  // "held" there. Nor is an L1 train overdue out of the tunnel (`frozen` too).
+  // Mid-route, and where it says it is: a frozen trolley (see vehicleScreen.js) is not at its
+  // repeated fix, so it neither bunches with a car near that fix nor is "held" there. Nor is a
+  // trolley or an L1 train overdue out of its tunnel (`frozen` too). One underground on schedule
+  // is placed along its trip instead (trolleyTunnel.js, subwayTrains.js).
   const midRoute = (v) =>
     !v.frozen &&
     v.trip &&

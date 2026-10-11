@@ -35,7 +35,11 @@ const SITE_HOST = new URL(SITE_ORIGIN).host;
 
 /** Ids of vehicles that have barely moved over the last few minutes. */
 export function stoppedVehicles(db, now, cfg = CROSS_CONFIG) {
-  const rows = observationsSince(db, { since: now - (cfg.stoppedMin + 2) * 60_000 });
+  // Measured positions only: a trolley underground, placed by the schedule, isn't stopped anywhere.
+  const rows = observationsSince(db, {
+    since: now - (cfg.stoppedMin + 2) * 60_000,
+    measured: true,
+  });
   const byVehicle = new Map();
   for (const r of rows) {
     if (r.mode === 'regional_rail') continue;

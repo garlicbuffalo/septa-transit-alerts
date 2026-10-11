@@ -221,7 +221,7 @@ function tallySlice(db, shapes, from, to) {
   const rows = db
     .prepare(
       `SELECT ts, mode, route, vehicle_id, direction, lat, lon, report_ts FROM observations
-       WHERE ts > ? AND ts <= ? AND mode IN ('bus', 'metro', 'regional_rail')`,
+       WHERE ts > ? AND ts <= ? AND mode IN ('bus', 'metro', 'regional_rail') AND estimated = 0`,
     )
     .all(from - HISTORY.lookbackMs, to);
   const byRoute = new Map();
