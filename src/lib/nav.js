@@ -28,7 +28,7 @@ export function activeNavKey(pathname) {
 }
 
 // SEPTA line colors in the order the header stripe shows them: L1, B, M1, T,
-// G, D, then Regional Rail. Same palette as the favicon tile grid and the
+// G, D, then Regional Rail. Same palette as the City Hall tower favicon and the
 // Bluesky profile art.
 export const LINE_STRIPE = [
   '#0097D6',

@@ -1,5 +1,8 @@
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
+// Self-hosted brand typeface (bundled by Vite, no third-party font request):
+// the wordmark and page headings. Body text stays on the system stack.
+import '@fontsource-variable/overpass';
 import './index.css';
 import { installStaleAssetReload } from './lib/staleAssetReload.js';
 

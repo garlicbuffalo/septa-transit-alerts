@@ -48,7 +48,7 @@ function InfoPopover({ children, label = 'What does this mean?' }) {
 }
 
 // Thin band of SEPTA line colors along the top edge — the same palette as the
-// tile-grid mark, so every page opens on the system's colors.
+// brand mark, so every page opens on the system's colors.
 function LineStripe() {
   return (
     <div className="flex h-1" aria-hidden="true">
@@ -94,12 +94,18 @@ export default function Header({
               className="group flex items-center gap-2.5 text-left"
               aria-label="Reset filters and return to default view"
             >
-              <BrandMark className="h-9 w-9 flex-shrink-0 rounded-lg shadow-sm ring-1 ring-black/5 dark:ring-white/10" />
+              <BrandMark className="h-10 w-10 sm:h-11 sm:w-11 flex-shrink-0 rounded-[10px] shadow-md shadow-slate-900/10 ring-1 ring-black/5 dark:shadow-none dark:ring-white/10 transition-transform group-hover:-rotate-3" />
               <span className="min-w-0">
-                <span className="block text-lg sm:text-xl font-bold leading-tight tracking-tight text-slate-900 dark:text-slate-100 group-hover:opacity-70 transition-opacity">
-                  {SITE_NAME}
+                {/* Two-weight wordmark in the display face: the agency name heavy,
+                    the product name lighter. Reads as SITE_NAME to screen readers. */}
+                <span className="block font-display text-xl sm:text-2xl leading-none tracking-tight text-slate-900 dark:text-slate-50 group-hover:opacity-75 transition-opacity">
+                  <span className="font-black">{SITE_NAME.split(' ')[0]}</span>{' '}
+                  {/* nowrap: on a narrow phone the lockup breaks after the agency name. */}
+                  <span className="font-medium whitespace-nowrap text-slate-600 dark:text-slate-300">
+                    {SITE_NAME.split(' ').slice(1).join(' ')}
+                  </span>
                 </span>
-                <span className="hidden sm:block text-xs font-normal text-slate-500 dark:text-slate-400">
+                <span className="hidden sm:block mt-1 font-sans text-xs font-normal text-slate-500 dark:text-slate-400">
                   SEPTA Metro, bus, and Regional Rail alerts and disruptions
                 </span>
               </span>
