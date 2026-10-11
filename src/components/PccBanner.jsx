@@ -1,8 +1,24 @@
 import { useEffect, useState } from 'react';
-import { fetchPccStatus, PCC_TRACKER_URL } from '../lib/pcc.js';
+import { useNow } from '../hooks/useNow.js';
+import { dataUrl } from '../lib/dataSource.js';
+import { formatRelativeTime, formatTime } from '../lib/format.js';
+import { PCC_FILE, PCC_TRACKER_URL, parsePccFile } from '../lib/pcc.js';
 
-// Re-checked this often while the page is open (the tracker caches for 60s).
+// Re-read this often while the page is open (the collector rewrites it every few minutes).
 export const PCC_POLL_MS = 60_000;
+// Older than this, the file can't say what's out now: no banner. A deployed
+// file is rewritten when a car comes out or goes in, and refreshed at least
+// every half hour otherwise.
+export const PCC_MAX_AGE_MS = 90 * 60 * 1000;
+// Older than this, the banner says how old.
+const PCC_AGE_NOTE_MS = 10 * 60 * 1000;
+
+/** Fetch the published pcc.json. */
+export async function fetchPccFile(fetchFn = fetch) {
+  const res = await fetchFn(dataUrl(PCC_FILE), { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parsePccFile(await res.json());
+}
 
 function carLabel(car) {
   const where = [car.direction, car.destination ? `to ${car.destination}` : null]
@@ -11,12 +27,14 @@ function carLabel(car) {
   return where ? `#${car.id} · ${where}` : `#${car.id}`;
 }
 
-// A banner on the G1 page while SEPTA's vintage PCC trolleys are running,
-// read live from the G Trolley Tracker's public feed (src/lib/pcc.js). It
-// shows nothing when no PCC is out, and nothing when the tracker can't be
-// reached: a stale "running now" would send riders out for a car that's gone.
-export default function PccBanner({ fetchStatus = fetchPccStatus, pollMs = PCC_POLL_MS }) {
+// A banner on the G1 page while SEPTA's vintage PCC trolleys are running. The
+// collector picks them out of SEPTA's G1 positions by fleet number and
+// publishes them as pcc.json (src/lib/pcc.js). No PCC out, a file too old to
+// trust, or no file at all means no banner: a stale "running now" would send
+// riders out for a car that's gone.
+export default function PccBanner({ fetchStatus = fetchPccFile, pollMs = PCC_POLL_MS }) {
   const [status, setStatus] = useState(null);
+  const now = useNow(pollMs);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,9 +55,11 @@ export default function PccBanner({ fetchStatus = fetchPccStatus, pollMs = PCC_P
   }, [fetchStatus, pollMs]);
 
   const cars = status?.cars ?? [];
-  if (cars.length === 0) return null;
+  const age = status?.updatedTs != null ? now - status.updatedTs : null;
+  if (cars.length === 0 || age == null || age > PCC_MAX_AGE_MS) return null;
   const n = cars.length;
   const buses = status.buses;
+  const since = Math.min(...cars.map((c) => c.first_seen_ts).filter(Number.isFinite));
 
   return (
     <section
@@ -54,6 +74,12 @@ export default function PccBanner({ fetchStatus = fetchPccStatus, pollMs = PCC_P
           <p className="text-sm font-bold text-yellow-900 dark:text-yellow-100">
             {n === 1 ? 'A vintage PCC trolley is' : `${n} vintage PCC trolleys are`} running on the
             G1 now
+            {Number.isFinite(since) && (
+              <span className="font-normal text-yellow-800/90 dark:text-yellow-200/80">
+                {' '}
+                · out since {formatTime(since)}
+              </span>
+            )}
           </p>
           <ul className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-yellow-900 dark:text-yellow-100">
             {cars.map((car) => (
@@ -67,14 +93,14 @@ export default function PccBanner({ fetchStatus = fetchPccStatus, pollMs = PCC_P
             {buses > 0
               ? ` (${buses === 1 ? '1 bus is' : `${buses} buses are`} out on the line too)`
               : ''}
-            .{' '}
+            .{age > PCC_AGE_NOTE_MS ? ` Updated ${formatRelativeTime(status.updatedTs, now)}.` : ''}{' '}
             <a
               href={PCC_TRACKER_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="font-semibold underline underline-offset-2 hover:text-yellow-950 dark:hover:text-white"
             >
-              Track {n === 1 ? 'it' : 'them'} live on the G Trolley Tracker ↗
+              Follow {n === 1 ? 'it' : 'them'} live on the G Trolley Tracker ↗
             </a>
           </p>
         </div>

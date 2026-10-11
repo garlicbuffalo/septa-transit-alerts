@@ -516,6 +516,78 @@ describe('collect (fixtures end to end)', () => {
     }
   });
 
+  it("publishes the G1's PCC trolleys, and counts them coming and going as changes", async () => {
+    const payload = await fixture('transitview.json');
+    const ts = payload.routes[0]['17'][0].timestamp;
+    const g1 = (label, over = {}) => ({
+      lat: '39.971985',
+      lng: '-75.163537',
+      label,
+      VehicleID: label,
+      route_id: 'G1',
+      trip: null,
+      Direction: 'Eastbound',
+      destination: 'Richmond-Westmoreland',
+      late: 3,
+      next_stop_name: 'Girard Av & 16th St',
+      timestamp: ts,
+      ...over,
+    });
+    const run = async (vehicles, now) => {
+      const tv = structuredClone(payload);
+      tv.routes.push({ G1: vehicles });
+      let hooked;
+      const { summary } = await collect({
+        dataDir: dir,
+        fixturesDir: FIXTURES,
+        now,
+        log: () => {},
+        sources: { transitView: async () => tv },
+        beforePublish: async ({ pcc }) => {
+          hooked = pcc;
+          return {};
+        },
+      });
+      const file = JSON.parse(await readFile(join(dir, 'pcc.json'), 'utf8'));
+      return { summary, file, hooked };
+    };
+
+    const first = await run([g1('2324'), g1('3676', { lng: '-75.10' })], NOW);
+    expect(first.file).toEqual({
+      schema_version: 1,
+      updated_ts: NOW,
+      cars: [
+        {
+          id: '2324',
+          direction: 'Eastbound',
+          destination: 'Richmond-Westmoreland',
+          next_stop: 'Girard Av & 16th St',
+          lat: 39.971985,
+          lon: -75.163537,
+          late_min: 3,
+          first_seen_ts: NOW,
+        },
+      ],
+      buses: 1,
+    });
+    expect(first.hooked).toEqual({ updated_ts: NOW, cars: first.file.cars, buses: 1 });
+    expect(first.summary.pcc).toEqual(['2324']);
+
+    // Still out a few minutes later: the same spell, and nothing new for riders.
+    const later = NOW + 4 * MIN;
+    const still = await run(
+      [g1('2324', { timestamp: ts + 240 }), g1('3676', { timestamp: ts + 240 })],
+      later,
+    );
+    expect(still.file.cars[0].first_seen_ts).toBe(NOW);
+    expect(still.summary.changed).toBe(0);
+
+    // Back to the depot.
+    const gone = await run([g1('3676', { timestamp: ts + 480 })], NOW + 8 * MIN);
+    expect(gone.file.cars).toEqual([]);
+    expect(gone.summary.changed).toBe(1);
+  });
+
   it('builds a complete data directory from captured SEPTA responses', async () => {
     const { ok, summary } = await collect({
       dataDir: dir,

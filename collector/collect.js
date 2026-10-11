@@ -4,7 +4,8 @@
 // folds them into the archive in --data-dir, and rewrites the published files
 // the site reads. Designed to run every ~10 minutes (the collect.yml GitHub
 // Actions workflow), but any scheduler works. Prints a JSON summary to stdout;
-// `changed` counts rider-visible changes (see fingerprints). Diagnostics go to
+// `changed` counts rider-visible changes (see fingerprints; a PCC trolley coming
+// out or going in on the G1 counts too). Diagnostics go to
 // stderr.
 //
 //   node collector/collect.js --data-dir data [--cache-dir .collector-cache]
@@ -21,6 +22,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { PCC_FILE, pccSightings } from '../src/lib/pcc.js';
 import { loadArchive, publishArchive } from './lib/archive.js';
 import { applyElevators } from './lib/elevators.js';
 import { decodeTripUpdates, decodeVehiclePositions } from './lib/gtfsRealtime.js';
@@ -78,6 +80,12 @@ function fingerprints(incidents, outages) {
     out.set(`outage:${o.id}`, String(o.lifecycle?.active));
   }
   return out;
+}
+
+// Whether the PCC cars out now (already sorted) are the ones out last tick.
+function sameCars(prev, cars) {
+  const before = prev?.out ?? [];
+  return before.length === cars.length && cars.every((c, i) => c.id === before[i]);
 }
 
 function countChanges(before, after) {
@@ -213,6 +221,8 @@ export async function collect({
 
   // Vehicle-position detectors (gaps, bunching, missing vehicles, held).
   let vehicles = []; // the positions that passed the screen, for the detectors and beforePublish
+  let pcc = null; // the G1's PCC trolleys this tick (pcc.json), when TransitView came through
+  let pccChanged = false;
   if (transitView.status !== 'fulfilled') {
     summary.sources.transitView = {
       error: String(transitView.reason?.message ?? transitView.reason),
@@ -231,6 +241,11 @@ export async function collect({
       });
       state.screen = screened.state;
       vehicles = [...screened.vehicles, ...(subway ?? [])];
+      // SEPTA's vintage PCC trolleys on the G1, by fleet number (src/lib/pcc.js).
+      const sighted = pccSightings(screened.vehicles, state.pcc, now);
+      pccChanged = !sameCars(state.pcc, sighted.status.cars);
+      state.pcc = { ...sighted.state, out: sighted.status.cars.map((c) => c.id) };
+      pcc = sighted.status;
       const { placeholders, stale } = normalized;
       const found = findConditions({ vehicles, schedule: sched, cancelledTripIds, state, now });
       // On a degraded tracker feed, leave detections as they are this tick; without the L1's
@@ -263,6 +278,7 @@ export async function collect({
         state,
         schedule: sched,
         vehicles,
+        pcc,
         now,
         summary,
       });
@@ -295,10 +311,20 @@ export async function collect({
     } catch (err) {
       warn(`route shapes: ${err.message}`);
     }
+    // Left as it was when TransitView failed: its updated_ts says how old it is.
+    if (pcc)
+      await writeFile(
+        join(dataDir, PCC_FILE),
+        `${JSON.stringify({ schema_version: 1, ...pcc })}\n`,
+      );
     state.updated_at = now;
     await writeFile(join(dataDir, STATE_FILE), `${JSON.stringify(state)}\n`);
   }
-  summary.changed = ok ? countChanges(before, fingerprints(archive.incidents, archive.outages)) : 0;
+  // A PCC coming out or going back to the depot is rider-visible (the G1 page's banner).
+  summary.changed = ok
+    ? countChanges(before, fingerprints(archive.incidents, archive.outages)) + (pccChanged ? 1 : 0)
+    : 0;
+  if (pcc) summary.pcc = pcc.cars.map((c) => c.id);
   summary.incidents = archive.incidents.size;
   summary.active = [...archive.incidents.values()].filter((i) => i.lifecycle?.active).length;
   log(JSON.stringify(summary, null, 2));

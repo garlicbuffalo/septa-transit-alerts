@@ -28,6 +28,7 @@ Every incident has a `mode` of `metro`, `bus`, or `regional_rail`. Route keys:
 - Year-over-year aggregates: __SITE_ORIGIN__/data/aggregates.json
 - Daily counts JSON: __SITE_ORIGIN__/data/daily-counts.json
 - Accessibility outages JSON: __SITE_ORIGIN__/data/accessibility.json
+- G1 PCC trolleys out now JSON: __SITE_ORIGIN__/data/pcc.json
 - Incidents CSV: __SITE_ORIGIN__/data/alerts.csv
 - Data changelog: __SITE_ORIGIN__/data/CHANGELOG.md
 - Atom feed: __SITE_ORIGIN__/feed.xml (per-line/route: /feed/line/<line>.xml, /feed/route/<route>.xml, /feed/rail/line/<line>.xml)
@@ -187,6 +188,30 @@ A bus gap (vehicle-position detection):
       "source_url": "https://…"
     }
   ]
+}
+```
+
+## pcc.json shape
+
+The vintage PCC trolleys SEPTA runs on some G1 trips among the line's buses, told apart by fleet number (four digits starting with 23). Rewritten by every collector tick that SEPTA's TransitView feed comes through; `cars` is empty when none is out.
+
+```jsonc
+{
+  "schema_version": 1,
+  "updated_ts": 1791677400000,
+  "cars": [
+    {
+      "id": "2324",
+      "direction": "Eastbound",       // "Eastbound", "Westbound", or null
+      "destination": "Richmond-Westmoreland",
+      "next_stop": "Girard Av & 16th St",
+      "lat": 39.971985,
+      "lon": -75.163537,
+      "late_min": 3,
+      "first_seen_ts": 1791670320000  // when this spell on the line began
+    }
+  ],
+  "buses": 6                         // the G1's other tracked vehicles
 }
 ```
 
