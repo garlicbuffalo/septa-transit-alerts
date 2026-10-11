@@ -154,6 +154,74 @@ export function planAlertMap(incident) {
   };
 }
 
+// Where a station's label can go: beside its dot on either side, level with it first, then
+// nudged up or down (with a leader line back to the dot).
+const LABEL_SIZE = 26;
+const LABEL_GAP = 18;
+const LABEL_STEPS = [0, -40, 40, -80, 80, -120, 120];
+// Kept clear: the title along the top, the map credit in the bottom-right corner.
+const TITLE_BOTTOM = 100;
+const CREDIT = { w: 420, h: 40 };
+
+/**
+ * Lay out station labels so they don't cover each other, the station dots, the title or the
+ * credit, or run off the image. Each label tries both sides of its dot, level first, then nudged
+ * further away; it takes the first spot that's clear, else (a stretch's end, `keep`) the one that
+ * overlaps least. A label with no clear spot that isn't an end is left off: its dot still shows.
+ * @param {Array<{ name: string, x: number, y: number, keep?: boolean }>} labels most important first
+ * @param {{ width: number, height: number, dots?: Array<{ x: number, y: number, r: number }> }} opts
+ * @returns {string} SVG
+ */
+export function placeLabels(labels, { width, height, dots = [] }) {
+  const boxes = [];
+  const pad = 4;
+  const area = (a, b) =>
+    Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left) + pad) *
+    Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) + pad);
+  const blockers = [
+    { left: 0, top: 0, right: width, bottom: TITLE_BOTTOM },
+    { left: width - CREDIT.w, top: height - CREDIT.h, right: width, bottom: height },
+  ];
+  // How much a box covers what's already there (labels, dots, title, credit), or runs off.
+  const cost = (b, own) => {
+    if (b.left < 8 || b.right > width - 8 || b.top < 8 || b.bottom > height - 8) return Infinity;
+    let c = 0;
+    for (const o of [...boxes, ...blockers]) c += area(b, o);
+    for (const d of dots) {
+      if (d === own) continue;
+      c += area(b, { left: d.x - d.r, right: d.x + d.r, top: d.y - d.r, bottom: d.y + d.r });
+    }
+    return c;
+  };
+  let svg = '';
+  for (const l of labels) {
+    const own = dots.find((d) => d.x === l.x && d.y === l.y);
+    // Facing the side with more room first.
+    const sides = l.x > width / 2 ? ['right', 'left'] : ['left', 'right'];
+    let best = null;
+    for (const dy of LABEL_STEPS) {
+      for (const anchor of sides) {
+        const x = anchor === 'left' ? l.x + LABEL_GAP : l.x - LABEL_GAP;
+        const label = pill(l.name, { x, y: l.y + dy, size: LABEL_SIZE, anchor });
+        const c = cost(label.box, own);
+        if (!best || c < best.c) best = { ...label, c, dy, anchor };
+        if (c === 0) break;
+      }
+      if (best?.c === 0) break;
+    }
+    if (!best || best.c === Infinity || (best.c > 0 && !l.keep)) continue;
+    if (best.dy !== 0) {
+      // A leader line from the dot to the label's near edge.
+      const ex = best.anchor === 'left' ? best.box.left : best.box.right;
+      const ey = (best.box.top + best.box.bottom) / 2;
+      svg += `<line x1="${l.x.toFixed(1)}" y1="${l.y.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#fff" stroke-opacity="0.7" stroke-width="2"/>`;
+    }
+    boxes.push(best.box);
+    svg += best.svg;
+  }
+  return svg;
+}
+
 /** Render a plan to JPEG. */
 export async function renderPlan(plan, { basemap }) {
   const { view } = plan;
@@ -172,33 +240,27 @@ export async function renderPlan(plan, { basemap }) {
     body += line(pts, { color: '#ffffff', width: 20, opacity: 0.9 });
     body += line(pts, { color: l.color, width: 13, opacity: 1 });
   }
-  // Station dots, then labels for the named stations.
+  // Station dots, then labels for the named stations: the stretch's ends first.
   const labeled = new Map();
+  const dots = [];
   for (const l of plan.lines) {
-    for (const s of l.inside)
-      body += dot(px([s.lat, s.lon]), { r: 6, fill: '#fff', strokeWidth: 2 });
+    for (const s of l.inside) {
+      const p = px([s.lat, s.lon]);
+      body += dot(p, { r: 6, fill: '#fff', strokeWidth: 2 });
+      dots.push({ ...p, r: 8 });
+    }
     for (const s of l.marked) {
-      body += dot(px([s.lat, s.lon]), { r: 10, fill: '#fff', stroke: l.color, strokeWidth: 5 });
-      labeled.set(s.name, px([s.lat, s.lon]));
+      const p = px([s.lat, s.lon]);
+      body += dot(p, { r: 10, fill: '#fff', stroke: l.color, strokeWidth: 5 });
+      dots.push({ ...p, r: 13 });
+      labeled.set(s.name, { p, end: s === l.from || s === l.to });
     }
   }
-  // Labels beside their dots, nudged up or down until they don't overlap.
-  const placed = [];
-  const overlaps = (b) =>
-    placed.some(
-      (o) => b.left < o.right && b.right > o.left && b.top < o.bottom + 4 && b.bottom > o.top - 4,
-    );
-  for (const [name, p] of labeled) {
-    const anchor = p.x > view.width * 0.62 ? 'right' : 'left';
-    const x = anchor === 'left' ? p.x + 18 : p.x - 18;
-    let label = null;
-    for (const dy of [0, -46, 46, -92, 92, -138, 138]) {
-      label = pill(name, { x, y: p.y + dy, size: 26, anchor });
-      if (!overlaps(label.box)) break;
-    }
-    placed.push(label.box);
-    body += label.svg;
-  }
+  const order = [...labeled].sort(([, a], [, b]) => Number(b.end) - Number(a.end));
+  body += placeLabels(
+    order.map(([name, { p, end }]) => ({ name, x: p.x, y: p.y, keep: end })),
+    { width: view.width, height: view.height, dots },
+  );
   body += titlePill(plan.title, { width: view.width });
   return composite(await basemap(view), body, { width: view.width, height: view.height });
 }
