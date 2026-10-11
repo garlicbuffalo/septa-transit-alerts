@@ -141,7 +141,12 @@ describe('vehicle outlines', () => {
     const { vehicleMark } = await import('../map/draw.js');
     const mark = (shape) => vehicleMark(100, 100, 22, { shape, fill: '#f00' });
     expect(mark('pcc')).toContain('<line'); // the trolley pole
-    expect(mark('pcc').match(/<circle/g)).toHaveLength(4); // two pairs of small wheels
+    expect(mark('pcc').match(/fill="#0b0d10" stroke/g)).toHaveLength(4); // two pairs of small wheels
+    expect(mark('pcc')).toContain('fill="#fff5c2"'); // the headlight
+    expect(mark('pcc')).toContain('<path'); // the streamlined body
+    // Long and low: a longer outline than the bus's.
+    const { MARK_WIDTH } = await import('../map/draw.js');
+    expect(MARK_WIDTH.pcc).toBeGreaterThan(MARK_WIDTH.bus);
     expect(mark('lrv')).toContain('<line'); // its pole too
     expect(mark('lrv').match(/<circle/g)).toHaveLength(5); // and a third truck under the joint
     expect(mark('lrv')).toContain('<path'); // angled cabs
