@@ -33,6 +33,7 @@ import {
   searchFilterIncidents,
 } from '../lib/incidents.js';
 import { METRO_LINES, metroLineFullName, normalizeMetroLine } from '../lib/metroLines.js';
+import { PCC_LINE } from '../lib/pcc.js';
 import { normalizeRailLine, railLineFullName, railLineInfo } from '../lib/railLines.js';
 import { buildRailStationIndex } from '../lib/railStations.js';
 import { SITE_NAME } from '../lib/site.js';
@@ -47,6 +48,7 @@ import IncidentList from './IncidentList.jsx';
 import LineMap from './LineMap.jsx';
 import { LONG_RUNNING_THRESHOLD_MS } from './LongRunningBanner.jsx';
 import NotFoundPage from './NotFoundPage.jsx';
+import PccBanner from './PccBanner.jsx';
 import RailCancellationDelayStats from './RailCancellationDelayStats.jsx';
 import RailUpcomingCancellations from './RailUpcomingCancellations.jsx';
 import RouteMap from './RouteMap.jsx';
@@ -562,6 +564,10 @@ export default function LinePage({ kind, lineId }) {
             </a>
           </div>
         </div>
+
+        {/* The G1's vintage PCC trolleys, live from the G Trolley Tracker: shown
+            whether or not this line's history has loaded. */}
+        {isMetro && effectiveLineId === PCC_LINE && <PccBanner />}
 
         {!data && (
           <div className="space-y-4 animate-pulse">
