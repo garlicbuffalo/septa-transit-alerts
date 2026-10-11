@@ -8,7 +8,8 @@
 //
 // Run with `npm run brand-assets` after editing any of the sources, and commit
 // the PNGs. The OG card's footer URL comes from SITE_URL (src/lib/site.js), so
-// re-run this when the site's domain changes.
+// re-run this when the site's domain changes. Its title is set in the site's
+// display face (Overpass), inlined from node_modules.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -19,6 +20,10 @@ import { launchChromium } from './browser.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const SITE_HOST = new URL(SITE_ORIGIN).host;
+const BRAND_FONT = resolve(
+  ROOT,
+  'node_modules/@fontsource-variable/overpass/files/overpass-latin-wght-normal.woff2',
+);
 
 const ICONS = [
   { src: 'public/favicon.svg', out: 'public/favicon-16.png', size: 16 },
@@ -43,11 +48,14 @@ try {
     viewport: { width: 1024, height: 538 },
     deviceScaleFactor: 1200 / 1024,
   });
-  const ogHtml = readFileSync(resolve(ROOT, 'scripts/og-template.html'), 'utf8').replaceAll(
-    '__SITE_HOST__',
-    SITE_HOST,
-  );
+  const ogHtml = readFileSync(resolve(ROOT, 'scripts/og-template.html'), 'utf8')
+    .replaceAll('__SITE_HOST__', SITE_HOST)
+    .replace(
+      '__BRAND_FONT__',
+      `data:font/woff2;base64,${readFileSync(BRAND_FONT).toString('base64')}`,
+    );
   await og.setContent(ogHtml, { waitUntil: 'load' });
+  await og.evaluate(() => document.fonts.ready);
   await og.screenshot({
     path: resolve(ROOT, 'public/og-image.png'),
     clip: { x: 0, y: 0, width: 1024, height: 538 },

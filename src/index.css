@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Page titles and section labels share the wordmark's display face — the
+   `font-display` stack in tailwind.config.js. Body text stays on the system
+   stack. Zero specificity, so a heading's own font-* class still wins. */
+:where(h1, h2) {
+  font-family: "Overpass Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
 /* Skip-to-main-content link: the first focusable element, visually hidden
    until it receives keyboard focus, then pinned to the top-left so a keyboard
    user can jump past the header straight into the page's <main>. */
