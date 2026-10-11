@@ -39,7 +39,7 @@ export default function BrandMark({ className = 'h-8 w-8' }) {
       {/* Clock face */}
       <circle cx="32" cy="24.7" r="3" fill="#0d1117" stroke="#FFD700" strokeWidth="2" />
       <g stroke="#FFD700" strokeLinecap="round">
-        <path d="M32 24.7v-1.8M32 24.7h1.4" strokeWidth="1.2" />
+        <path d="M32 24.7v-1.8M32 24.7h1.4" strokeWidth="1" />
       </g>
       {/* Drum with arched windows, ribbed dome, lantern */}
       <rect x="29" y="16.9" width="6" height="3.4" rx=".6" fill="#FFD700" />
@@ -57,7 +57,7 @@ export default function BrandMark({ className = 'h-8 w-8' }) {
         <circle cx="32" cy="5.05" r=".9" />
         <path d="M31 5.9h2l.35 1.8h-2.7z" />
       </g>
-      <path d="M32.85 6.3l2.4.6" stroke="#FFD700" strokeWidth=".8" strokeLinecap="round" />
+      <path d="M32.85 6.3l2.2 1.2" stroke="#FFD700" strokeWidth=".8" strokeLinecap="round" />
     </svg>
   );
 }
