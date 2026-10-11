@@ -177,7 +177,7 @@ Other entry points:
 - `node collector/collect.js --data-dir <dir> --fixtures collector/test/fixtures --now 1791244200000` builds a deterministic data directory from captured SEPTA responses (CI builds the site against this).
 - `DATA_DIR=<dir> npm run build` builds against a specific data directory, e.g. a checkout of the `data` branch.
 - `npm run reference-data` downloads SEPTA's GTFS bundle and regenerates the station, shape, and route JSON. To use a local copy of the bundle: `node scripts/build-reference-data.js path/to/gtfs_public.zip && npx biome format --write src/lib`.
-- `npm run brand-assets` re-renders the PNG icons and the homepage share card (`public/og-image.png`) from their SVG/HTML sources.
+- `npm run brand-assets` re-renders the PNG icons and the homepage share card (`public/og-image.png`) from their SVG/HTML sources. That includes the seasonal LOVE-sculpture icons (`public/favicon-love.svg` and its PNGs), which `index.html` swaps in from February 1 to 14.
 - `CHROMIUM_PATH=/path/to/chromium` makes the Playwright steps use an existing Chromium instead of Playwright's download.
 - [`debugging/`](debugging/DEBUGGING.md) has helpers for inspecting one event and rendering its share card.
 

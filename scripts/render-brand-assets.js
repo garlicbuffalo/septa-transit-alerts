@@ -5,6 +5,11 @@
 //                                public/icon-192.png, public/icon-512.png
 //   public/apple-touch-icon.svg → public/apple-touch-icon.png (180×180)
 //   scripts/icon-maskable.svg  → public/icon-maskable-192.png, -512.png
+//   public/favicon-love.svg    → public/favicon-love-16.png, -32.png
+//   scripts/apple-touch-icon-love.svg → public/apple-touch-icon-love.png
+//
+// The -love icons are the seasonal LOVE-sculpture set that index.html swaps
+// in around Valentine's Day.
 //
 // Run with `npm run brand-assets` after editing any of the sources, and commit
 // the PNGs. The OG card's footer URL comes from SITE_URL (src/lib/site.js), so
@@ -33,6 +38,9 @@ const ICONS = [
   { src: 'public/apple-touch-icon.svg', out: 'public/apple-touch-icon.png', size: 180 },
   { src: 'scripts/icon-maskable.svg', out: 'public/icon-maskable-192.png', size: 192 },
   { src: 'scripts/icon-maskable.svg', out: 'public/icon-maskable-512.png', size: 512 },
+  { src: 'public/favicon-love.svg', out: 'public/favicon-love-16.png', size: 16 },
+  { src: 'public/favicon-love.svg', out: 'public/favicon-love-32.png', size: 32 },
+  { src: 'scripts/apple-touch-icon-love.svg', out: 'public/apple-touch-icon-love.png', size: 180 },
 ];
 
 function svgPage(svg, size) {

@@ -36,6 +36,32 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <!-- Seasonal icons: Feb 1–14 (Philadelphia time) the tab and home-screen
+         icons swap to the LOVE-sculpture set (public/favicon-love.svg and its
+         PNGs). Runs right after the links so the swap lands before first
+         paint; any failure keeps the City Hall icons. -->
+    <script>
+      (() => {
+        try {
+          const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York',
+            month: 'numeric',
+            day: 'numeric',
+          }).formatToParts(new Date());
+          const part = (type) => Number(parts.find((p) => p.type === type).value);
+          if (part('month') !== 2 || part('day') > 14) return;
+          for (const link of document.querySelectorAll(
+            'link[rel="icon"], link[rel="apple-touch-icon"]',
+          )) {
+            link.href = link
+              .getAttribute('href')
+              .replace(/^\/(favicon|apple-touch-icon)/, '/$1-love');
+          }
+        } catch {
+          /* Intl or the DOM unavailable — keep the default icons. */
+        }
+      })();
+    </script>
     <meta name="apple-mobile-web-app-title" content="SEPTA Alerts" />
     <!-- Launched from the home screen, open full-screen like an app. -->
     <meta name="mobile-web-app-capable" content="yes" />
