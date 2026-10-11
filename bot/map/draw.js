@@ -45,6 +45,68 @@ export function line(points, { color, width = 8, opacity = 1, casing = 0, dash =
   return `${under}<path d="${d}" ${common} stroke="${color}" stroke-opacity="${opacity}" stroke-width="${width}"${dashAttr}/>`;
 }
 
+/**
+ * A vehicle's mark centered on (x, y), about as heavy as a circle of radius r: a circle, or on the
+ * G1, which runs both, a side-view outline of the vehicle (facing right): `pcc`, a PCC trolley
+ * (rounded ends, trolley pole, paired wheels), or `bus` (a boxy body on two big wheels).
+ * `detail` adds the window band (left off when a number is drawn on top).
+ * @param {{ shape?: 'circle' | 'pcc' | 'bus', fill: string, stroke?: string, strokeWidth?: number,
+ *   fillOpacity?: number, opacity?: number, dash?: string | null, detail?: boolean }} opts
+ */
+export function vehicleMark(
+  x,
+  y,
+  r,
+  {
+    shape = 'circle',
+    fill,
+    stroke = '#fff',
+    strokeWidth = 3,
+    fillOpacity = 1,
+    opacity = 1,
+    dash = null,
+    detail = false,
+  },
+) {
+  const f = (n) => n.toFixed(1);
+  // The pole and wheel rims take the outline's color, or the fill's when the outline is dark (small
+  // marks on the dark map), so they stay visible.
+  const light = /^#(0b0d10|000|000000)$/i.test(stroke) ? fill : stroke;
+  const paint =
+    `fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${strokeWidth}"` +
+    (dash ? ` stroke-dasharray="${dash}"` : '');
+  if (shape !== 'pcc' && shape !== 'bus') {
+    return `<circle cx="${f(x)}" cy="${f(y)}" r="${r}" ${paint} opacity="${opacity}"/>`;
+  }
+  const w = r * 2.7;
+  const h = r * 1.45;
+  const left = x - w / 2;
+  const top = y - h / 2 - h * 0.08; // nudged up, so the wheels below keep it centered
+  const wheel = (cx, wr) =>
+    `<circle cx="${f(cx)}" cy="${f(top + h)}" r="${f(wr)}" fill="#0b0d10" stroke="${light}" stroke-width="${f(Math.max(1, strokeWidth * 0.6))}"/>`;
+  let svg = `<g opacity="${opacity}">`;
+  if (shape === 'pcc') {
+    // The trolley pole, raked back from the roof to the wire.
+    svg += `<line x1="${f(left + w * 0.34)}" y1="${f(top)}" x2="${f(left + w * 0.06)}" y2="${f(top - h * 0.62)}" stroke="${light}" stroke-width="${f(Math.max(1.5, strokeWidth * 0.8))}" stroke-linecap="round"/>`;
+    for (const at of [0.17, 0.3, 0.7, 0.83]) svg += wheel(left + w * at, h * 0.13);
+    svg += `<rect x="${f(left)}" y="${f(top)}" width="${f(w)}" height="${f(h)}" rx="${f(h * 0.48)}" ${paint}/>`;
+    if (detail) {
+      svg += `<rect x="${f(left + w * 0.12)}" y="${f(top + h * 0.18)}" width="${f(w * 0.76)}" height="${f(h * 0.3)}" rx="${f(h * 0.15)}" fill="#0b0d10" fill-opacity="0.55"/>`;
+    }
+  } else {
+    for (const at of [0.22, 0.78]) svg += wheel(left + w * at, h * 0.21);
+    svg += `<rect x="${f(left)}" y="${f(top)}" width="${f(w)}" height="${f(h)}" rx="${f(h * 0.14)}" ${paint}/>`;
+    if (detail) {
+      // Side windows, and the windshield at the front (right).
+      for (let i = 0; i < 4; i++) {
+        svg += `<rect x="${f(left + w * (0.08 + i * 0.19))}" y="${f(top + h * 0.16)}" width="${f(w * 0.15)}" height="${f(h * 0.32)}" rx="${f(h * 0.05)}" fill="#0b0d10" fill-opacity="0.55"/>`;
+      }
+      svg += `<rect x="${f(left + w * 0.86)}" y="${f(top + h * 0.16)}" width="${f(w * 0.08)}" height="${f(h * 0.5)}" rx="${f(h * 0.04)}" fill="#0b0d10" fill-opacity="0.55"/>`;
+    }
+  }
+  return `${svg}</g>`;
+}
+
 export function dot(p, { r = 8, fill = '#fff', stroke = '#000', strokeWidth = 3 } = {}) {
   return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`;
 }
@@ -100,6 +162,32 @@ export function legend(rows, { height, margin = 28, size = 24 }) {
     const cy = top + 10 + rowH * i + rowH / 2;
     svg += `<line x1="${margin + 18}" y1="${cy}" x2="${margin + 50}" y2="${cy}" stroke="${r.color}" stroke-width="${r.width ?? 8}" stroke-opacity="${r.opacity ?? 1}" stroke-linecap="round"/>`;
     svg += `<text x="${margin + 62}" y="${cy + size * 0.35}" font-family="${FONT}" font-size="${size}" fill="#e8eaed">${escapeXml(r.label)}</text>`;
+  });
+  return svg;
+}
+
+/**
+ * Dot legend rows at the bottom left: [{ label, color, dashed?, shape? }], dashed for vehicles
+ * placed by the schedule, `shape` for a vehicle outline (see vehicleMark). `bottom` is the space
+ * kept clear beneath it.
+ */
+export function dotLegend(rows, { height, margin = 28, size = 22, bottom = 24 }) {
+  const rowH = size + 12;
+  const w = Math.max(...rows.map((r) => textWidth(r.label, size))) + 72; // + swatch, padding
+  const h = rows.length * rowH + 18;
+  const top = height - margin - bottom - h;
+  let svg = `<rect x="${margin}" y="${top}" width="${w.toFixed(0)}" height="${h}" rx="14" fill="rgba(15,17,21,0.85)"/>`;
+  rows.forEach((r, i) => {
+    const cy = top + 9 + rowH * i + rowH / 2;
+    svg += vehicleMark(
+      margin + 24,
+      cy,
+      r.shape && r.shape !== 'circle' ? 11 : 8,
+      r.dashed
+        ? { shape: r.shape, fill: r.color, fillOpacity: 0.45, strokeWidth: 2, dash: '4 3' }
+        : { shape: r.shape, fill: r.color, stroke: '#0b0d10', strokeWidth: 2, detail: true },
+    );
+    svg += `<text x="${margin + 52}" y="${(cy + size * 0.35).toFixed(1)}" font-family="${FONT}" font-size="${size}" fill="#e8eaed">${escapeXml(r.label)}</text>`;
   });
   return svg;
 }

@@ -47,8 +47,30 @@ describe('PCC post text', () => {
     );
     expect(facets[0].features[0].uri).toBe('https://septa-g-trolley-tracker.netlify.app/');
     expect(plan.title).toBe('G1 · PCC #2324 out now');
-    expect(plan.markers).toEqual([{ lat: 39.9719, lon: -75.1635, tag: '1' }]);
+    expect(plan.markers).toEqual([
+      { lat: 39.9719, lon: -75.1635, tag: '1', route: 'g1', label: '2324', shape: 'pcc' },
+    ]);
+    expect(plan.legend).toEqual([{ label: 'PCC trolley', color: '#e8eaed', shape: 'pcc' }]);
     expect(alt).toBe('Map of the G1 along Girard Avenue with PCC trolley #2324 marked.');
+  });
+
+  it("draws the G1's buses as bus outlines, with a legend", async () => {
+    const { plan, alt } = composePccPost({
+      cars: [car('2324')],
+      newIds: ['2324'],
+      first: true,
+      buses: 2,
+      busPositions: [
+        { lat: 39.972, lon: -75.2, route: 'g1', label: '3676' },
+        { lat: 39.98, lon: -75.11, route: 'g1', label: '3400' },
+      ],
+      shapes,
+    });
+    expect(plan.dots.map((d) => d.shape)).toEqual(['bus', 'bus']);
+    expect(plan.legend.map((r) => r.label)).toEqual(['PCC trolley', 'Bus']);
+    expect(alt).toMatch(/and the line's 2 buses drawn as small bus outlines\.$/);
+    const { renderRouteMap } = await import('../map/routeMap.js');
+    expect((await renderRouteMap(plan, { basemap })).length).toBeGreaterThan(1000);
   });
 
   it('lists every car out now in a reply', () => {

@@ -1,7 +1,9 @@
 // Rider-facing names and emoji for routes in post text, built on the site's
 // own route tables so the bots and the site always agree.
+import { vehicleNoun } from '../../collector/lib/vehicles.js';
 import { busRouteDisplayId, busRouteName } from '../../src/lib/busRoutes.js';
 import { METRO_LINES } from '../../src/lib/metroLines.js';
+import { isPccLabel, PCC_LINE } from '../../src/lib/pcc.js';
 import { RAIL_LINES } from '../../src/lib/railLines.js';
 
 const TROLLEY = /^(t\d|g1|d\d)$/;
@@ -14,6 +16,45 @@ export function routeEmoji(mode, route = null) {
   if (TROLLEY.test(key)) return '🚋';
   if (key === 'm1') return '🚈';
   return '🚇';
+}
+
+/**
+ * The mark a vehicle gets on maps and timelapses: on the G1, which runs buses on most trips and
+ * PCC trolleys on some (told apart by fleet number), an outline of a PCC (`pcc`) or a bus (`bus`);
+ * every other vehicle, a circle. See map/draw.js vehicleMark.
+ */
+export function vehicleShape(route, label) {
+  if (!isG1(route)) return 'circle';
+  return isPccLabel(label) ? 'pcc' : 'bus';
+}
+
+/** True for a G1 vehicle, whose mark says whether it's a PCC trolley or a bus. */
+export function isG1(route) {
+  return String(route ?? '').toLowerCase() === PCC_LINE;
+}
+
+/**
+ * What to call vehicles on a route in post text: on the G1, what they are ("buses", "trolleys",
+ * or "vehicles" for a mix, or when none is known); elsewhere vehicleNoun's word.
+ * @param {Array<{ label: string }>} vehicles the ones the post is about
+ */
+export function vehiclesNoun(mode, route, vehicles = [], plural = true) {
+  if (!isG1(route)) return vehicleNoun(mode, route, plural);
+  const kinds = new Set(vehicles.map((v) => vehicleShape(route, v.label)));
+  const word = kinds.size === 1 ? (kinds.has('pcc') ? 'trolley' : 'bus') : 'vehicle';
+  if (!plural) return word;
+  return word === 'bus' ? 'buses' : `${word}s`;
+}
+
+/** Legend rows for the G1 vehicles among `vehicles` ({ route, label }), kinds present only. */
+export function g1LegendRows(vehicles, { color = '#e8eaed' } = {}) {
+  const shapes = new Set(
+    vehicles.filter((v) => isG1(v?.route)).map((v) => vehicleShape(v.route, v.label)),
+  );
+  const rows = [];
+  if (shapes.has('pcc')) rows.push({ label: 'PCC trolley', color, shape: 'pcc' });
+  if (shapes.has('bus')) rows.push({ label: 'Bus', color, shape: 'bus' });
+  return rows;
 }
 
 /** "Route 17", "L1", "Paoli/Thorndale Line". */

@@ -86,3 +86,42 @@ describe('alert maps', () => {
     expect(meta).toMatchObject({ format: 'jpeg', width: 1200, height: 1200 });
   });
 });
+
+describe('G1 vehicle outlines', () => {
+  it('tell PCC trolleys from buses on the G1 only', async () => {
+    const { vehicleShape, g1LegendRows } = await import('../lib/routes.js');
+    expect(vehicleShape('g1', '2324')).toBe('pcc');
+    expect(vehicleShape('G1', '3676')).toBe('bus');
+    expect(vehicleShape('t1', '9051')).toBe('circle');
+    expect(vehicleShape('23', '2324')).toBe('circle');
+    expect(g1LegendRows([{ route: 't1', label: '1' }])).toEqual([]);
+    expect(
+      g1LegendRows([
+        { route: 'g1', label: '3676' },
+        { route: 'g1', label: '2337' },
+      ]).map((r) => r.shape),
+    ).toEqual(['pcc', 'bus']);
+  });
+
+  it('name what the G1 vehicles in a post are', async () => {
+    const { vehiclesNoun } = await import('../lib/routes.js');
+    const v = (label) => ({ label });
+    expect(vehiclesNoun('metro', 'g1', [v('3676'), v('3400')])).toBe('buses');
+    expect(vehiclesNoun('metro', 'g1', [v('2324')], false)).toBe('trolley');
+    expect(vehiclesNoun('metro', 'g1', [v('2324'), v('3400')])).toBe('vehicles');
+    expect(vehiclesNoun('metro', 'g1', [])).toBe('vehicles');
+    expect(vehiclesNoun('metro', 't1', [v('9051')])).toBe('trolleys');
+    expect(vehiclesNoun('bus', '23', [], false)).toBe('bus');
+  });
+
+  it('draw a trolley pole on a PCC and big wheels on a bus', async () => {
+    const { vehicleMark } = await import('../map/draw.js');
+    const pcc = vehicleMark(100, 100, 22, { shape: 'pcc', fill: '#f00' });
+    const bus = vehicleMark(100, 100, 22, { shape: 'bus', fill: '#f00' });
+    expect(pcc).toContain('<line'); // the pole
+    expect(bus).not.toContain('<line');
+    expect(pcc.match(/<circle/g)).toHaveLength(4); // two pairs of small wheels
+    expect(bus.match(/<circle/g)).toHaveLength(2);
+    expect(vehicleMark(100, 100, 22, { fill: '#f00' })).toMatch(/^<circle /);
+  });
+});

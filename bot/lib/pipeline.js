@@ -352,7 +352,15 @@ export function createPipeline({
           );
           const pcc = config.pccPosts
             ? await step('pcc', () =>
-                maybePostPcc({ poster, pcc: pccStatus, shapes, basemap, now: tickNow, log }),
+                maybePostPcc({
+                  poster,
+                  pcc: pccStatus,
+                  vehicles: vehicleList,
+                  shapes,
+                  basemap,
+                  now: tickNow,
+                  log,
+                }),
               )
             : null;
           const crossRoute = await step('cross-bunching', () =>

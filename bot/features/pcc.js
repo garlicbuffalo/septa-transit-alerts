@@ -9,10 +9,9 @@
 // one-poll blip never posts. Each post links to the G Trolley Tracker
 // (github.com/cristofer-slotoroff/g-trolley-tracker), which follows the cars live.
 import { easternDateKey } from '../../collector/lib/time.js';
-import { PCC_LINE, PCC_TRACKER_URL } from '../../src/lib/pcc.js';
+import { isPccLabel, PCC_LINE, PCC_TRACKER_URL } from '../../src/lib/pcc.js';
 import { firstThatFits, linkFacets } from '../lib/text.js';
-import { bboxOf, fitView } from '../map/projection.js';
-import { MAP_SIZE, renderRouteMap, routeColor } from '../map/routeMap.js';
+import { planRouteMap, renderRouteMap, routeColor } from '../map/routeMap.js';
 
 // A car out this long is posted.
 export const CONFIRM_MS = 3 * 60 * 1000;
@@ -40,40 +39,40 @@ const listIds = (ids) =>
 
 const hasPosition = (car) => Number.isFinite(car.lat) && Number.isFinite(car.lon);
 
-/** The whole G1, drawn under the PCC cars, numbered in list order. */
-function planPccMap({ cars, shapes, title }) {
+/** The whole G1, drawn under the PCC cars (numbered in list order) and its buses. */
+function planPccMap({ cars, buses = [], shapes, title }) {
   const lines = (shapes?.shapes(PCC_LINE) ?? []).filter((p) => p?.length >= 2);
   const markers = cars
     .map((car, i) => ({ car, tag: String(i + 1) }))
     .filter(({ car }) => hasPosition(car))
-    .map(({ car, tag }) => ({ lat: car.lat, lon: car.lon, tag }));
+    .map(({ car, tag }) => ({ lat: car.lat, lon: car.lon, tag, route: PCC_LINE, label: car.id }));
   if (!markers.length || !lines.length) return null;
-  const focus = [...lines.flat(), ...markers.map((m) => [m.lat, m.lon])];
   const color = routeColor('metro', PCC_LINE);
-  return {
+  return planRouteMap({
     routes: lines.map((points) => ({ points, color })),
     markers,
-    stretch: null,
+    dots: buses,
     title,
-    view: fitView(bboxOf(focus), MAP_SIZE, MAP_SIZE, { pad: 120, minZoom: 11, maxZoom: 16 }),
-  };
+    fit: lines.flat(),
+  });
 }
 
 /**
  * Text, link facets, alt text, and map plan for a PCC post.
  * @param {{ cars: object[], newIds: string[], first: boolean, buses: number | null,
- *   shapes?: object | null }} opts
+ *   busPositions?: Array<{ lat: number, lon: number, label: string }>, shapes?: object | null }} opts
  *   cars: every PCC out now (pcc.json's shape); newIds: the ones this post announces;
- *   first: the day's first post (shows only its cars; a reply shows every car out)
+ *   first: the day's first post (shows only its cars; a reply shows every car out);
+ *   busPositions: the G1's buses, drawn on the map for context
  */
-export function composePccPost({ cars, newIds, first, buses, shapes = null }) {
+export function composePccPost({ cars, newIds, first, buses, busPositions = [], shapes = null }) {
   const shown = first ? cars.filter((c) => newIds.includes(c.id)) : cars;
   const fresh = shown.filter((c) => newIds.includes(c.id));
   const plural = fresh.length > 1;
   const title = first
     ? `G1 · ${plural ? `${fresh.length} PCC trolleys` : `PCC #${fresh[0].id}`} out now`
     : `G1 · ${cars.length} PCC trolley${cars.length === 1 ? '' : 's'} out now`;
-  const plan = planPccMap({ cars: shown, shapes, title });
+  const plan = planPccMap({ cars: shown, buses: busPositions, shapes, title });
   const tag = (car) => (plan ? KEYCAPS[shown.indexOf(car)] : null);
 
   const head = first
@@ -106,6 +105,9 @@ export function composePccPost({ cars, newIds, first, buses, shapes = null }) {
       (marked.length > 1
         ? ` (${marked.map((c) => `#${c.id} is ${shown.indexOf(c) + 1}`).join(', ')})`
         : '') +
+      (plan.dots.length
+        ? `, and the line's ${plan.dots.length === 1 ? 'bus' : `${plan.dots.length} buses`} drawn as small bus outlines`
+        : '') +
       '.'
     : '';
   return {
@@ -119,10 +121,20 @@ export function composePccPost({ cars, newIds, first, buses, shapes = null }) {
 /**
  * Post on the metro account when PCC cars come out.
  * @param {{ poster: object, pcc: { cars: object[], buses: number } | null,
- *   shapes?: object | null, basemap: Function, now: number, log?: (m: string) => void }} opts
- *   pcc: the collector's PCC status this tick (null when TransitView didn't come through)
+ *   vehicles?: object[], shapes?: object | null, basemap: Function, now: number,
+ *   log?: (m: string) => void }} opts
+ *   pcc: the collector's PCC status this tick (null when TransitView didn't come through);
+ *   vehicles: the tick's screened positions, for the G1's buses on the map
  */
-export async function maybePostPcc({ poster, pcc, shapes = null, basemap, now, log = () => {} }) {
+export async function maybePostPcc({
+  poster,
+  pcc,
+  vehicles = [],
+  shapes = null,
+  basemap,
+  now,
+  log = () => {},
+}) {
   const account = 'metro';
   if (!pcc || !poster.client.hasAccount(account)) return null;
   const today = easternDateKey(now);
@@ -141,6 +153,9 @@ export async function maybePostPcc({ poster, pcc, shapes = null, basemap, now, l
     newIds,
     first: !dayPost,
     buses: pcc.buses,
+    busPositions: vehicles
+      .filter((v) => v.route === PCC_LINE && !isPccLabel(v.label))
+      .map((v) => ({ lat: v.lat, lon: v.lon, route: v.route, label: v.label })),
     shapes,
   });
   let image = null;

@@ -140,6 +140,8 @@ export function composeCluster(group, place, shapes) {
     markers: ordered.map((v, i) => ({
       lat: v.lat,
       lon: v.lon,
+      route: v.route,
+      label: v.label,
       tag: String(i + 1),
       color: colorFor.get(v.route),
     })),

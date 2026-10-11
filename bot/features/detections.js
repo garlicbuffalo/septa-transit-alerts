@@ -13,7 +13,7 @@ import { SITE_ORIGIN } from '../../src/lib/site.js';
 import { cleanStopName } from '../../src/lib/stops.js';
 import { acquireCooldown, clearCooldown } from '../lib/db.js';
 import { formatDistance, maxPairDistance } from '../lib/geo.js';
-import { routeEmoji, routeShortLabel } from '../lib/routes.js';
+import { routeEmoji, routeShortLabel, vehiclesNoun } from '../lib/routes.js';
 import { firstThatFits, graphemeLength, linkFacets, POST_MAX_GRAPHEMES } from '../lib/text.js';
 import { planRouteMap, renderRouteMap, routeColor, stretchBetween } from '../map/routeMap.js';
 import { eventUrl } from './alerts.js';
@@ -70,6 +70,9 @@ function lateness(v) {
   return 'on time';
 }
 
+// A vehicle's place on a map, with what tells its mark apart (a bus or a PCC trolley on the G1).
+const markerOf = (v) => ({ lat: v.lat, lon: v.lon, route: v.route, label: v.label });
+
 function vehicleRef(v, tag = null) {
   // An L1 train in the tunnel has no GPS: it's placed by the schedule (subwayTrains.js).
   const extra = [tag, lateness(v), v.estimated ? 'in the tunnel' : null].filter(Boolean).join(', ');
@@ -111,8 +114,9 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
   const d = det.evidence?.details ?? {};
   const label = routeShortLabel(mode, route);
   const emoji = routeEmoji(mode, route);
-  const noun = vehicleNoun(mode, route);
   const found = (d.vehicles ?? []).map((id) => vehicles.get(String(id))).filter(Boolean);
+  // On the G1, buses, PCC trolleys, or a mix ("vehicles"), by fleet number.
+  const noun = vehiclesNoun(mode, route, found);
   const toward = det.scope.direction_label ? ` — ${det.scope.direction_label}` : '';
   const color = routeColor(mode, route);
   const shape = (dir) => shapes?.shape(route, dir) ?? null;
@@ -160,15 +164,15 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
       plan = planRouteMap({
         routes: lines,
         markers: [
-          { lat: ahead.lat, lon: ahead.lon, tag: 'L', estimated: Boolean(ahead.estimated) },
-          { lat: behind.lat, lon: behind.lon, tag: 'N', estimated: Boolean(behind.estimated) },
+          { ...markerOf(ahead), tag: 'L', estimated: Boolean(ahead.estimated) },
+          { ...markerOf(behind), tag: 'N', estimated: Boolean(behind.estimated) },
         ],
         stretch: stretch ? { points: stretch } : null,
         title: `⚠ ${label} · ~${d.gap_min} min gap`,
       });
     }
     const alt =
-      `Map of ${label} with the last ${noun.replace(/s$/, '')} seen (L) and the next one up (N) ` +
+      `Map of ${label} with the last ${vehiclesNoun(mode, route, found, false)} seen (L) and the next one up (N) ` +
       `~${d.gap_min} minutes apart${plan?.stretch ? ', the empty stretch between them dashed' : ''}.` +
       (plan && (ahead.estimated || behind.estimated) ? PLACED_ALT : '');
     const focus =
@@ -206,8 +210,7 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
               : allShapes(),
           ),
           markers: ordered.map((v, i) => ({
-            lat: v.lat,
-            lon: v.lon,
+            ...markerOf(v),
             tag: String(i + 1),
             estimated: Boolean(v.estimated),
           })),
@@ -234,7 +237,7 @@ export function composeDetection({ incident, det, vehicles, shapes, calloutLine 
     const plan = found.length
       ? planRouteMap({
           routes: linesFor(found, allShapes()),
-          markers: found.map((v, i) => ({ lat: v.lat, lon: v.lon, tag: String(i + 1) })),
+          markers: found.map((v, i) => ({ ...markerOf(v), tag: String(i + 1) })),
           title: `⚠ ${label} · ${n} ${noun} stuck`,
         })
       : null;
@@ -474,7 +477,11 @@ async function postNew({
         directionId: d.direction_id ?? null,
         title: plan.title.replace(/^⚠\s*/, ''),
         header: `🎬 ${label}${det.scope.direction_label ? ` — ${det.scope.direction_label}` : ''} · the next 10 minutes`,
-        noun: vehicleNoun(inc.mode, route),
+        noun: vehiclesNoun(
+          inc.mode,
+          route,
+          focus.map(({ v }) => v),
+        ),
         vehicles: focus.map(({ v, tag }) => ({
           id: String(v.id),
           label: String(v.label),
