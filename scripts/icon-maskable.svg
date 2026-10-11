@@ -11,45 +11,44 @@
   <rect width="64" height="64" fill="url(#bg)"/>
   <g transform="translate(32 32) scale(0.72) translate(-32 -32)">
     <!-- City Hall's roofline, in the Regional Rail slate -->
-    <path d="M11 57h42" stroke="#4F758B" stroke-width="4" stroke-linecap="round"/>
-    <!-- The shaft: L1, B, and T lines rising to meet at the clock -->
+    <path d="M10 58h44" stroke="#4F758B" stroke-width="4" stroke-linecap="round"/>
+    <!-- The building: L1, B, and T lines rising and converging under the tower -->
     <g stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none">
-      <path d="M20 54V40l7.5-5.5" stroke="#5A960A"/>
-      <path d="M32 54V37" stroke="#F26100"/>
-      <path d="M44 54V40l-7.5-5.5" stroke="#0097D6"/>
+      <path d="M17 55v-6l15-6" stroke="#5A960A"/>
+      <path d="M47 55v-6l-15-6" stroke="#0097D6"/>
+      <path d="M32 55V43" stroke="#F26100"/>
     </g>
-    <!-- Shaft windows -->
+    <!-- Windows -->
     <g fill="#0d1117">
-      <rect x="19.3" y="42.5" width="1.4" height="3" rx=".7"/>
-      <rect x="19.3" y="48" width="1.4" height="3" rx=".7"/>
-      <rect x="31.3" y="41" width="1.4" height="3" rx=".7"/>
-      <rect x="31.3" y="46.5" width="1.4" height="3" rx=".7"/>
-      <rect x="43.3" y="42.5" width="1.4" height="3" rx=".7"/>
-      <rect x="43.3" y="48" width="1.4" height="3" rx=".7"/>
+      <rect x="16.3" y="50.5" width="1.4" height="3" rx=".7"/>
+      <rect x="31.3" y="48.5" width="1.4" height="3" rx=".7"/>
+      <rect x="46.3" y="50.5" width="1.4" height="3" rx=".7"/>
     </g>
+    <!-- The tower shaft, one narrow line up to the clock -->
+    <path d="M32 43V35" stroke="#FFD700" stroke-width="3" stroke-linecap="round"/>
     <!-- Clock face -->
-    <circle cx="32" cy="30" r="6.6" fill="#0d1117" stroke="#FFD700" stroke-width="3.8"/>
+    <circle cx="32" cy="28" r="6.2" fill="#0d1117" stroke="#FFD700" stroke-width="3.6"/>
     <g stroke="#FFD700" stroke-linecap="round">
-      <path d="M32 25.1v1.1M36.9 30h-1.1M32 34.9v-1.1M27.1 30h1.1" stroke-width="1"/>
-      <path d="M32 30v-3.2M32 30h2.5" stroke-width="1.4"/>
+      <path d="M32 23.4v1M36.6 28h-1M32 32.6v-1M27.4 28h1" stroke-width=".95"/>
+      <path d="M32 28v-3M32 28h2.4" stroke-width="1.3"/>
     </g>
     <!-- Drum with arched windows, ribbed dome, lantern -->
-    <rect x="26.6" y="17.4" width="10.8" height="3.8" rx=".6" fill="#FFD700"/>
+    <rect x="27" y="16" width="10" height="3.6" rx=".6" fill="#FFD700"/>
     <g fill="#0d1117">
-      <rect x="28.4" y="18.1" width="1.4" height="2.4" rx=".7"/>
-      <rect x="31.3" y="18.1" width="1.4" height="2.4" rx=".7"/>
-      <rect x="34.2" y="18.1" width="1.4" height="2.4" rx=".7"/>
+      <rect x="28.7" y="16.6" width="1.3" height="2.3" rx=".65"/>
+      <rect x="31.35" y="16.6" width="1.3" height="2.3" rx=".65"/>
+      <rect x="34" y="16.6" width="1.3" height="2.3" rx=".65"/>
     </g>
-    <path d="M25.6 16.6C25.6 12.6 29.2 11.4 32 9.4 34.8 11.4 38.4 12.6 38.4 16.6Z" fill="#FFD700"/>
-    <path d="M32 10.2v6.4M29 16.6c.3-2.4 1.3-3.9 3-5.2M35 16.6c-.3-2.4-1.3-3.9-3-5.2" stroke="#0d1117" stroke-width=".75" fill="none"/>
-    <rect x="30.8" y="7" width="2.4" height="2.8" rx=".5" fill="#FFD700"/>
+    <path d="M26 15.2C26 11.4 29.4 10.2 32 8.2 34.6 10.2 38 11.4 38 15.2Z" fill="#FFD700"/>
+    <path d="M32 9v6.2M29.2 15.2c.3-2.3 1.2-3.7 2.8-5M34.8 15.2c-.3-2.3-1.2-3.7-2.8-5" stroke="#0d1117" stroke-width=".7" fill="none"/>
+    <rect x="30.85" y="6.2" width="2.3" height="2.5" rx=".5" fill="#FFD700"/>
     <!-- William Penn -->
     <g fill="#FFD700">
-      <rect x="30.4" y="2.6" width="3.2" height=".85" rx=".42"/>
-      <rect x="31.05" y="1.3" width="1.9" height="1.7" rx=".5"/>
-      <circle cx="32" cy="4.3" r=".95"/>
-      <path d="M30.95 5.2h2.1l.35 2h-2.8z"/>
+      <rect x="30.45" y="2.15" width="3.1" height=".8" rx=".4"/>
+      <rect x="31.1" y=".9" width="1.8" height="1.6" rx=".5"/>
+      <circle cx="32" cy="3.75" r=".9"/>
+      <path d="M31 4.6h2l.35 1.8h-2.7z"/>
     </g>
-    <path d="M32.9 5.6l2.5.6" stroke="#FFD700" stroke-width=".85" stroke-linecap="round"/>
+    <path d="M32.85 5l2.4.6" stroke="#FFD700" stroke-width=".8" stroke-linecap="round"/>
   </g>
 </svg>
