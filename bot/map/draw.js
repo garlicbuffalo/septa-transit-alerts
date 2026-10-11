@@ -48,7 +48,7 @@ export function line(points, { color, width = 8, opacity = 1, casing = 0, dash =
 // How much wider than a circle of the same radius each outline is (for spacing markers apart).
 export const MARK_WIDTH = {
   circle: 2,
-  pcc: 2.7,
+  pcc: 3.3,
   lrv: 3.2,
   bus: 2.7,
   subway: 3,
@@ -59,7 +59,8 @@ export const MARK_WIDTH = {
 /**
  * A vehicle's mark centered on (x, y), about as heavy as a circle of radius r: a circle, or a
  * side-view outline of the vehicle, facing right:
- *   pcc      a PCC trolley: one rounded body, a trolley pole raked back to the wire, paired wheels
+ *   pcc      a PCC trolley: a streamlined body whose roof curves down into a sloped nose, skirting
+ *            over the trucks, roof ventilators, a headlight, and a trolley pole raked back
  *   lrv      a Kawasaki trolley (T1–T5, D1, D2): two articulated sections with angled cabs at
  *            both ends, a trolley pole, and a third truck under the joint
  *   bus      a boxy body on two big wheels
@@ -100,7 +101,7 @@ export function vehicleMark(
     return `<circle cx="${f(x)}" cy="${f(y)}" r="${r}" ${paint} opacity="${opacity}"/>`;
   }
   const w = r * MARK_WIDTH[shape];
-  const h = r * 1.45;
+  const h = r * (shape === 'pcc' ? 1.2 : 1.45); // a PCC is long and low
   const left = x - w / 2;
   const right = x + w / 2;
   const top = y - h / 2 - h * 0.08; // nudged up, so the wheels below keep it centered
@@ -150,10 +151,31 @@ export function vehicleMark(
       }
     }
   } else if (shape === 'pcc') {
-    svg += pole(0.34);
-    for (const at of [0.17, 0.3, 0.7, 0.83]) svg += wheel(at, 0.13);
-    svg += `<rect x="${f(left)}" y="${f(top)}" width="${f(w)}" height="${f(h)}" rx="${f(h * 0.48)}" ${paint}/>`;
-    if (detail) svg += pane(left + w * 0.12, top + h * 0.18, w * 0.76, h * 0.3, h * 0.15);
+    // A PCC's streamlined "bullet" body: the roof curves down into each end, the front (right) is
+    // a sloped, rounded nose, and skirting along the bottom half hides the trucks. The trolley pole
+    // rises from the rear of the roof; a headlight sits low in the nose.
+    svg += pole(0.3);
+    for (const at of [0.2, 0.3, 0.7, 0.8]) svg += wheel(at, 0.14);
+    const P = (fx, fy) => `${f(left + w * fx)},${f(top + h * fy)}`;
+    svg +=
+      `<path d="M${P(0.07, 1)} L${P(0.9, 1)} Q${P(0.99, 1)} ${P(1, 0.66)} ` +
+      `C${P(1, 0.32)} ${P(0.95, 0.02)} ${P(0.72, 0)} L${P(0.26, 0)} ` +
+      `C${P(0.06, 0.02)} ${P(0, 0.32)} ${P(0, 0.66)} Q${P(0.01, 1)} ${P(0.07, 1)} Z" ${paint}/>`;
+    // Roof ventilators.
+    for (const at of [0.45, 0.6]) {
+      svg += `<rect x="${f(left + w * at - h * 0.1)}" y="${f(top - h * 0.1)}" width="${f(h * 0.2)}" height="${f(h * 0.12)}" rx="${f(h * 0.05)}" fill="${light}"/>`;
+    }
+    if (r >= 15) {
+      svg += `<circle cx="${f(left + w * 0.975)}" cy="${f(top + h * 0.7)}" r="${f(h * 0.08)}" fill="#fff5c2"/>`;
+    }
+    if (detail) {
+      // The side windows, the raked windshield, and the belt rail under them.
+      for (const at of [0.1, 0.22, 0.34, 0.46, 0.58, 0.7]) {
+        svg += pane(left + w * at, top + h * 0.2, w * 0.09, h * 0.32, h * 0.04);
+      }
+      svg += `<path d="M${P(0.82, 0.2)} L${P(0.9, 0.2)} Q${P(0.965, 0.26)} ${P(0.985, 0.52)} L${P(0.82, 0.52)} Z" fill="#0b0d10" fill-opacity="0.55"/>`;
+      svg += `<line x1="${f(left + w * 0.02)}" y1="${f(top + h * 0.66)}" x2="${f(left + w * 0.985)}" y2="${f(top + h * 0.66)}" stroke="#fff" stroke-opacity="0.75" stroke-width="${f(Math.max(1, h * 0.07))}"/>`;
+    }
   } else if (shape === 'bus') {
     for (const at of [0.22, 0.78]) svg += wheel(at, 0.21);
     svg += `<rect x="${f(left)}" y="${f(top)}" width="${f(w)}" height="${f(h)}" rx="${f(h * 0.14)}" ${paint}/>`;
