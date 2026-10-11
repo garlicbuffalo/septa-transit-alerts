@@ -116,7 +116,7 @@ export function speedCandidates(db, account, { since, cfg = SPEED_CONFIG[account
   const rows = db
     .prepare(
       `SELECT route, COUNT(DISTINCT vehicle_id) AS vehicles FROM observations
-       WHERE mode = ? AND ts >= ? GROUP BY route HAVING vehicles >= ?`,
+       WHERE mode = ? AND ts >= ? AND estimated = 0 GROUP BY route HAVING vehicles >= ?`,
     )
     .all(cfg.mode, since, cfg.minVehicles);
   const last = new Map(
@@ -179,7 +179,12 @@ export function composeSpeedMap({ mode, route, direction, start, end, result, ba
 /** The shape and samples to map for a route: the busier direction, on its own shape. */
 function routeSamples(db, account, route, { since, shapes }) {
   const cfg = SPEED_CONFIG[account];
-  const rows = observationsSince(db, { routes: [route], mode: cfg.mode, since }).map((r) => ({
+  const rows = observationsSince(db, {
+    routes: [route],
+    mode: cfg.mode,
+    since,
+    measured: true,
+  }).map((r) => ({
     vehicle_id: r.vehicle_id,
     t: r.report_ts ?? r.ts,
     lat: r.lat,

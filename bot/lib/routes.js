@@ -19,16 +19,18 @@ export function routeEmoji(mode, route = null) {
 }
 
 /**
- * The outline a vehicle gets on still maps (map/draw.js vehicleMark): `bus` for a bus, including
+ * The outline a vehicle gets on still maps and line timelapses (map/draw.js vehicleMark): `bus` for a bus, including
  * the buses that run most G1 trips; `pcc` for the G1's PCC trolleys (told apart from its buses by
  * fleet number); `lrv` for the Kawasaki trolleys of T1–T5, D1, and D2; `subway` for the L1's (and
- * Broad Street's) trains; `m1` for an M1 car; `rail` for a Regional Rail train. Timelapses draw
- * dots for everything.
+ * Broad Street's) trains; `m1` for an M1 car; `rail` for a Regional Rail train. Without a mode, it
+ * comes from the route: a Metro line, a Regional Rail line, or else a bus route. The system
+ * snapshots draw dots for everything.
  * @param {{ mode?: string, route?: string, label?: string }} v
  */
 export function vehicleShape({ mode, route, label } = {}) {
   const key = String(route ?? '').toLowerCase();
-  const m = mode ?? (METRO_LINES[key] ? 'metro' : RAIL_LINES[key] ? 'regional_rail' : null);
+  const m =
+    mode ?? (!key ? null : METRO_LINES[key] ? 'metro' : RAIL_LINES[key] ? 'regional_rail' : 'bus');
   if (m === 'bus') return 'bus';
   if (m === 'regional_rail') return 'rail';
   if (m !== 'metro') return 'circle';

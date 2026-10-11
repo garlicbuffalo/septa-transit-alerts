@@ -1,0 +1,1129 @@
+{
+  "schedule": {
+    "version": 3,
+    "built_at": 1791723600000,
+    "feed_version": "v202609271",
+    "services": {
+      "49": {
+        "days": "0000001",
+        "start": "20260927",
+        "end": "20270220",
+        "add": ["20261126", "20261225", "20270101"],
+        "remove": ["20260927"]
+      }
+    },
+    "stops": [
+      "13th St & Market St - MBFS",
+      "Morris Dr & Liberty Ridge Dr - MBFS",
+      "Oxford Valley Mall & J C Penney",
+      "Trenton Transit Center",
+      "Levittown Station",
+      "Rockhill Rd & Neshaminy Rd - MBFS",
+      "Neshaminy Mall",
+      "Neshaminy Blvd & Rockhill Rd - 2 MBFS",
+      "Lincoln Hwy & Durham Rd - MBNS",
+      "City Line Loop",
+      "Ford Rd & Bridgewater Rd",
+      "Bucks County Community College - 2",
+      "Norristown Transit Center",
+      "Audubon Rd & Adams Av - FS",
+      "Blvd of Generals & Trooper Rd - MBNS",
+      "Montgomery Mall",
+      "Landis Market - Telford",
+      "Dunks Ferry Rd & Street Rd - MBNS",
+      "West Chester Transit Center",
+      "Madison St & Strode Av",
+      "Plaza at King of Prussia",
+      "Township Line Rd & Ridge Pk - FS",
+      "Plymouth Meeting Mall",
+      "Parx Casino",
+      "Fort Washington Railroad Station",
+      "600 Office Center Dr",
+      "Paoli Regional Rail Station",
+      "Constitution Dr & Eagleview Blvd",
+      "Exton Square Mall & County Library",
+      "General Warren Blvd & Otis - FS",
+      "Sterigere St & Stanbridge St",
+      "Montgomery County Community College",
+      "Montgomery County Correctional Facility",
+      "High St & York St - MBFS",
+      "Hanover St & Queen St",
+      "Chestnut Hill Loop",
+      "Main St & Butler Av",
+      "Gulph Mills Station",
+      "Willow Grove Park Mall",
+      "Railroad Av & Broad St - MBNS",
+      "Germantown Pk & Church Rd - MBNS",
+      "Alan Wood Rd & Ridge Pk - MBFS",
+      "Alan Wood Rd & Ridge Pk - MBNS",
+      "960 Harvest Dr",
+      "Shannondell Blvd & Egypt Rd - MBNS",
+      "Church St & Main St - FS",
+      "1st Av & Freedom Business Center Dr",
+      "Montgomery Av & Station Av",
+      "1st Av & Freedom Business Center Dr - FS",
+      "Swedesford Rd & Gateway Shop Ctr - FS",
+      "Wissahickon Transit Center Boarding Area 9",
+      "Swedesford Rd & Valley Forge Rd - FS",
+      "S Eagle Rd & West Rd",
+      "Saint Mary Medical Center",
+      "Durham Rd & West Rd",
+      "Eagleview Blvd & Mukolian Dr - MBNS",
+      "Eagleview Blvd & Mukolian Dr - FS",
+      "Ridge Pike & Township Line Rd - FS",
+      "Dekalb Pk & Germantown Av - MBFS",
+      "Stoddard Av & Fayette St",
+      "Stoddard Av & Fayette St - FS",
+      "Bucks County Office Center",
+      "Durham Rd & Lincoln Hwy",
+      "JFK Blvd & 30th St",
+      "38th St & Filbert St",
+      "Rittenhouse Sq & 19th St",
+      "Mann Center",
+      "JFK Blvd & 19th St",
+      "Roosevelt Blvd & Broad St - FS",
+      "Decatur Rd & Drummond Rd - MBNS",
+      "54th St & City Av",
+      "Hunting Park Av & Wissahickon Av - FS",
+      "Townsend Rd & Natl Archives layover",
+      "Roosevelt Blvd & Pratt St",
+      "Red Lion Rd & Congdon Pkwy - MBFS",
+      "Hunting Park Av & Wissahickon Av",
+      "Woodland Av & 50th St",
+      "38th Parellel Pl & Dock St - FS",
+      "Frankford Transit Center-14-BLVDDIR-MFO",
+      "Mast Charter School",
+      "Bucks County Technology Park - 2",
+      "Sesame Place",
+      "Byberry Rd & Roosevelt Blvd - MBNS",
+      "Frankford Transit Center - Main Dropoff",
+      "Marmax - On Site",
+      "Roosevelt Blvd & Old Lincoln Hwy - MBFS",
+      "Mast Charter School 3",
+      "Jamison Av & Foster St - FS",
+      "Caroline Rd & Comly Rd",
+      "Cheltenham Av & Ogontz Av Loop",
+      "15th St & Market St",
+      "Broad St & Olney Av - FS",
+      "20th St & Johnston St",
+      "Front St & Market St Loop",
+      "2nd St & Church St",
+      "Michener Av & Wadsworth Av - FS",
+      "Fox Chase Loop",
+      "Cheltenham Av & Gowen Av",
+      "Cedarbrook Plaza - 4",
+      "Rising Sun Av & Cottman Av",
+      "Olney Av & Broad St - FS",
+      "Rising Sun Av & Knorr St",
+      "Michener Av & Wadsworth Av",
+      "Cottman Av & Algon St",
+      "Olney Transit Center - Rt 18",
+      "Frankford Transit Center - Rt 19",
+      "Grant Av & James St - Torresdale Station",
+      "Gregg St & Krewstown Rd",
+      "Pulaski Av & Pike St",
+      "Windrim Av & Wayne Av",
+      "17th St & Spring Garden St",
+      "Frankford Transit Center - Rts 20 & 50",
+      "Mechanicsville Rd & Knights Rd",
+      "Philadelphia Mills & Marshalls",
+      "Academy Rd & Ryan High School South Entrance",
+      "Academy Rd & Torrey Rd",
+      "Mechanicsville Rd & Knights Rd - MBFS",
+      "Academy Rd & Chalfont Dr",
+      "Knights Rd & Lancelot Pl - MBFS",
+      "69th St Transit Center South Terminal",
+      "Dock St & Front St",
+      "Olney Transit Center - Rts 22 80",
+      "Potter St & Jacksonville Rd - FS Charter Arms Apts",
+      "Jacksonville Rd & Walmart - onsite",
+      "Frankford Transit Center - Rt 24",
+      "Huntingdon Pk & Berkley Av - FS",
+      "Knowles Av & 2nd St Pk",
+      "Old Welsh Rd Gloria Dei Towers",
+      "Huntingdon Pk & Montgomery Av",
+      "Spring Garden St & 2nd St - MBFS",
+      "Frankford Transit Center - Drop-off Only",
+      "Margaret St & Torresdale Av",
+      "Frankford Transit Center - Rt 25",
+      "Chelten Av & Morris St - MBNS",
+      "Olney Av & Rising Sun Av Loop",
+      "Robbins St & Langdon St",
+      "Langdon St & Sanger St school",
+      "Olney Square - 1 Conway",
+      "Olney Av & Ogontz Av",
+      "Olney Av & Arbor St",
+      "Frankford Transit Center - Rts 8 & 26",
+      "Bustleton Av & Magee Av",
+      "Broad St & Carpenter St",
+      "Ridge Av & Cathedral Rd - FS",
+      "Henry Av & Cinnaminson St",
+      "Spruce St & 15th St",
+      "Ridge Av & Wissahickon Transit Center Boarding Area 11",
+      "Broad St & Christian St",
+      "Rhawn St & Oxford Av",
+      "Fern Rock Transit Center",
+      "Torresdale Av & Cottman Av Loop",
+      "Rhawn St & Elberon Av",
+      "33rd St & Dickinson St Loop",
+      "Pier 70 WalMart & Home Depot",
+      "Frankford Transit Center - Rt 3",
+      "33rd St & Cecil B Moore Av Loop",
+      "69th St Transit Center North Terminal",
+      "40th-Market",
+      "30th St & Market St - MBNS",
+      "69th St TC South Berth 3",
+      "Haverford Av & 52nd St",
+      "Woodland Av & 40th St",
+      "69th St TC South DropOff",
+      "76th St & City Av - FS",
+      "15th St & Ranstead St",
+      "Lyceum Av & Ridge Av - FS",
+      "Henry Av & Roberts Av - MBNS",
+      "Fountain St & Ridge Av - MBNS",
+      "JFK Blvd & 15th St",
+      "Ridge Av & Lyceum Av",
+      "23rd St & Venango St Loop",
+      "5th St & Market St - FS",
+      "22nd St & Lehigh Av",
+      "Broad St & Snyder Av - MBNS",
+      "PNC Center",
+      "Harrah's Chester Casino",
+      "Chester Transit Center",
+      "Stevens Dr & Airport Business Ctr",
+      "Wissahickon Transit Center Boarding Area 1",
+      "5th St & Market St",
+      "Wissahickon Transit Center Drop Off",
+      "33rd St & Dauphin St Loop",
+      "Cumberland St & Richmond St",
+      "11th St & Nedro Av - FS",
+      "Broad St & Pattison Av - 3 FS",
+      "52nd St & Heston St",
+      "Lombard St & 2nd St - MBFS",
+      "Conshohocken Av & Monument Rd",
+      "50th & Parkside Loop",
+      "59th St & Baltimore Av - FS school trip",
+      "84th St & Crane St",
+      "Orthodox St & Richmond St",
+      "Chelten Av & Wissahickon Av - MBNS",
+      "Elmwood Av & 74th St",
+      "46th St & Ludlow St",
+      "Elmwood Av & Island Av",
+      "Wycombe Loop",
+      "Chestnut St & 10th St",
+      "61st St & Pine St Loop",
+      "Walnut St & 5th St - FS",
+      "Walnut St & 10th St",
+      "Bridge St & Torresdale Av",
+      "Lycoming St & 10th St",
+      "Richmond St & Venango St",
+      "Beach St & Columbia Av",
+      "Spring Garden St & Front St - MBFS",
+      "Spring Garden St & Kelly Dr",
+      "Alma Loop",
+      "Chelten Av & Germantown Av - FS",
+      "Ridge Av & Monastary Av",
+      "Ridge Av & Fountain St - FS",
+      "Wissahickon Av & Cathedral Rd - FS",
+      "Broad St & Vine St",
+      "Ridge Av & Summit Av",
+      "Roberts Av & Henry Av",
+      "Frankford Transit Center - Rts 8 & R drop",
+      "29th St & Allegheny Av",
+      "Juniper St & Commerce St",
+      "Henry Av & Midvale Av",
+      "Frankford Transit Center - Rt R",
+      "30th St & Allegheny Av",
+      "12th St & Vine St",
+      "Broad St & Oregon Av",
+      "Normandy Pl & 11th St",
+      "Bustleton Av & Verree Rd",
+      "Northeast Av & Gorman St",
+      "Frankford Av & Linden Av",
+      "Academy Rd & Medford Rd",
+      "Northeast Av & Gorman St - school stop",
+      "Bustleton Av & Verree Rd - MBNS",
+      "Academy Rd & Chalfont Dr - MBNS",
+      "Welsh Rd & Bridle Rd",
+      "Alburger Av & Verree Rd",
+      "Godfrey Loop - FS",
+      "Whitman Plaza - 1",
+      "Luzerne St & 2nd St - FS",
+      "Whitman Plaza - 2",
+      "County Line Rd & Bustleton Av - FS",
+      "Verree Rd & Dogwood Ln",
+      "Verree Rd & Marchman Rd - 2 MBFS",
+      "Overhill Av & Barcalow St",
+      "Southampton Rd & Carter Rd",
+      "Southampton Rd & Roosevelt Blvd",
+      "Comly Rd & Norcom Rd",
+      "Academy Rd & Comly Rd - FS",
+      "Welsh Rd & Roosevelt Blvd - MBNS",
+      "Welsh Rd & Roosevelt Blvd",
+      "27th St & Allegheny Av",
+      "Huntingdon Pk & Holy Redeemer Hosp - FS",
+      "Torresdale Av & Cottman Av",
+      "Cottman Av & Ditman St",
+      "33rd St & Dauphin St",
+      "Baltimore Av & 40th St",
+      "Bustleton Av & Red Lion Rd",
+      "Rennard St & Bustleton Av",
+      "Worthington Rd & Southampton Rd - FS",
+      "Worthington Rd & Southampton Rd",
+      "Frankford Transit Center - Rt 5",
+      "Arch St & 2nd St",
+      "Red Lion Rd & Decatur Rd - MBNS",
+      "Olney Transit Center - Rt 51",
+      "Bethlehem Pk & Summit St",
+      "Germantown Av & Rex Av",
+      "Rodney St & Mt Airy Av",
+      "Montgomery Av & Paper Mill Rd - FS",
+      "Godfrey Av & 21st St - school",
+      "Stenton Av & Walnut Ln",
+      "Wissahickon Transit Center Boarding Area 4",
+      "49th St & Woodland Av",
+      "54th St & Chester Av",
+      "Cambria St & Richmond St",
+      "Lehigh Av & 22nd St",
+      "Lehigh Av & Broad St",
+      "Olney Transit Center - Rt 55",
+      "Cross Keys Center Doylestown",
+      "Valley Square Blvd & Main St",
+      "Turnpike Dr & Angelo's",
+      "Electronic Dr & UPS",
+      "Bakers Centre - onsite 2",
+      "Venango St & 23rd St",
+      "Torresdale Av & Hunting Park Av",
+      "Front St & Luzerne St",
+      "Frankford Transit Center - Rt 58",
+      "Tomlinson Rd & Bustleton Av - MBFS",
+      "George Washington HS & Northeast Av",
+      "Arrott St & Griscom St (Arrott Transit Center)",
+      "Bells Corner Loop",
+      "Oxford Av & Frankford Av",
+      "Olney Transit Center - Rt 6",
+      "Richmond St & Westmoreland St Loop",
+      "35th St & Allegheny Av Loop",
+      "Wissahickon Transit Center Boarding Area 5",
+      "Allegheny Av & 26th St",
+      "Allegheny Av & 29th St",
+      "Ridge Av & Wissahickon Transit Center Boarding Area 10",
+      "9th St & Cuthbert St",
+      "Packer Av & Galloway St",
+      "59th St & Columbia Av - FS",
+      "Overbrook Station",
+      "Lancaster Av & Malvern Av",
+      "Lankenau Medical Center",
+      "Weccacoe Av & Wolf St - MBNS",
+      "Baltimore Av & 59th St",
+      "Oregon Av & Broad St - FS",
+      "Oregon Av & 20th St - FS",
+      "69th St TC North Berth 2",
+      "Malvern Av & 63rd St - FS",
+      "Frankford Transit Center - Rt 66",
+      "Frankford Av & Cottman Av",
+      "Frankford Av & Gregg St Loop",
+      "Frankford Av & Ellie Dr - FS at Gregg St Loop",
+      "Frankford Transit Center - Rt 67",
+      "Bustleton Av & Red Lion Rd - MBFS",
+      "Sandmeyer Ln & 10090",
+      "Red Lion Rd & Roosevelt Blvd - MBNS",
+      "Verree Rd & Alburger Av",
+      "Verree Rd & Rhawn St",
+      "Verree Rd  & Alburger Av",
+      "Comly Rd & Caroline Rd",
+      "Oregon Av & Broad St",
+      "Hog Island Rd at UPS Lot",
+      "Lindbergh Blvd & 74th St - FS",
+      "UPS Air Hub & Hog Island Rd - onsite",
+      "Oregon Av & 22nd St",
+      "Cottman Av & Bustleton Av",
+      "Glendale Av & Cottman Av",
+      "Cottman Av & Frontenac St - FS",
+      "Cottman Av & Oxford Av",
+      "Ryan Av & Rowland Av - MBFS",
+      "Cottman Av & Loretto Av",
+      "Erie Av & Broad St -  FS",
+      "Richmond St & Westmoreland St - FS",
+      "FrankllinTowne Charter School",
+      "Frankford Transit Center - Rt 73",
+      "Arrott Transit Center",
+      "St Vincent St & Roosevelt Blvd",
+      "Cottman Av & Revere St",
+      "Market St & 41st St",
+      "Columbus Blvd & Snyder Av - 1",
+      "Snyder Av & 29th St",
+      "Snyder Av & Front St",
+      "Broad St & Olney Av - MBNS layover",
+      "Ogontz Av & Olney Av - FS",
+      "Cheltenham Av & Andrews Av",
+      "Midvale Av & Henry Av",
+      "Wissahickon Transit Center Boarding Area 8",
+      "Hunting Park Av & Henry Av - FS",
+      "Frankford Transit Center - Rt 84",
+      "Torresdale Av & Cottman Av - FS",
+      "Frankford Transit Center - Rt 88",
+      "Rowland Av & Welsh Rd",
+      "Lincoln High School - onsite",
+      "Hawthorne St & Cottman Av - FS",
+      "Welsh Rd & Darlington Rd",
+      "4th St & Walnut St",
+      "Chestnut St & Broad St",
+      "15th St & Market St - FS",
+      "Broad St & Erie Av",
+      "Market St & 15th St",
+      "Broad St & Oregon Av - 2",
+      "River Rd & Midvale Av",
+      "Wayne Av & Chelten Av",
+      "Frankford Transit Center - Rt 72",
+      "Germantown Av & Rising Sun Av",
+      "11th St & Market St",
+      "11th St & Market St - FS",
+      "Erie Av & Germantown Av",
+      "Emlen Street & Carpenter Lane",
+      "Coulter Av & Glenn Rd",
+      "63rd-Malvern",
+      "58th St & Batimore Av - FS",
+      "Resevoir Dr & SmithDay Nursery Dr - 1",
+      "Resevoir Dr & SmithDay Nursery Dr",
+      "46th St & Market St - FS",
+      "69th St TC North Berth 3",
+      "City Av & Haverford Av",
+      "77th St & City Av",
+      "77th St & Overbrook Av",
+      "69th St TC West Trolley Platform",
+      "Church St & University Av - FS",
+      "2 Campus Blvd",
+      "11 Campus Blvd",
+      "Chapel Rd & Newtown Street Rd - FS",
+      "69th St Transit Center",
+      "Springfield Mall - east",
+      "Lawrence Park Shopping Center",
+      "69th St TC South Driveway",
+      "South Av & Copper Beech Ln",
+      "Shadeland Av & Marshall Rd",
+      "Burmont Rd & Marshall Rd - FS",
+      "South Av & Copper Beech Ln - FS",
+      "Bonner & Prendergast High School",
+      "Upper Darby High School",
+      "Philadelphia Airport Terminal B",
+      "67th St & Elmwood Av - FS",
+      "6th St & Welsh St - Chester Tran Ctr",
+      "69th St TC West Center Platform",
+      "Springfield Mall - west",
+      "Penn State University",
+      "Cardinal O'Hara High School",
+      "Pontiac Rd & Dermond Rd",
+      "Lansdowne Av & Township Line Rd - FS",
+      "Christy Dr & Wilmington Pk - FS",
+      "State Rd & Drexeline Dr",
+      "Fair Acres - onsite",
+      "Delaware County Community College",
+      "West Chester Pk & Latches Ln - FS",
+      "69th St TC South Berth 4",
+      "Ridge Rd & Market St",
+      "Claymont Transit Center",
+      "Darby Transit Center - bus",
+      "9th St & Highland Av - FS",
+      "Commerce Dr & McDonald Blvd - MBNS",
+      "Wawa Railroad Station",
+      "Highland Av & 15th St",
+      "Henderson Dr & Sharon Hill Ct",
+      "Lansdowne Av & Manor Av - FS",
+      "Henderson Dr & Henderson Ct",
+      "Plaza 352 Shopping Center",
+      "Cheyney University",
+      "Chelsea Pkwy & Larkin Rd - MBFS",
+      "3rd St & Highland Av",
+      "Chelsea Pkwy & Conchester Hwy - MBNS",
+      "69th St TC North Berth 5",
+      "8th Av & Cul de sac",
+      "Valley Forge National Park",
+      "Providence Rd/Media",
+      "Woodland Av",
+      "Orange St/Media",
+      "Chester Pike/Sharon Hill",
+      "69th St TC North Berth 4",
+      "Paoli Memorial Hospital",
+      "Norwood Av & Lancaster Av - FS",
+      "3rd St & Booth St",
+      "Yarnall St 7th St - FS",
+      "Girard Av & 63rd St - MBFS",
+      "Frankford Av & Delaware Av Loop",
+      "40th St & Filbert St",
+      "13th St",
+      "Woodland Av & Island Av",
+      "Elmwood Av & 73rd St",
+      "61st-Baltimore",
+      "Darby Transit Center",
+      "Yeadon",
+      "Elmwood Loop",
+      "80th St/Eastwick",
+      "NRG Station",
+      "Walnut-Locust",
+      "8th-Market",
+      "Olney Transit Center - B2 & B3",
+      "Frankford Transit Center",
+      "Merion St at 8th (Bridgeport Shuttle Stop)",
+      "Chester Pk & Brainerd Blvd - FS",
+      "Elm St Station Rail Shuttle Inbound & Outbound"
+    ],
+    "trips": {
+      "970190": ["t2", 0, "49", 30660, 33780, 439, 438, 30],
+      "970235": ["t2", 1, "49", 32220, 33780, 438, 441, 29],
+      "971099": ["t3", 0, "49", 30780, 32700, 443, 438, 39],
+      "971100": ["t3", 0, "49", 32340, 34500, 442, 438, 46],
+      "971141": ["t3", 1, "49", 32760, 34440, 438, 443, 39],
+      "971857": ["t4", 1, "49", 32640, 34560, 438, 442, 46],
+      "972706": ["t5", 0, "49", 30300, 32520, 445, 438, 41],
+      "972707": ["t5", 0, "49", 31500, 33720, 445, 438, 41],
+      "972799": ["t5", 1, "49", 32580, 34620, 438, 445, 42]
+    },
+    "timed": {
+      "t2": {
+        "stops": [
+          [39.94953, -75.20333, "40th St Portal"],
+          [39.95099, -75.19659, "37th-Spruce"],
+          [39.95385, -75.19453, "36th-Sansom"],
+          [39.95478, -75.18952, "33rd St"],
+          [39.95482, -75.1835, "Drexel Station at 30th St"],
+          [39.95396, -75.17674, "22nd St"],
+          [39.95333, -75.17164, "19th St"],
+          [39.9525, -75.16537, "15th St/City Hall"],
+          [39.95253, -75.16256, "13th St"],
+          [39.95267, -75.16534, "15th St/City Hall"],
+          [39.95343, -75.17148, "19th St"],
+          [39.95405, -75.17657, "22nd St"],
+          [39.95489, -75.18317, "Drexel Station at 30th St"],
+          [39.95487, -75.1895, "33rd St"],
+          [39.95389, -75.19472, "36th-Sansom"],
+          [39.95105, -75.19731, "37th-Spruce"],
+          [39.9496, -75.20333, "40th St Portal"]
+        ],
+        "patterns": [
+          [[0, 22], [1, 23], [2, 24], [3, 25], [4, 26], [5, 27], [6, 28], [7, 29], [8, 30]],
+          [[0, 21], [1, 22], [2, 23], [3, 24], [4, 25], [5, 26], [6, 27], [7, 28], [8, 29]],
+          [[8, 1], [9, 2], [10, 3], [11, 4], [12, 5], [13, 6], [14, 7], [15, 8], [16, 9]]
+        ],
+        "trips": {
+          "970190": [0, 33120, 33216, 33282, 33376, 33460, 33554, 33624, 33714, 33780],
+          "970235": [2, 32220, 32274, 32353, 32417, 32500, 32580, 32666, 32735, 32820]
+        }
+      },
+      "t3": {
+        "stops": [
+          [39.94953, -75.20333, "40th St Portal"],
+          [39.95099, -75.19659, "37th-Spruce"],
+          [39.95385, -75.19453, "36th-Sansom"],
+          [39.95478, -75.18952, "33rd St"],
+          [39.95482, -75.1835, "Drexel Station at 30th St"],
+          [39.95396, -75.17674, "22nd St"],
+          [39.95333, -75.17164, "19th St"],
+          [39.9525, -75.16537, "15th St/City Hall"],
+          [39.95253, -75.16256, "13th St"],
+          [39.95267, -75.16534, "15th St/City Hall"],
+          [39.95343, -75.17148, "19th St"],
+          [39.95405, -75.17657, "22nd St"],
+          [39.95489, -75.18317, "Drexel Station at 30th St"],
+          [39.95487, -75.1895, "33rd St"],
+          [39.95389, -75.19472, "36th-Sansom"],
+          [39.95105, -75.19731, "37th-Spruce"],
+          [39.9496, -75.20333, "40th St Portal"]
+        ],
+        "patterns": [
+          [[0, 38], [1, 39], [2, 40], [3, 41], [4, 42], [5, 43], [6, 44], [7, 45], [8, 46]],
+          [[0, 31], [1, 32], [2, 33], [3, 34], [4, 35], [5, 36], [6, 37], [7, 38], [8, 39]],
+          [[8, 1], [9, 2], [10, 3], [11, 4], [12, 5], [13, 6], [14, 7], [15, 8], [16, 9]]
+        ],
+        "trips": {
+          "971099": [1, 32040, 32136, 32202, 32296, 32380, 32474, 32544, 32634, 32700],
+          "971100": [0, 33840, 33936, 34002, 34096, 34180, 34274, 34344, 34434, 34500],
+          "971141": [2, 32760, 32814, 32893, 32957, 33040, 33120, 33206, 33275, 33360]
+        }
+      },
+      "t4": {
+        "stops": [
+          [39.94953, -75.20333, "40th St Portal"],
+          [39.95099, -75.19659, "37th-Spruce"],
+          [39.95385, -75.19453, "36th-Sansom"],
+          [39.95478, -75.18952, "33rd St"],
+          [39.95482, -75.1835, "Drexel Station at 30th St"],
+          [39.95396, -75.17674, "22nd St"],
+          [39.95333, -75.17164, "19th St"],
+          [39.9525, -75.16537, "15th St/City Hall"],
+          [39.95253, -75.16256, "13th St"],
+          [39.95267, -75.16534, "15th St/City Hall"],
+          [39.95343, -75.17148, "19th St"],
+          [39.95405, -75.17657, "22nd St"],
+          [39.95489, -75.18317, "Drexel Station at 30th St"],
+          [39.95487, -75.1895, "33rd St"],
+          [39.95389, -75.19472, "36th-Sansom"],
+          [39.95105, -75.19731, "37th-Spruce"],
+          [39.9496, -75.20333, "40th St Portal"]
+        ],
+        "patterns": [
+          [[0, 30], [1, 31], [2, 32], [3, 33], [4, 34], [5, 35], [6, 36], [7, 37], [8, 38]],
+          [[0, 39], [1, 40], [2, 41], [3, 42], [4, 43], [5, 44], [6, 45], [7, 46], [8, 47]],
+          [[8, 1], [9, 2], [10, 3], [11, 4], [12, 5], [13, 6], [14, 7], [15, 8], [16, 9]]
+        ],
+        "trips": { "971857": [2, 32640, 32694, 32773, 32837, 32920, 33000, 33086, 33155, 33240] }
+      },
+      "t5": {
+        "stops": [
+          [39.94953, -75.20333, "40th St Portal"],
+          [39.95099, -75.19659, "37th-Spruce"],
+          [39.95385, -75.19453, "36th-Sansom"],
+          [39.95478, -75.18952, "33rd St"],
+          [39.95482, -75.1835, "Drexel Station at 30th St"],
+          [39.95396, -75.17674, "22nd St"],
+          [39.95333, -75.17164, "19th St"],
+          [39.9525, -75.16537, "15th St/City Hall"],
+          [39.95253, -75.16256, "13th St"],
+          [39.95267, -75.16534, "15th St/City Hall"],
+          [39.95343, -75.17148, "19th St"],
+          [39.95405, -75.17657, "22nd St"],
+          [39.95489, -75.18317, "Drexel Station at 30th St"],
+          [39.95487, -75.1895, "33rd St"],
+          [39.95389, -75.19472, "36th-Sansom"],
+          [39.95105, -75.19731, "37th-Spruce"],
+          [39.9496, -75.20333, "40th St Portal"]
+        ],
+        "patterns": [
+          [[0, 28], [1, 29], [2, 30], [3, 31], [4, 32], [5, 33], [6, 34], [7, 35], [8, 36]],
+          [[0, 29], [1, 30], [2, 31], [3, 32], [4, 33], [5, 34], [6, 35], [7, 36], [8, 37]],
+          [[0, 33], [1, 34], [2, 35], [3, 36], [4, 37], [5, 38], [6, 39], [7, 40], [8, 41]],
+          [[8, 1], [9, 2], [10, 3], [11, 4], [12, 5], [13, 6], [14, 7], [15, 8], [16, 9]]
+        ],
+        "trips": {
+          "972706": [2, 31860, 31956, 32022, 32116, 32200, 32294, 32364, 32454, 32520],
+          "972707": [2, 33060, 33156, 33222, 33316, 33400, 33494, 33564, 33654, 33720],
+          "972799": [3, 32580, 32634, 32713, 32777, 32860, 32940, 33026, 33095, 33180]
+        }
+      }
+    }
+  },
+  "polls": [
+    [
+      1791723613,
+      [
+        ["T5", "9084", "39.949818", "-75.20208", 1791723600, 998, "972706", "EastBound", null],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723473, 4, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723633,
+      [
+        ["T5", "9080", "39.935429", "-75.214236", 1791723614, -3, "972707", "EastBound", 19],
+        ["T5", "9084", "39.949818", "-75.20208", 1791723600, 998, "972706", "EastBound", null],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723473, 4, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723654,
+      [
+        ["T5", "9080", "39.936903", "-75.212501", 1791723639, -3, "972707", "EastBound", 20],
+        ["T5", "9084", "39.949818", "-75.20208", 1791723630, 998, "972706", "EastBound", null],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723473, 4, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723675,
+      [
+        ["T5", "9080", "39.938477", "-75.210338", 1791723659, -4, "972707", "EastBound", 21],
+        ["T5", "9084", "39.949818", "-75.20208", 1791723660, 998, "972706", "EastBound", null],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723473, 4, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723695,
+      [
+        ["T5", "9080", "39.93965", "-75.211106", 1791723674, -4, "972707", "EastBound", 21],
+        ["T5", "9084", "39.949818", "-75.20208", 1791723660, 998, "972706", "EastBound", null],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723473, 4, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723716,
+      [
+        ["T5", "9080", "39.939733", "-75.211233", 1791723699, -4, "972707", "EastBound", 22],
+        ["T5", "9084", "39.949818", "-75.20208", 1791723690, 998, "972706", "EastBound", null],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723683, 7, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723736,
+      [
+        ["T5", "9080", "39.94012", "-75.211708", 1791723719, -4, "972707", "EastBound", 23],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723683, 7, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723757,
+      [
+        ["T5", "9080", "39.940717", "-75.212412", 1791723749, -4, "972707", "EastBound", 24],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723683, 7, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723777,
+      [
+        ["T5", "9080", "39.940723", "-75.212423", 1791723769, -3, "972707", "EastBound", 24],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723713, 8, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723798,
+      [
+        ["T5", "9080", "39.941131", "-75.212358", 1791723779, -3, "972707", "EastBound", 25],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723713, 8, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723818,
+      [
+        ["T5", "9080", "39.942227", "-75.211605", 1791723799, -3, "972707", "EastBound", 25],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723743, 8, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723839,
+      [
+        ["T5", "9080", "39.943212", "-75.210945", 1791723824, -3, "972707", "EastBound", 26],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723803, 9, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723859,
+      [
+        ["T5", "9080", "39.94388", "-75.210376", 1791723839, -3, "972707", "EastBound", 26],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723803, 10, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723880,
+      [
+        ["T5", "9080", "39.945162", "-75.208919", 1791723869, -4, "972707", "EastBound", 27],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723833, 10, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723900,
+      [
+        ["T5", "9080", "39.945602", "-75.20843", 1791723879, -4, "972707", "EastBound", 27],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723863, 10, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723921,
+      [
+        ["T5", "9080", "39.946719", "-75.207123", 1791723909, -4, "972707", "EastBound", 27],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723893, 11, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723941,
+      [
+        ["T5", "9080", "39.94771", "-75.206007", 1791723919, -4, "972707", "EastBound", 27],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723893, 11, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723962,
+      [
+        ["T5", "9080", "39.948646", "-75.204703", 1791723939, -4, "972707", "EastBound", 28],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723923, 0, "971141", "WestBound", 1],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723923, 11, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791723982,
+      [
+        ["T5", "9080", "39.949253", "-75.203543", 1791723969, -4, "972707", "EastBound", 29],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723923, 0, "971141", "WestBound", 1],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723923, 11, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791724002,
+      [
+        ["T5", "9080", "39.949472", "-75.203388", 1791723979, -5, "972707", "EastBound", 29],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723923, 0, "971141", "WestBound", 1],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723923, 11, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791724003,
+      [
+        ["T5", "9080", "39.949472", "-75.203388", 1791723979, -5, "972707", "EastBound", 29],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723923, 0, "971141", "WestBound", 1],
+        ["T3", "9082", "39.949818", "-75.20215", 1791723923, 11, "971099", "EastBound", 32]
+      ]
+    ],
+    [
+      1791724022,
+      [["T5", "9080", "39.949574", "-75.203221", 1791724009, -4, "972707", "EastBound", 30]]
+    ],
+    [
+      1791724023,
+      [["T5", "9080", "39.949574", "-75.203221", 1791724009, -4, "972707", "EastBound", 30]]
+    ],
+    [
+      1791724043,
+      [["T5", "9080", "39.949611", "-75.202779", 1791724019, -4, "972707", "EastBound", 30]]
+    ],
+    [
+      1791724044,
+      [["T5", "9080", "39.949611", "-75.202779", 1791724019, -4, "972707", "EastBound", 30]]
+    ],
+    [
+      1791724063,
+      [["T5", "9080", "39.949771", "-75.202139", 1791724039, -4, "972707", "EastBound", 30]]
+    ],
+    [
+      1791724064,
+      [["T5", "9080", "39.949771", "-75.202139", 1791724039, -4, "972707", "EastBound", 30]]
+    ],
+    [
+      1791724084,
+      [
+        ["T5", "9080", "39.949776", "-75.202043", 1791724064, -4, "972707", "EastBound", 30],
+        ["T2", "9059", "39.949017", "-75.213145", 1791724063, 0, "970190", "EastBound", 18]
+      ]
+    ],
+    [
+      1791724104,
+      [
+        ["T5", "9080", "39.949776", "-75.202043", 1791724064, -3, "972707", "EastBound", 31],
+        ["T2", "9059", "39.949022", "-75.21314", 1791724078, 0, "970190", "EastBound", 18]
+      ]
+    ],
+    [
+      1791724105,
+      [
+        ["T5", "9080", "39.949776", "-75.202043", 1791724064, -3, "972707", "EastBound", 31],
+        ["T2", "9059", "39.949022", "-75.21314", 1791724078, 0, "970190", "EastBound", 18]
+      ]
+    ],
+    [
+      1791724125,
+      [
+        ["T5", "9080", "39.949776", "-75.202043", 1791724078, -3, "972707", "EastBound", 32],
+        ["T2", "9059", "39.949194", "-75.211604", 1791724108, 0, "970190", "EastBound", 19]
+      ]
+    ],
+    [
+      1791724146,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724108, -3, "972707", "EastBound", 32],
+        ["T2", "9059", "39.949286", "-75.210721", 1791724123, 0, "970190", "EastBound", 19]
+      ]
+    ],
+    [
+      1791724166,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724138, -2, "972707", "EastBound", 33],
+        ["T2", "9059", "39.949505", "-75.209383", 1791724158, 0, "970190", "EastBound", 20]
+      ]
+    ],
+    [
+      1791724167,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724138, -2, "972707", "EastBound", 33],
+        ["T2", "9059", "39.949505", "-75.209383", 1791724158, 0, "970190", "EastBound", 20]
+      ]
+    ],
+    [
+      1791724187,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724138, -2, "972707", "EastBound", 33],
+        ["T2", "9059", "39.949759", "-75.207387", 1791724173, -1, "970190", "EastBound", 21],
+        ["T2", "9036", "39.94978", "-75.20365", 1791724170, 3, "970235", "WestBound", 10]
+      ]
+    ],
+    [
+      1791724207,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724138, -2, "972707", "EastBound", 33],
+        ["T2", "9059", "39.949784", "-75.206718", 1791724198, 0, "970190", "EastBound", 21],
+        ["T2", "9036", "39.949942", "-75.204156", 1791724200, 3, "970235", "WestBound", 10]
+      ]
+    ],
+    [
+      1791724208,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724138, -2, "972707", "EastBound", 33],
+        ["T2", "9059", "39.949784", "-75.206718", 1791724198, 0, "970190", "EastBound", 21],
+        ["T2", "9036", "39.949942", "-75.204156", 1791724200, 3, "970235", "WestBound", 10]
+      ]
+    ],
+    [
+      1791724228,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724138, -2, "972707", "EastBound", 33],
+        ["T2", "9059", "39.949821", "-75.205699", 1791724208, -1, "970190", "EastBound", 21],
+        ["T2", "9036", "39.949874", "-75.20562", 1791724210, 3, "970235", "WestBound", 10]
+      ]
+    ],
+    [
+      1791724248,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724138, -2, "972707", "EastBound", 33],
+        ["T2", "9059", "39.949849", "-75.20401", 1791724238, -1, "970190", "EastBound", 22],
+        ["T2", "9036", "39.949828", "-75.206933", 1791724240, 2, "970235", "WestBound", 11]
+      ]
+    ],
+    [
+      1791724269,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724138, -2, "972707", "EastBound", 33],
+        ["T2", "9059", "39.94946", "-75.203929", 1791724253, -1, "970190", "EastBound", 22],
+        ["T2", "9036", "39.949742", "-75.208343", 1791724250, 3, "970235", "WestBound", 11]
+      ]
+    ],
+    [
+      1791724289,
+      [
+        ["T2", "9059", "39.949169", "-75.203681", 1791724278, -1, "970190", "EastBound", 22],
+        ["T2", "9036", "39.949639", "-75.208978", 1791724280, 2, "970235", "WestBound", 12],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724258, 0, "972707", "EastBound", 34]
+      ]
+    ],
+    [
+      1791724310,
+      [
+        ["T2", "9059", "39.949462", "-75.203363", 1791724293, 0, "970190", "EastBound", 22],
+        ["T2", "9036", "39.949632", "-75.208997", 1791724290, 3, "970235", "WestBound", 12],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724258, 0, "972707", "EastBound", 34]
+      ]
+    ],
+    [
+      1791724330,
+      [
+        ["T2", "9059", "39.949595", "-75.203013", 1791724318, 0, "970190", "EastBound", 23],
+        ["T2", "9036", "39.949459", "-75.210068", 1791724320, 3, "970235", "WestBound", 12],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724288, 0, "972707", "EastBound", 34]
+      ]
+    ],
+    [
+      1791724351,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724318, 1, "972707", "EastBound", 34],
+        ["T2", "9059", "39.949669", "-75.202146", 1791724328, 0, "970190", "EastBound", 23],
+        ["T2", "9036", "39.949346", "-75.210967", 1791724330, 3, "970235", "WestBound", 12]
+      ]
+    ],
+    [
+      1791724372,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724318, 1, "972707", "EastBound", 34],
+        ["T2", "9059", "39.949707", "-75.201927", 1791724353, 1, "970190", "EastBound", 23],
+        ["T2", "9036", "39.949151", "-75.2125", 1791724360, 3, "970235", "WestBound", 13]
+      ]
+    ],
+    [
+      1791724392,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724318, 1, "972707", "EastBound", 34],
+        ["T2", "9059", "39.949707", "-75.201927", 1791724353, 1, "970190", "EastBound", 23],
+        ["T2", "9036", "39.948934", "-75.214574", 1791724370, 3, "970235", "WestBound", 14]
+      ]
+    ],
+    [
+      1791724413,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724378, 2, "972707", "EastBound", 34],
+        ["T2", "9059", "39.949707", "-75.201927", 1791724357, 1, "970190", "EastBound", 23],
+        ["T2", "9036", "39.948894", "-75.214899", 1791724390, 2, "970235", "WestBound", 15]
+      ]
+    ],
+    [
+      1791724433,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724408, 2, "972707", "EastBound", 34],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724388, 1, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724454,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724408, 2, "972707", "EastBound", 34],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724388, 1, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724474,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724408, 2, "972707", "EastBound", 34],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724417, 2, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724495,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724408, 3, "972707", "EastBound", 34],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724417, 2, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724515,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724438, 3, "972707", "EastBound", 34],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724417, 2, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724536,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724468, 3, "972707", "EastBound", 34],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724417, 2, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724556,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724528, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724417, 2, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724577,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724558, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724417, 4, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724598,
+      [
+        ["T5", "9080", "39.949818", "-75.20212", 1791724588, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724537, 4, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724618,
+      [
+        ["T5", "9084", "39.949234", "-75.20363", 1791724603, 4, "972799", "WestBound", 10],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724588, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724567, 4, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724639,
+      [
+        ["T5", "9084", "39.948914", "-75.204086", 1791724628, 4, "972799", "WestBound", 10],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724618, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724597, 5, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724659,
+      [
+        ["T5", "9084", "39.948564", "-75.205005", 1791724643, 4, "972799", "WestBound", 10],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724648, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724597, 5, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724680,
+      [
+        ["T5", "9084", "39.947752", "-75.206024", 1791724668, 4, "972799", "WestBound", 10],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724648, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724627, 5, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724700,
+      [
+        ["T5", "9084", "39.947017", "-75.206815", 1791724688, 4, "972799", "WestBound", 10],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724678, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724657, 6, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724721,
+      [
+        ["T5", "9084", "39.946493", "-75.207452", 1791724698, 4, "972799", "WestBound", 11],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724708, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724657, 6, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724741,
+      [
+        ["T5", "9084", "39.946459", "-75.2075", 1791724728, 4, "972799", "WestBound", 11],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724708, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724687, 6, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724762,
+      [
+        ["T5", "9084", "39.945889", "-75.208154", 1791724738, 5, "972799", "WestBound", 11],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724738, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724687, 7, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724782,
+      [
+        ["T5", "9084", "39.945511", "-75.208576", 1791724758, 5, "972799", "WestBound", 12],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724738, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724717, 7, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724803,
+      [
+        ["T5", "9084", "39.944571", "-75.209639", 1791724783, 5, "972799", "WestBound", 12],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724738, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724747, 7, "970190", "EastBound", 23]
+      ]
+    ],
+    [
+      1791724823,
+      [
+        ["T5", "9084", "39.943901", "-75.210396", 1791724808, 5, "972799", "WestBound", 13],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724798, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724777, 8, "970190", "EastBound", 23],
+        ["T4", "9077", "39.946877", "-75.20699", 1791724808, 5, "971857", "WestBound", 11]
+      ]
+    ],
+    [
+      1791724844,
+      [
+        ["T5", "9084", "39.942516", "-75.21144", 1791724818, 5, "972799", "WestBound", 13],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724828, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724777, 8, "970190", "EastBound", 23],
+        ["T4", "9077", "39.946354", "-75.207634", 1791724818, 5, "971857", "WestBound", 11]
+      ]
+    ],
+    [
+      1791724864,
+      [
+        ["T5", "9084", "39.941172", "-75.212364", 1791724848, 4, "972799", "WestBound", 14],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724828, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724807, 8, "970190", "EastBound", 23],
+        ["T4", "9077", "39.945225", "-75.208916", 1791724848, 5, "971857", "WestBound", 12]
+      ]
+    ],
+    [
+      1791724885,
+      [
+        ["T5", "9084", "39.941038", "-75.212452", 1791724873, 4, "972799", "WestBound", 15],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724858, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724867, 998, "970190", "EastBound", null],
+        ["T4", "9077", "39.943733", "-75.210594", 1791724873, 5, "971857", "WestBound", 13]
+      ]
+    ],
+    [
+      1791724906,
+      [
+        ["T5", "9084", "39.940892", "-75.212552", 1791724888, 5, "972799", "WestBound", 15],
+        ["T5", "9080", "39.949818", "-75.20212", 1791724888, 998, "972707", "EastBound", null],
+        ["T2", "9059", "39.94987", "-75.20183", 1791724867, 998, "970190", "EastBound", null],
+        ["T3", "9014", "39.94527", "-75.21495", 1791724889, 2, "971100", "EastBound", 33],
+        ["T4", "9077", "39.943092", "-75.21105", 1791724888, 4, "971857", "WestBound", 13]
+      ]
+    ]
+  ]
+}

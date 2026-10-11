@@ -29,6 +29,7 @@ import { loadArchive } from '../../collector/lib/archive.js';
 import { decodeVehiclePositions } from '../../collector/lib/gtfsRealtime.js';
 import { createSources } from '../../collector/lib/sources.js';
 import { subwayLine, trackSubway } from '../../collector/lib/subwayTrains.js';
+import { placeTunnelTrolleys, tunnelTrouble } from '../../collector/lib/trolleyTunnel.js';
 import { screenVehicles } from '../../collector/lib/vehicleScreen.js';
 import { normalizeTransitView } from '../../collector/lib/vehicles.js';
 import { linkAlertPosts, postAlerts } from '../features/alerts.js';
@@ -95,6 +96,11 @@ export function createPipeline({
   let shapesStamp = null;
   // The last position kept for each vehicle (see screenVehicles), for observe().
   let screenState = {};
+  // The subway-surface trolleys underground (trolleyTunnel.js), shared by observe() and the
+  // timelapse samples, and the lines with a SEPTA alert about the tunnel (from the last tick).
+  let tunnelState = {};
+  let tunnelAt = 0;
+  let tunnelTroubleRoutes = new Set();
   // Timelapses need ffmpeg; checkVideo() confirms it's there.
   let videoReady = false;
   const limits = { ...VIDEO_LIMITS, dailyPerAccount: config.videoDailyCap };
@@ -145,6 +151,22 @@ export function createPipeline({
     return tracked.trains;
   }
 
+  /** Place the trolleys underground by the schedule; [] in, [] out until there's a schedule. */
+  function tunnelTrolleys(vehicles, t) {
+    if (!schedule) return vehicles;
+    // The 15-second timelapse polls and the minute's observe can finish out of order.
+    tunnelAt = Math.max(tunnelAt, t);
+    const placed = placeTunnelTrolleys(vehicles, {
+      schedule,
+      shapes,
+      state: tunnelState,
+      trouble: tunnelTroubleRoutes,
+      now: tunnelAt,
+    });
+    tunnelState = placed.state;
+    return placed.vehicles;
+  }
+
   async function ping(suffix = '') {
     if (!config.healthcheckUrl) return;
     try {
@@ -175,6 +197,7 @@ export function createPipeline({
         sources,
         shapes,
         subway: async () => subwayTrains(await sources.vehiclePositions(), t),
+        tunnel: (vehicles) => tunnelTrolleys(vehicles, t),
         now: t,
         log,
       });
@@ -251,7 +274,9 @@ export function createPipeline({
           now: t,
         });
         screenState = screened.state;
-        vehicles = screened.vehicles.filter((v) => !v.frozen);
+        // A trolley underground is placed by the schedule (`estimated`); one whose position
+        // isn't known (`frozen`) isn't recorded.
+        vehicles = tunnelTrolleys(screened.vehicles, t).filter((v) => !v.frozen);
       } else {
         log(`observe: TransitView failed: ${tv.reason?.message ?? tv.reason}`);
       }
@@ -307,6 +332,7 @@ export function createPipeline({
           summary: { dataStartTs },
         }) => {
           if (tickSchedule) schedule = tickSchedule;
+          tunnelTroubleRoutes = tunnelTrouble(incidents);
           // After a restart, pick up where the collector's tracking of the L1 is (the cars in
           // the tunnel, how long trains are taking through it).
           if (!subwayState.cars && state?.subway) subwayState = state.subway;

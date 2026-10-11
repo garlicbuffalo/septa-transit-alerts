@@ -693,3 +693,85 @@ describe('route shapes for gaps', () => {
     expect(nearestShape([], on)).toBeNull();
   });
 });
+
+describe('vehicles in timelapses', () => {
+  const t0 = NOW;
+  const samples = (list) =>
+    list.flatMap(([label, route, lon]) =>
+      [0, 1].map((k) => ({
+        vehicle_id: label,
+        label,
+        route,
+        t: t0 + k * 60_000,
+        lat: 39.97,
+        lon: lon + k * 0.001,
+        late_min: 1,
+      })),
+    );
+  const frame = (scene) => scene.staticSvg + scene.drawFrame(t0 + 30_000, 0.5);
+  const tracks = () =>
+    buildTracks(
+      samples([
+        ['8433', 'g1', -75.2],
+        ['3698', 'g1', -75.17],
+        ['2324', 'g1', -75.14],
+        ['9051', 't1', -75.19],
+        ['3112', '23', -75.16],
+      ]),
+    );
+
+  it('are outlines of what they are on a line timelapse, with a legend', async () => {
+    const { focusScene } = await import('../video/scenes.js');
+    const svg = frame(
+      focusScene({
+        capture: { kind: 'gap', start_ts: t0, end_ts: t0 + 60_000 },
+        focus: {
+          title: 'G1 gap',
+          vehicles: [
+            { id: '8433', tag: 'L' },
+            { id: '3698', tag: 'N' },
+          ],
+        },
+        routes: [{ route: 'g1', color: '#FFD700', shapes: [] }],
+        tracks: tracks(),
+      }),
+    );
+    // The two buses (L, N) and the PCC behind them are outlines; a PCC has a trolley pole.
+    expect(svg.match(/<g opacity/g).length).toBeGreaterThanOrEqual(3);
+    expect(svg).toContain('<line');
+    expect(svg).toContain('PCC trolley');
+    expect(svg).toContain('>Bus<');
+  });
+
+  it('are outlines on any line: a bus route, a Kawasaki trolley line', async () => {
+    const { focusScene } = await import('../video/scenes.js');
+    const scene = (route, id) =>
+      frame(
+        focusScene({
+          capture: { kind: 'bunching', start_ts: t0, end_ts: t0 + 60_000 },
+          focus: { title: 'bunched', vehicles: [{ id, tag: '1' }] },
+          routes: [{ route, color: '#00c2e0', shapes: [] }],
+          tracks: tracks(),
+        }),
+      );
+    expect(scene('23', '3112')).toContain('<g opacity'); // a bus outline
+    expect(scene('t1', '9051')).toContain('<path'); // the Kawasaki's angled cabs
+  });
+
+  it('are dots in a system snapshot, the G1 included', async () => {
+    const { snapshotScene } = await import('../video/scenes.js');
+    const svg = frame(
+      snapshotScene({
+        capture: { start_ts: t0, end_ts: t0 + 60_000 },
+        mode: 'metro',
+        title: 'SEPTA Metro',
+        noun: 'vehicles',
+        tracks: tracks(),
+        lines: [],
+      }),
+    );
+    expect(svg).not.toContain('<g opacity');
+    expect(svg).not.toContain('PCC');
+    expect(svg.match(/<circle/g).length).toBeGreaterThanOrEqual(5);
+  });
+});

@@ -102,6 +102,7 @@ describe('vehicle outlines', () => {
     expect(vehicleShape({ route: 'm1' })).toBe('m1');
     expect(vehicleShape({ route: 'pao' })).toBe('rail');
     expect(vehicleShape({ route: 'b2' })).toBe('subway');
+    expect(vehicleShape({ route: '23', label: '3112' })).toBe('bus'); // any other route
     expect(vehicleShape({})).toBe('circle');
   });
 

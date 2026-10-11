@@ -3,12 +3,16 @@
 // ten minutes, with the route's other vehicles as small dots. A system
 // snapshot shows every tracked bus, or every Metro trolley, M1 car and L1
 // train, colored by how late it's running. An L1 train in the tunnel, placed
-// by the schedule rather than its GPS, is drawn dashed.
+// by the schedule rather than its GPS, is drawn dashed. A detection timelapse
+// draws each vehicle as an outline of what it is, a bus, a PCC or Kawasaki
+// trolley, a subway car, or an M1 car (lib/routes.js vehicleShape), with a
+// legend when it shows more than one kind; a system snapshot draws dots.
 import metroShapes from '../../src/lib/metroLineShapes.json' with { type: 'json' };
 import { METRO_LINES } from '../../src/lib/metroLines.js';
 import { clockLabel } from '../lib/clock.js';
 import { formatDistance, maxPairDistance, metersBetween, pathLength } from '../lib/geo.js';
-import { escapeXml, FONT, line } from '../map/draw.js';
+import { vehicleLegendRows, vehicleShape } from '../lib/routes.js';
+import { escapeXml, FONT, line, MARK_WIDTH, vehicleMark } from '../map/draw.js';
 import { bboxOf, fitView, project } from '../map/projection.js';
 import { MARKER, MARKER_R, STRETCH, separate, stretchBetween } from '../map/routeMap.js';
 import { dotLegend, elapsedLabel, hud, VIDEO_SIZE } from './timelapse.js';
@@ -151,6 +155,9 @@ export function focusScene({ capture, focus, routes, tracks, size = VIDEO_SIZE }
   }
 
   const others = [...tracks.values()].filter((t) => !focusIds.has(t.id) && routeColor.has(t.route));
+  // Which vehicle is which kind, once more than one kind is on screen (a PCC among the G1's buses).
+  const kinds = vehicleLegendRows([...focusTracks.map((v) => v.track), ...others]);
+  const legend = kinds.length ? dotLegend(kinds, { height: view.height }) : '';
 
   function readout(positions) {
     const live = positions.filter(Boolean);
@@ -177,6 +184,21 @@ export function focusScene({ capture, focus, routes, tracks, size = VIDEO_SIZE }
       const p = positionAt(o, t);
       if (!p) continue;
       const q = px(p);
+      const shape = vehicleShape(o);
+      if (shape !== 'circle') {
+        svg += vehicleMark(q.x, q.y, 11, {
+          shape,
+          fill: routeColor.get(o.route),
+          fillOpacity: 0.9,
+          stroke: '#0b0d10',
+          strokeWidth: 2.5,
+          opacity: p.opacity,
+          detail: true,
+          // Placed by the schedule (an L1 train in the tunnel): dashed, as on the still maps.
+          ...(p.est && { stroke: '#fff', fillOpacity: 0.45, dash: '6 5', detail: false }),
+        });
+        continue;
+      }
       svg += p.est
         ? `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="9" fill="${routeColor.get(o.route)}" fill-opacity="${(0.45 * p.opacity).toFixed(2)}" stroke="#fff" stroke-width="2.5" ${EST_DASH} stroke-opacity="${p.opacity.toFixed(2)}"/>`
         : `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="9" fill="${routeColor.get(o.route)}" fill-opacity="${(0.9 * p.opacity).toFixed(2)}" stroke="#0b0d10" stroke-width="3" stroke-opacity="${p.opacity.toFixed(2)}"/>`;
@@ -194,18 +216,28 @@ export function focusScene({ capture, focus, routes, tracks, size = VIDEO_SIZE }
       const trail = trailAt(v.track, t).map(px);
       if (trail.length >= 2) svg += line(trail, { color: '#ffffff', width: 6, opacity: 0.45 });
     });
-    const placed = separate(
-      focusTracks
-        .map((v, i) => (positions[i] ? { ...v, ...px(positions[i]), p: positions[i] } : null))
-        .filter(Boolean),
-    );
+    const marks = focusTracks
+      .map((v, i) =>
+        positions[i]
+          ? { ...v, ...px(positions[i]), p: positions[i], shape: vehicleShape(v.track) }
+          : null,
+      )
+      .filter(Boolean);
+    // Outlines are wider than a dot: give them more room.
+    const widest = Math.max(2, ...marks.map((m) => MARK_WIDTH[m.shape] ?? 2));
+    const placed = separate(marks, MARKER_R * widest + 6);
     for (const m of placed) {
       const o = m.p.opacity.toFixed(2);
-      const dash = m.p.est ? ` stroke-dasharray="10 7" fill-opacity="0.75"` : '';
       svg +=
-        `<g opacity="${o}"><circle cx="${m.x.toFixed(1)}" cy="${m.y.toFixed(1)}" r="${MARKER_R}" fill="${m.color ?? MARKER}" stroke="#fff" stroke-width="4"${dash}/>` +
+        `<g opacity="${o}">${vehicleMark(m.x, m.y, MARKER_R, {
+          shape: m.shape,
+          fill: m.color ?? MARKER,
+          strokeWidth: 4,
+          ...(m.p.est && { dash: '10 7', fillOpacity: 0.75 }),
+        })}` +
         `<text x="${m.x.toFixed(1)}" y="${(m.y + 8).toFixed(1)}" text-anchor="middle" font-family="${FONT}" font-size="23" font-weight="800" fill="#fff">${escapeXml(m.tag)}</text></g>`;
     }
+    svg += legend;
     svg += hud({
       title: focus.title,
       readout: readout(positions),

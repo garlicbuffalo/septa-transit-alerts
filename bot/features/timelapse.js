@@ -174,15 +174,18 @@ export function startSnapshots(
  * Positions that are nowhere near their trip's shape are left out, so a bad fix can't draw a
  * vehicle across the city in the video.
  * @param {{ db: object, sources: { transitView: Function, transitViewRoute: Function },
- *   shapes?: object | null, subway?: (() => Promise<object[]>) | null, now: number,
+ *   shapes?: object | null, subway?: (() => Promise<object[]>) | null,
+ *   tunnel?: ((vehicles: object[]) => object[]) | null, now: number,
  *   log?: (m: string) => void }} opts
- *   subway: the L1's trains right now (subwayTrains.js), for a Metro snapshot or an L1 capture
+ *   subway: the L1's trains right now (subwayTrains.js), for a Metro snapshot or an L1 capture;
+ *   tunnel: places the subway-surface trolleys underground by the schedule (trolleyTunnel.js)
  */
 export async function sampleCaptures({
   db,
   sources,
   shapes = null,
   subway = null,
+  tunnel = null,
   now,
   log = () => {},
 }) {
@@ -224,6 +227,9 @@ export async function sampleCaptures({
     }
   }
   vehicles = screenVehicles(vehicles, { shapes, now }).vehicles;
+  // Trolleys underground, placed by the schedule (`estimated`, drawn dashed); one whose position
+  // isn't known (`frozen`) isn't drawn.
+  if (tunnel) vehicles = tunnel(vehicles).filter((v) => !v.frozen);
   if (needsL1 && subway) {
     try {
       // A train overdue out of the tunnel (`frozen`) is somewhere unknown: not drawn.

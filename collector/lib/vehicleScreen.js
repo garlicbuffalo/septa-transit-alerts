@@ -16,10 +16,11 @@
 // one that alternates with the old position never is.
 //
 // A third thing is flagged, not dropped. A trolley in the subway-surface tunnel has no GPS, and
-// the tracker repeats its last fix, to the last decimal, for the 4–10 minutes it is underground:
-// a working fix wobbles by meters even at a standstill. Such a `frozen` vehicle is still on its
-// trip (its lateness is real, so the gap and missing-vehicle checks keep counting it) but its
-// position is not where it is, so the detectors that rely on position leave it out.
+// the tracker repeats its last fix, to the last decimal, for as long as it is underground: a
+// working fix wobbles by meters even at a standstill. Such a `frozen` vehicle is still on its
+// trip (the gap and missing-vehicle checks keep counting it) but its position is not where it
+// is, so the detectors that rely on position leave it out. One underground on schedule is then
+// placed along its trip by trolleyTunnel.js, which runs after this.
 import { offRouteM } from './shapes.js';
 import { distanceM } from './vehicles.js';
 

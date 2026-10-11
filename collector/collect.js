@@ -39,6 +39,7 @@ import {
 import { createSources } from './lib/sources.js';
 import { subwayLine, trackSubway } from './lib/subwayTrains.js';
 import { advanceTripCancellations, applyTripCancellations } from './lib/tripCancellations.js';
+import { placeTunnelTrolleys, tunnelTrouble } from './lib/trolleyTunnel.js';
 import { applyVehicleConditions, findConditions, VEHICLE_SOURCES } from './lib/vehicleDetectors.js';
 import { screenVehicles } from './lib/vehicleScreen.js';
 import { normalizeTransitView } from './lib/vehicles.js';
@@ -240,7 +241,17 @@ export async function collect({
         now,
       });
       state.screen = screened.state;
-      vehicles = [...screened.vehicles, ...(subway ?? [])];
+      // Subway-surface trolleys underground, placed by the schedule (trolleyTunnel.js), unless
+      // SEPTA has an alert out about the tunnel on the line.
+      const tunnel = placeTunnelTrolleys(screened.vehicles, {
+        schedule: sched,
+        shapes,
+        state: state.tunnel,
+        trouble: tunnelTrouble(archive.incidents),
+        now,
+      });
+      state.tunnel = tunnel.state;
+      vehicles = [...tunnel.vehicles, ...(subway ?? [])];
       // SEPTA's vintage PCC trolleys on the G1, by fleet number (src/lib/pcc.js).
       const sighted = pccSightings(screened.vehicles, state.pcc, now);
       pccChanged = !sameCars(state.pcc, sighted.status.cars);
@@ -261,6 +272,7 @@ export async function collect({
         stale,
         dropped: screened.dropped,
         frozen: screened.frozen,
+        tunnel: tunnel.stats,
         conditions: found.conditions.size,
         ...applied.stats,
       };
