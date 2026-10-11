@@ -5,11 +5,13 @@
 //                                public/icon-192.png, public/icon-512.png
 //   public/apple-touch-icon.svg → public/apple-touch-icon.png (180×180)
 //   scripts/icon-maskable.svg  → public/icon-maskable-192.png, -512.png
-//   public/favicon-love.svg    → public/favicon-love-16.png, -32.png
-//   scripts/apple-touch-icon-love.svg → public/apple-touch-icon-love.png
+//   public/favicon-<season>.svg → public/favicon-<season>-16.png, -32.png,
+//                                 public/apple-touch-icon-<season>.png
 //
-// The -love icons are the seasonal LOVE-sculpture set that index.html swaps
-// in around Valentine's Day.
+// The <season> sets are the seasonal icons index.html swaps in on their dates
+// (LOVE for Valentine's Day, the Mummers for New Year's, and so on). Each
+// one's apple-touch icon is its favicon with the tile's corners squared off,
+// since iOS applies its own mask.
 //
 // Run with `npm run brand-assets` after editing any of the sources, and commit
 // the PNGs. The OG card's footer URL comes from SITE_URL (src/lib/site.js), so
@@ -38,10 +40,21 @@ const ICONS = [
   { src: 'public/apple-touch-icon.svg', out: 'public/apple-touch-icon.png', size: 180 },
   { src: 'scripts/icon-maskable.svg', out: 'public/icon-maskable-192.png', size: 192 },
   { src: 'scripts/icon-maskable.svg', out: 'public/icon-maskable-512.png', size: 512 },
-  { src: 'public/favicon-love.svg', out: 'public/favicon-love-16.png', size: 16 },
-  { src: 'public/favicon-love.svg', out: 'public/favicon-love-32.png', size: 32 },
-  { src: 'scripts/apple-touch-icon-love.svg', out: 'public/apple-touch-icon-love.png', size: 180 },
 ];
+
+// Keep in step with the seasonal table in index.html.
+const SEASONS = ['love', 'mummers', 'pretzel', 'liberty-bell', 'eastern-state', 'boathouse-row'];
+for (const season of SEASONS) {
+  const src = `public/favicon-${season}.svg`;
+  ICONS.push(
+    { src, out: `public/favicon-${season}-16.png`, size: 16 },
+    { src, out: `public/favicon-${season}-32.png`, size: 32 },
+    { src, out: `public/apple-touch-icon-${season}.png`, size: 180, squareCorners: true },
+  );
+}
+
+// The tile's rounded corners, as every favicon draws them.
+const ROUNDED_TILE = '<rect width="64" height="64" rx="14" fill="url(#bg)"/>';
 
 function svgPage(svg, size) {
   // Inline the SVG at the target size on a transparent page.
@@ -72,7 +85,14 @@ try {
 
   for (const icon of ICONS) {
     const page = await browser.newPage({ viewport: { width: icon.size, height: icon.size } });
-    await page.setContent(svgPage(readFileSync(resolve(ROOT, icon.src), 'utf8'), icon.size));
+    let svg = readFileSync(resolve(ROOT, icon.src), 'utf8');
+    if (icon.squareCorners) {
+      if (!svg.includes(ROUNDED_TILE)) {
+        throw new Error(`${icon.src}: no rounded tile to square off`);
+      }
+      svg = svg.replace(ROUNDED_TILE, ROUNDED_TILE.replace(' rx="14"', ''));
+    }
+    await page.setContent(svgPage(svg, icon.size));
     await page.screenshot({
       path: resolve(ROOT, icon.out),
       omitBackground: true,

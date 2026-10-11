@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Seasonal alternate to favicon.svg (see index.html).
+       National Pretzel Day (Apr 26): a soft pretzel drawn as route lines, one
+       line color per section, white transfer dots for salt. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2330"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <path d="M21 47C24 41 28 35 32 30C37 23 40 14 46 14C54 14 57 24 56 33C55 46 46 54 32 54" stroke="#161c26" stroke-width="10" stroke-linecap="round" fill="none"/>
+  <path d="M21 47C24 41 28 35 32 30C37 23 40 14 46 14" stroke="#FFD700" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <path d="M46 14C54 14 57 24 56 33" stroke="#5A960A" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <path d="M56 33C55 46 46 54 32 54" stroke="#DC2E6B" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <path d="M43 47C40 41 36 35 32 30C27 23 24 14 18 14C10 14 7 24 8 33C9 46 18 54 32 54" stroke="#161c26" stroke-width="10" stroke-linecap="round" fill="none"/>
+  <path d="M43 47C40 41 36 35 32 30C27 23 24 14 18 14" stroke="#F26100" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <path d="M18 14C10 14 7 24 8 33" stroke="#0097D6" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <path d="M8 33C9 46 18 54 32 54" stroke="#5F249F" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <circle cx="46" cy="14" r="2.6" fill="#fff" stroke="#161c26" stroke-width="1.2"/>
+  <circle cx="56" cy="33" r="2.6" fill="#fff" stroke="#161c26" stroke-width="1.2"/>
+  <circle cx="18" cy="14" r="2.6" fill="#fff" stroke="#161c26" stroke-width="1.2"/>
+  <circle cx="8" cy="33" r="2.6" fill="#fff" stroke="#161c26" stroke-width="1.2"/>
+  <circle cx="32" cy="54" r="2.6" fill="#fff" stroke="#161c26" stroke-width="1.2"/>
+</svg>
