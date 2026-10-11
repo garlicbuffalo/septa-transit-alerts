@@ -34,6 +34,8 @@ export default function BrandMark({ className = 'h-8 w-8' }) {
       {/* The tower shaft, one yellow line up to the clock */}
       <path d="M32 41V34.3" stroke="#FFD700" strokeWidth="6" strokeLinecap="round" />
       <rect x="31.4" y="35.9" width="1.2" height="2.6" rx=".6" fill="#0d1117" />
+      {/* Interchange: a station dot where the four lines meet */}
+      <circle cx="32" cy="43" r="3.2" fill="#fff" stroke="#0d1117" strokeWidth="1.3" />
       {/* Clock face */}
       <circle cx="32" cy="28" r="5.6" fill="#0d1117" stroke="#FFD700" strokeWidth="3.4" />
       <g stroke="#FFD700" strokeLinecap="round">
@@ -41,22 +43,13 @@ export default function BrandMark({ className = 'h-8 w-8' }) {
         <path d="M32 28v-2.8M32 28h2.2" strokeWidth="1.2" />
       </g>
       {/* Drum with arched windows, ribbed dome, lantern */}
-      <rect x="27" y="16.9" width="10" height="3.4" rx=".6" fill="#FFD700" />
+      <rect x="29" y="16.9" width="6" height="3.4" rx=".6" fill="#FFD700" />
       <g fill="#0d1117">
-        <rect x="28.6" y="17.5" width="1.2" height="2.2" rx=".6" />
-        <rect x="31.4" y="17.5" width="1.2" height="2.2" rx=".6" />
-        <rect x="34.1" y="17.5" width="1.2" height="2.2" rx=".6" />
+        <rect x="30.2" y="17.5" width="1.2" height="2.2" rx=".6" />
+        <rect x="32.6" y="17.5" width="1.2" height="2.2" rx=".6" />
       </g>
-      <path
-        d="M26.4 16.1C26.4 12.5 29.6 11.2 32 9.5 34.4 11.2 37.6 12.5 37.6 16.1Z"
-        fill="#FFD700"
-      />
-      <path
-        d="M32 10.3V16.1M29.3 16.1c.3-2.2 1.1-3.6 2.69-4.8M34.7 16.1c-.3-2.2-1.1-3.6-2.69-4.8"
-        stroke="#0d1117"
-        strokeWidth=".65"
-        fill="none"
-      />
+      <path d="M29 16.1C29 12.5 30.7 11.2 32 9.5 33.3 11.2 35 12.5 35 16.1Z" fill="#FFD700" />
+      <path d="M32 10.3V16.1" stroke="#0d1117" strokeWidth=".65" fill="none" />
       <rect x="30.9" y="7.5" width="2.2" height="2.4" rx=".5" fill="#FFD700" />
       {/* William Penn */}
       <g fill="#FFD700">
