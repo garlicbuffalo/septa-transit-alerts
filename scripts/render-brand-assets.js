@@ -43,7 +43,16 @@ const ICONS = [
 ];
 
 // Keep in step with the seasonal table in index.html.
-const SEASONS = ['love', 'mummers', 'pretzel', 'liberty-bell', 'eastern-state', 'boathouse-row'];
+const SEASONS = [
+  'love',
+  'mummers',
+  'water-ice',
+  'pretzel',
+  'pride',
+  'liberty-bell',
+  'eastern-state',
+  'boathouse-row',
+];
 for (const season of SEASONS) {
   const src = `public/favicon-${season}.svg`;
   ICONS.push(
