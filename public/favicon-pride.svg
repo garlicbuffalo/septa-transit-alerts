@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Seasonal alternate to favicon.svg (see index.html).
+       Pride (Jun 1 – 18): a rainbow drawn as a trunk of transit lines in SEPTA
+       line colors, bending through the tile like a stretch of the system map. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2330"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+    <clipPath id="tile"><rect width="64" height="64" rx="14"/></clipPath>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+  <path d="M-2 19.00H21.00L35.00 5.00H66" stroke="#4F758B" stroke-width="4.1" stroke-linejoin="round" fill="none"/>
+  <path d="M-2 23.80H22.99L36.99 9.80H66" stroke="#DC2E6B" stroke-width="4.1" stroke-linejoin="round" fill="none"/>
+  <path d="M-2 28.60H24.98L38.98 14.60H66" stroke="#F26100" stroke-width="4.1" stroke-linejoin="round" fill="none"/>
+  <path d="M-2 33.40H26.96L40.96 19.40H66" stroke="#FFD700" stroke-width="4.1" stroke-linejoin="round" fill="none"/>
+  <path d="M-2 38.20H28.95L42.95 24.20H66" stroke="#5A960A" stroke-width="4.1" stroke-linejoin="round" fill="none"/>
+  <path d="M-2 43.00H30.94L44.94 29.00H66" stroke="#0097D6" stroke-width="4.1" stroke-linejoin="round" fill="none"/>
+  <path d="M-2 47.80H32.93L46.93 33.80H66" stroke="#5F249F" stroke-width="4.1" stroke-linejoin="round" fill="none"/>
+  </g>
+</svg>

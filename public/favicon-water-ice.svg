@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Seasonal alternate to favicon.svg (see index.html).
+       First day of spring (Mar 19 – 21), when the city lines up for free water
+       ice: scoops in line colors, ruffled edges and all, in a Jazz-pattern cup. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2330"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+    <clipPath id="cup"><path d="M12.5 31h39l-4.5 25H17Z"/></clipPath>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <path d="M12.5 31h39l-4.5 25H17Z" fill="#f1f5f9"/>
+  <g clip-path="url(#cup)"><path d="M9 44C16 37 23 46 31 41S45 36 56 40" stroke="#0097D6" stroke-width="6.5" stroke-linecap="round" fill="none"/><path d="M12 48.5C19 43 26 50 33 46" stroke="#0097D6" stroke-width="2" stroke-linecap="round" fill="none" opacity=".8"/><path d="M15 52l3.2-5.6 3 4.6 3.4-6 3 5 3.4-6 3 4.8 3.2-5.4 3 4.4" stroke="#5F249F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g>
+  <rect x="11.5" y="29.5" width="41" height="3.6" rx="1.8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width=".8"/>
+  <path d="M23.00 29.50C23.00 17.35 41.00 17.35 41.00 29.50a2.25 2.05 0 0 1 -4.50 0a2.25 2.05 0 0 1 -4.50 0a2.25 2.05 0 0 1 -4.50 0a2.25 2.05 0 0 1 -4.50 0Z" fill="#F26100" stroke="#0d1117" stroke-width=".9" stroke-linejoin="round"/>
+  <path d="M27.05 24.55c.6-1.6 1.8-2.6 3.2-3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".55"/>
+  <path d="M11.50 31.50C11.50 17.32 32.50 17.32 32.50 31.50a2.10 1.91 0 0 1 -4.20 0a2.10 1.91 0 0 1 -4.20 0a2.10 1.91 0 0 1 -4.20 0a2.10 1.91 0 0 1 -4.20 0a2.10 1.91 0 0 1 -4.20 0Z" fill="#DC2E6B" stroke="#0d1117" stroke-width=".9" stroke-linejoin="round"/>
+  <path d="M16.23 25.73c.6-1.6 1.8-2.6 3.2-3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".55"/>
+  <path d="M31.50 31.50C31.50 17.32 52.50 17.32 52.50 31.50a2.10 1.91 0 0 1 -4.20 0a2.10 1.91 0 0 1 -4.20 0a2.10 1.91 0 0 1 -4.20 0a2.10 1.91 0 0 1 -4.20 0a2.10 1.91 0 0 1 -4.20 0Z" fill="#5A960A" stroke="#0d1117" stroke-width=".9" stroke-linejoin="round"/>
+  <path d="M36.23 25.73c.6-1.6 1.8-2.6 3.2-3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".55"/>
+  <path d="M22.50 23.00C22.50 10.17 41.50 10.17 41.50 23.00a2.38 2.16 0 0 1 -4.75 0a2.38 2.16 0 0 1 -4.75 0a2.38 2.16 0 0 1 -4.75 0a2.38 2.16 0 0 1 -4.75 0Z" fill="#FFD700" stroke="#0d1117" stroke-width=".9" stroke-linejoin="round"/>
+  <path d="M26.77 17.77c.6-1.6 1.8-2.6 3.2-3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".55"/>
+  <path d="M38.5 16l6.5-9.5" stroke="#e2e8f0" stroke-width="2.2" stroke-linecap="round"/>
+  <ellipse cx="46" cy="5.2" rx="2.1" ry="3.1" transform="rotate(35 46 5.2)" fill="#e2e8f0"/>
+</svg>

@@ -26,7 +26,16 @@ const iconSet = (set) => [
   `/apple-touch-icon-${set}.png`,
 ];
 
-const SETS = ['love', 'mummers', 'pretzel', 'liberty-bell', 'eastern-state', 'boathouse-row'];
+const SETS = [
+  'love',
+  'mummers',
+  'water-ice',
+  'pretzel',
+  'pride',
+  'liberty-bell',
+  'eastern-state',
+  'boathouse-row',
+];
 
 function iconsAt(isoInstant) {
   vi.setSystemTime(new Date(isoInstant));
@@ -52,7 +61,11 @@ describe('seasonal icons', () => {
     ['mummers', '2027-01-02T23:30:00-05:00'],
     ['love', '2027-02-01T12:00:00-05:00'],
     ['love', '2027-02-14T23:30:00-05:00'],
+    ['water-ice', '2027-03-19T00:30:00-04:00'],
+    ['water-ice', '2027-03-21T23:30:00-04:00'],
     ['pretzel', '2027-04-26T12:00:00-04:00'],
+    ['pride', '2027-06-01T00:30:00-04:00'],
+    ['pride', '2027-06-18T23:30:00-04:00'],
     ['liberty-bell', '2027-06-19T12:00:00-04:00'],
     ['liberty-bell', '2027-07-04T21:00:00-04:00'],
     ['eastern-state', '2027-10-24T12:00:00-04:00'],
@@ -67,9 +80,11 @@ describe('seasonal icons', () => {
     '2027-01-03T00:30:00-05:00',
     '2027-01-31T23:30:00-05:00',
     '2027-02-15T00:30:00-05:00',
+    '2027-03-18T23:30:00-04:00',
+    '2027-03-22T00:30:00-04:00',
     '2027-04-25T23:30:00-04:00',
     '2027-04-27T00:30:00-04:00',
-    '2027-06-18T23:30:00-04:00',
+    '2027-05-31T23:30:00-04:00',
     '2027-07-05T00:30:00-04:00',
     '2027-10-23T23:30:00-04:00',
     '2027-11-01T00:30:00-04:00',
