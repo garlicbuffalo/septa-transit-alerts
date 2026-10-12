@@ -751,10 +751,21 @@ describe('EventPage', () => {
   });
 
   it('shows a not-found message for an unknown id', async () => {
+    // NotFoundPage's split-flap rows stagger in over ~900ms of setTimeout +
+    // rAF; reduced motion makes them land on their final text immediately.
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      addEventListener() {},
+      removeEventListener() {},
+    }));
     render(<EventPage eventId="missing" />);
-    await waitFor(() => {
-      expect(screen.getByText(/page not found/i)).toBeInTheDocument();
-    });
+    // Generous timeout: on slow CI runners the default 1000ms has been too tight.
+    await waitFor(
+      () => {
+        expect(screen.getByText(/page not found/i)).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
   });
 
   it('does not link a station name when it is followed by a street suffix', async () => {
