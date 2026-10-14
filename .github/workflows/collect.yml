@@ -25,6 +25,10 @@ name: Collect SEPTA data
 # "· server". This workflow then stands down and ends its chain, and the next
 # scheduled run takes over again once the server's last snapshot is more than
 # SERVER_GRACE_MIN old.
+#
+# Every tick, including a stand-down one, also cancels any deploy.yml run
+# stuck waiting on its environment for over STUCK_DEPLOY_MIN, which would
+# otherwise block every later deploy (see cancel_stuck_deploys).
 
 on:
   schedule:
@@ -40,6 +44,7 @@ env:
   RUN_MIN: 50
   DEPLOY_EVERY_MIN: 30
   SERVER_GRACE_MIN: 20
+  STUCK_DEPLOY_MIN: 30
 
 concurrency:
   group: collect
@@ -118,9 +123,26 @@ jobs:
             git -C data-branch push --force origin "$commit:refs/heads/data"
           }
 
+          # A deploy run whose deploy job stalls waiting on the github-pages
+          # environment holds deploy.yml's `pages` concurrency group
+          # indefinitely: every later deploy queues behind it and is cancelled
+          # by the next one, so the site silently freezes. Cancel any deploy
+          # run that has been waiting longer than STUCK_DEPLOY_MIN (a healthy
+          # one waits seconds). It runs before the stand-down check, so the
+          # scheduled runs keep watching while the server collects.
+          cancel_stuck_deploys() {
+            local id
+            for id in $(gh run list --workflow deploy.yml --status waiting --limit 20 --json databaseId,updatedAt \
+                --jq ".[] | select((now - (.updatedAt | fromdateiso8601)) > ${STUCK_DEPLOY_MIN} * 60) | .databaseId"); do
+              echo "::warning::Deploy run ${id} has been waiting over ${STUCK_DEPLOY_MIN} min; cancelling it so later deploys can run."
+              gh run cancel "$id" || echo "::error::Couldn't cancel stuck deploy run ${id}."
+            done
+          }
+
           # One collector tick. Exits STAND_DOWN when the server is collecting.
           STAND_DOWN=75
           tick() {
+            cancel_stuck_deploys || true
             checkout_data
             if server_active; then exit "$STAND_DOWN"; fi
             node collector/collect.js --data-dir data-branch --cache-dir .collector-cache | tee collect-summary.json
