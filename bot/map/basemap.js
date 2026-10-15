@@ -12,6 +12,10 @@
 //   - from the tracker's relay (TILES_URL=https://<its domain>/api/tiles), which
 //     holds CARTO's API key as a Cloudflare secret, so this server needs none.
 //
+// Either way the map and its labels come as two layers and are tinted back to
+// CARTO's classic Dark Matter (below), unless CARTO_RETINT=off, which takes
+// dark_all as CARTO draws it.
+//
 // If CARTO can't be reached and a Mapbox token is set, Mapbox's static dark map
 // is used instead (the bots' first basemap, kept as a fallback); with neither,
 // a plain dark background stands in so rendering still works end to end (tests,
@@ -88,11 +92,14 @@ export function tilePlan(view) {
 }
 
 /**
- * A CARTO tile's address: through the relay (which serves dark_all only), or
- * CARTO itself with a key, in any of its dark layers.
+ * A CARTO tile's address in one of its dark layers: through the relay (dark_all
+ * at /z/x/y, the others under their names), or CARTO itself with a key.
  */
 export function cartoTileUrl({ tilesUrl = null, cartoKey = null }, z, x, y, layer = 'dark_all') {
-  if (tilesUrl) return `${tilesUrl.replace(/\/+$/, '')}/${z}/${x}/${y}@2x.png`;
+  if (tilesUrl) {
+    const dir = layer === 'dark_all' ? '' : `/${layer}`;
+    return `${tilesUrl.replace(/\/+$/, '')}${dir}/${z}/${x}/${y}@2x.png`;
+  }
   const host = CARTO_DIRECT.replace('{s}', 'abcd'[(x + y) % 4]).replace(/dark_all$/, layer);
   return `${host}/${z}/${x}/${y}@2x.png?key=${encodeURIComponent(cartoKey)}`;
 }
@@ -418,6 +425,101 @@ export function overlayLabels(px, base, width, height) {
   return base;
 }
 
+/** Lay a labels tile (raw RGBA) over `base` (raw RGB) as CARTO drew it. */
+function layOver(px, base, width, height) {
+  for (let i = 0; i < width * height; i++) {
+    const alpha = px[i * 4 + 3] / 255;
+    if (alpha === 0) continue;
+    for (let c = 0; c < 3; c++) {
+      base[i * 3 + c] = Math.round(base[i * 3 + c] * (1 - alpha) + px[i * 4 + c] * alpha);
+    }
+  }
+  return base;
+}
+
+// ---- is it still the style the tint was made for? --------------------------
+//
+// The tint is made for the colours above. If CARTO restyles again it would
+// turn the new colours into nonsense, so each map is checked first: on
+// today's tiles 63–90% of a map tile's pixels are one of its flat colours
+// (land, water, streets, roads, buildings), and about 90% of the label halos
+// one of the two halo greys. A restyle that changes any of them brings that
+// near nothing, and the map is then drawn as CARTO draws it.
+const BASE_KNOWN = 0.4;
+const HALO_KNOWN = 0.5;
+const HALOS_TO_JUDGE = 200; // fewer label pixels than this say nothing
+
+/** How many of a dark_nolabels tile's pixels are a flat colour of the style. */
+export function styleFit(px, width, height, channels, z) {
+  const bGrey = buildingGrey(z);
+  const flat = HUES.map((h) => h.rgb);
+  if (bGrey != null) flat.push([bGrey, bGrey, bGrey]);
+  let known = 0;
+  const n = width * height;
+  for (let i = 0; i < n; i++) {
+    const r = px[i * channels];
+    const g = px[i * channels + 1];
+    const b = px[i * channels + 2];
+    for (const [fr, fg, fb] of flat) {
+      if (Math.abs(r - fr) <= 1 && Math.abs(g - fg) <= 1 && Math.abs(b - fb) <= 1) {
+        known++;
+        break;
+      }
+    }
+  }
+  return { known, total: n };
+}
+
+/** How many of a dark_only_labels tile's pure halo pixels are a known halo grey. */
+export function labelFit(px, width, height) {
+  let known = 0;
+  let total = 0;
+  for (let i = 0; i < width * height; i++) {
+    const a = px[i * 4 + 3];
+    if (a < 200 || a > 206) continue;
+    total++;
+    const [r, g, b] = [px[i * 4], px[i * 4 + 1], px[i * 4 + 2]];
+    if (Math.max(r, g, b) - Math.min(r, g, b) > 2) continue;
+    if (HALO.from.some((h) => Math.abs(g - h) <= 2)) known++;
+  }
+  return { known, total };
+}
+
+/**
+ * Whether to tint a map's tiles, from their fits added up: the map and its
+ * labels each on their own. Labels too few to judge go with the map.
+ */
+export function judgeStyle(fits) {
+  const sum = (key) =>
+    fits.reduce(
+      (acc, f) => ({ known: acc.known + f[key].known, total: acc.total + f[key].total }),
+      {
+        known: 0,
+        total: 0,
+      },
+    );
+  const base = sum('base');
+  const labels = sum('labels');
+  const baseShare = base.total ? base.known / base.total : 1;
+  const labelShare = labels.total >= HALOS_TO_JUDGE ? labels.known / labels.total : null;
+  const tintBase = baseShare >= BASE_KNOWN;
+  return {
+    base: tintBase,
+    labels: labelShare == null ? tintBase : labelShare >= HALO_KNOWN,
+    baseShare,
+    labelShare,
+  };
+}
+
+const percent = (v) => `${Math.round(v * 100)}%`;
+function describeStyle(style) {
+  if (style.base && style.labels) return 'tinted to Dark Matter';
+  const parts = [`map ${percent(style.baseShare)} known`];
+  if (style.labelShare != null) parts.push(`labels ${percent(style.labelShare)}`);
+  const which = !style.base && !style.labels ? 'map and labels' : !style.base ? 'map' : 'labels';
+  return `CARTO's style has changed (${parts.join(', ')}): ${which} drawn as CARTO draws them`;
+}
+
 // Run `fn` over `items`, at most `limit` at a time, keeping their order.
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -425,7 +527,7 @@ async function mapLimit(items, limit, fn) {
   const worker = async () => {
     while (next < items.length) {
       const i = next++;
-      out[i] = await fn(items[i]);
+      out[i] = await fn(items[i], i);
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
@@ -468,14 +570,14 @@ function tileFetcher({ tilesUrl, cartoKey, referer, fetchFn, retryDelayMs }) {
 }
 
 /**
- * A function that gives one tile of the map as a sharp image. Through the relay
- * it is dark_all as CARTO draws it (the relay serves no other layer); from CARTO
- * directly it is the map and its labels, two requests, tinted back to Dark
- * Matter.
+ * A function that loads one tile of the map. Untinted (`retint` off) it is
+ * dark_all as CARTO draws it, one request. Otherwise it is the map and its
+ * labels, two requests, with how well each fits the style the tint was made
+ * for; `drawTile` then draws it, tinted or not as the map's tiles together say.
  */
-function tileImages(opts) {
+function tileLoader({ retint = true, ...opts }) {
   const getTile = tileFetcher(opts);
-  if (opts.tilesUrl) return async (z, x, y) => sharp(await getTile(z, x, y));
+  if (!retint) return async (z, x, y) => ({ image: await getTile(z, x, y) });
   return async (z, x, y) => {
     const [base, labels] = await Promise.all([
       getTile(z, x, y, 'dark_nolabels'),
@@ -487,10 +589,28 @@ function tileImages(opts) {
     if (l.info.width !== width || l.info.height !== height) {
       throw new Error(`tile ${z}/${x}/${y}: labels ${l.info.width} px, map ${width} px`);
     }
-    const rgb = retintBase(b.data, width, height, b.info.channels, z);
-    overlayLabels(l.data, rgb, width, height);
-    return sharp(rgb, { raw: { width, height, channels: 3 } });
+    return {
+      z,
+      width,
+      height,
+      base: b.data,
+      labels: l.data,
+      fit: {
+        base: styleFit(b.data, width, height, 3, z),
+        labels: labelFit(l.data, width, height),
+      },
+    };
   };
+}
+
+/** A loaded tile as a sharp image, its map and labels tinted as `style` says. */
+function drawTile(tile, style) {
+  if (tile.image) return sharp(tile.image);
+  const { z, width, height } = tile;
+  const rgb = style.base ? retintBase(tile.base, width, height, 3, z) : Buffer.from(tile.base);
+  if (style.labels) overlayLabels(tile.labels, rgb, width, height);
+  else layOver(tile.labels, rgb, width, height);
+  return sharp(rgb, { raw: { width, height, channels: 3 } });
 }
 
 // The credit, small in the image's bottom-right corner.
@@ -507,10 +627,14 @@ function creditLayer(view) {
 }
 
 /** Stitch a view's CARTO tiles into one image of the view's size. */
-async function stitch(view, tileImage) {
+async function stitch(view, loadTile, onStyle = () => {}) {
   const plan = tilePlan(view);
+  const loaded = await mapLimit(plan.tiles, FETCH_AT_ONCE, (t) => loadTile(plan.z, t.x, t.y));
+  const fits = loaded.filter((t) => t.fit).map((t) => t.fit);
+  const style = fits.length ? judgeStyle(fits) : null;
+  if (style) onStyle(style);
   const layers = (
-    await mapLimit(plan.tiles, FETCH_AT_ONCE, async (t) => {
+    await mapLimit(plan.tiles, FETCH_AT_ONCE, async (t, k) => {
       const w = t.right - t.left;
       const h = t.bottom - t.top;
       // The part of the tile inside the image (the edge tiles hang over it).
@@ -519,7 +643,7 @@ async function stitch(view, tileImage) {
       const cropW = Math.min(w, view.width - t.left) - cropL;
       const cropH = Math.min(h, view.height - t.top) - cropT;
       if (cropW <= 0 || cropH <= 0) return null;
-      const input = await (await tileImage(plan.z, t.x, t.y))
+      const input = await drawTile(loaded[k], style)
         .resize(w, h, { fit: 'fill' })
         .extract({ left: cropL, top: cropT, width: cropW, height: cropH })
         .png()
@@ -544,21 +668,25 @@ export async function checkCarto({
   tilesUrl = null,
   cartoKey = null,
   cartoReferer = null,
+  retint = true,
   fetchFn = fetch,
 } = {}) {
-  const tileImage = tileImages({
+  const loadTile = tileLoader({
     tilesUrl,
     cartoKey,
     referer: cartoReferer,
+    retint,
     fetchFn,
     retryDelayMs: 0,
   });
   try {
     // Philadelphia's City Hall at zoom 12.
-    const { info } = await (await tileImage(12, 1192, 1551))
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    return { ok: true, detail: `${info.width}-px tile` };
+    const tile = await loadTile(12, 1192, 1551);
+    if (tile.image) {
+      const { width } = await sharp(tile.image).metadata();
+      return { ok: true, detail: `${width}-px tile, as CARTO draws it (CARTO_RETINT off)` };
+    }
+    return { ok: true, detail: `${tile.width}-px tiles, ${describeStyle(judgeStyle([tile.fit]))}` };
   } catch (err) {
     return { ok: false, detail: err.message.replace(/^tile [\d/]+: /, '') };
   }
@@ -566,9 +694,10 @@ export async function checkCarto({
 
 /**
  * @param {{ token?: string | null, tilesUrl?: string | null, cartoKey?: string | null,
- *   cartoReferer?: string | null, fetchFn?: typeof fetch, log?: (m: string) => void,
- *   retryDelayMs?: number }} opts
- *   `token` is a Mapbox token; `tilesUrl` / `cartoKey` are CARTO's (see above).
+ *   cartoReferer?: string | null, retint?: boolean, fetchFn?: typeof fetch,
+ *   log?: (m: string) => void, retryDelayMs?: number }} opts
+ *   `token` is a Mapbox token; `tilesUrl` / `cartoKey` are CARTO's (see above);
+ *   `retint` false draws CARTO's dark_all as it comes (CARTO_RETINT=off).
  * @returns {(view: {lat:number, lon:number, zoom:number, width:number, height:number}) => Promise<Buffer>}
  *   PNG/JPEG at the view's logical size
  */
@@ -577,20 +706,29 @@ export function createBasemap({
   tilesUrl = null,
   cartoKey = null,
   cartoReferer = null,
+  retint = true,
   fetchFn = fetch,
   log = () => {},
   retryDelayMs = 750,
 } = {}) {
   const sources = [];
+  // Say when the maps stop (or start again) being tinted, not on every map.
+  let lastStyle = 'tinted/tinted';
+  const onStyle = (style) => {
+    const now = `${style.base ? 'tinted' : 'as is'}/${style.labels ? 'tinted' : 'as is'}`;
+    if (now !== lastStyle) log(`basemap: ${describeStyle(style)}`);
+    lastStyle = now;
+  };
   if (tilesUrl || cartoKey) {
-    const tileImage = tileImages({
+    const loadTile = tileLoader({
       tilesUrl,
       cartoKey,
       referer: cartoReferer,
+      retint,
       fetchFn,
       retryDelayMs,
     });
-    sources.push({ name: 'CARTO', render: (view) => stitch(view, tileImage) });
+    sources.push({ name: 'CARTO', render: (view) => stitch(view, loadTile, onStyle) });
   }
   if (token) {
     sources.push({ name: 'Mapbox', render: (view) => mapboxImage(view, token, fetchFn, log) });

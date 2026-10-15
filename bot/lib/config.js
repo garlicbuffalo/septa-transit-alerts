@@ -70,6 +70,9 @@ export function loadConfig(env = process.env) {
       (env.CARTO_KEY?.trim() && env.SITE_URL?.trim()
         ? `${env.SITE_URL.trim().replace(/\/+$/, '')}/`
         : null),
+    // CARTO_RETINT=off draws CARTO's dark map as CARTO draws it, one request a
+    // tile, instead of tinting it back to Dark Matter (map/basemap.js).
+    retint: !/^(off|0|no|false)$/i.test(env.CARTO_RETINT?.trim() ?? ''),
     mapboxToken: env.MAPBOX_TOKEN?.trim() || null,
     github: {
       token: githubToken,

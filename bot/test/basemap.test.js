@@ -6,9 +6,12 @@ import {
   cartoTileUrl,
   checkCarto,
   createBasemap,
+  judgeStyle,
+  labelFit,
   overlayLabels,
   PLACEHOLDER_BG,
   retintBase,
+  styleFit,
   tilePlan,
 } from '../map/basemap.js';
 import { fitView, project } from '../map/projection.js';
@@ -145,13 +148,13 @@ describe('cartoTileUrl', () => {
     );
   });
 
-  it('names the layer it wants from CARTO; the relay has only one', () => {
+  it('names the layer it wants, to CARTO and to the relay', () => {
     expect(cartoTileUrl({ cartoKey: 'k' }, 13, 2385, 3101, 'dark_only_labels')).toMatch(
       /^https:\/\/[a-d]\.basemaps\.cartocdn\.com\/dark_only_labels\/13\/2385\/3101@2x\.png\?key=k$/,
     );
     expect(
       cartoTileUrl({ tilesUrl: 'https://t.example/api/tiles' }, 13, 1, 2, 'dark_nolabels'),
-    ).toBe('https://t.example/api/tiles/13/1/2@2x.png');
+    ).toBe('https://t.example/api/tiles/dark_nolabels/13/1/2@2x.png');
   });
 });
 
@@ -285,6 +288,143 @@ describe("re-tinting CARTO's new dark map to Dark Matter", () => {
   });
 });
 
+// Tiles in today's style (land with a street across it, a road name's halo)
+// or in one the tint was not made for (light land, blue halos), served for
+// either layer. The street's width goes with the tile's x, so maps differ.
+function styledTiles(style) {
+  const today = style === 'today';
+  return vi.fn(async (url) => {
+    const labels = /only_labels/.test(url);
+    const street = 330 + (Number(String(url).match(/\/(\d+)\/\d+@2x/)[1]) % 5) * 30;
+    const px = labels
+      ? tile(512, 4, (_, y) =>
+          y >= 100 && y < 140 ? [...(today ? grey(0x2d) : [0x20, 0x40, 0x90]), 204] : [0, 0, 0, 0],
+        )
+      : tile(512, 3, (_, y) =>
+          y >= 300 && y < street ? NEW.street : today ? NEW.land : grey(0xf0),
+        );
+    const raw = { width: 512, height: 512, channels: labels ? 4 : 3 };
+    const png = await sharp(px, { raw }).png().toBuffer();
+    return new Response(png, { headers: { 'content-type': 'image/png' } });
+  });
+}
+
+describe('the safety valve for another CARTO restyle', () => {
+  // A small map at a whole zoom; its value at a spot that is plain land (not
+  // the label, rows 100–139 of a tile, nor the street, from row 300).
+  const small = { ...view, zoom: 15, width: 600, height: 300 };
+  const land = async (png) => {
+    const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+    const { tiles } = tilePlan(small);
+    for (let y = 0; y < 300; y++) {
+      const t = tiles.find((t) => t.left <= 300 && 300 < t.right && t.top <= y && y < t.bottom);
+      const v = ((y - t.top) / (t.bottom - t.top)) * 512;
+      const plain = (v > 10 && v < 90) || (v > 150 && v < 290);
+      if (plain) return data[(y * 600 + 300) * info.channels];
+    }
+    throw new Error('no plain land in view');
+  };
+
+  it('tints a map whose tiles are in the style it was made for', async () => {
+    const logs = [];
+    const png = await createBasemap({
+      cartoKey: 'k',
+      fetchFn: styledTiles('today'),
+      log: (m) => logs.push(m),
+    })(small);
+    expect(await land(png)).toBe(0x09);
+    expect(logs).toEqual([]);
+  });
+
+  it("draws a map as CARTO does once CARTO's style changes, and says so once", async () => {
+    const logs = [];
+    const basemap = createBasemap({
+      cartoKey: 'k',
+      fetchFn: styledTiles('restyled'),
+      log: (m) => logs.push(m),
+    });
+    expect(await land(await basemap(small))).toBe(0xf0);
+    // Another map, with other shares known: still said only once.
+    await basemap({ ...small, lat: small.lat + 0.05, width: 900 });
+    expect(logs).toEqual([
+      expect.stringMatching(
+        /^basemap: CARTO's style has changed \(map \d+% known, labels 0%\): map and labels drawn as CARTO draws them$/,
+      ),
+    ]);
+  });
+
+  it('says when the tint is back', async () => {
+    let fetchFn = styledTiles('restyled');
+    const logs = [];
+    const basemap = createBasemap({
+      cartoKey: 'k',
+      fetchFn: (url, init) => fetchFn(url, init),
+      log: (m) => logs.push(m),
+    });
+    await basemap(small);
+    fetchFn = styledTiles('today');
+    await basemap({ ...small, lat: small.lat + 0.05 }); // other tiles, not remembered
+    expect(logs.length).toBe(2);
+    expect(logs[1]).toBe('basemap: tinted to Dark Matter');
+  });
+
+  it('judges a whole map, the labels on their own unless too few', () => {
+    const fit = (bk, bt, lk, lt) => ({
+      base: { known: bk, total: bt },
+      labels: { known: lk, total: lt },
+    });
+    expect(judgeStyle([fit(80, 100, 900, 1000)])).toMatchObject({ base: true, labels: true });
+    expect(judgeStyle([fit(80, 100, 10, 1000)])).toMatchObject({ base: true, labels: false });
+    expect(judgeStyle([fit(5, 100, 900, 1000)])).toMatchObject({ base: false, labels: true });
+    expect(judgeStyle([fit(5, 100, 0, 50)])).toMatchObject({ base: false, labels: false });
+    expect(judgeStyle([fit(80, 100, 0, 50)])).toMatchObject({ base: true, labels: true });
+    expect(judgeStyle([fit(10, 100, 0, 0), fit(90, 100, 0, 0)]).base).toBe(true);
+  });
+
+  it('counts the pixels that are a colour of the style', () => {
+    const base = tile(64, 3, (x) => (x < 48 ? NEW.land : NEW.street));
+    expect(styleFit(base, 64, 64, 3, 15)).toEqual({ known: 64 * 64, total: 64 * 64 });
+    expect(
+      styleFit(
+        tile(64, 3, () => grey(0x80)),
+        64,
+        64,
+        3,
+        15,
+      ).known,
+    ).toBe(0);
+    const labels = tile(64, 4, (x) => [...grey(x < 32 ? 0x3c : 0x99), 204]);
+    expect(labelFit(labels, 64, 64)).toEqual({ known: 32 * 64, total: 64 * 64 });
+  });
+
+  it('with CARTO_RETINT=off takes dark_all as it comes, one request a tile', async () => {
+    const direct = fakeTiles();
+    await createBasemap({ cartoKey: 'k', retint: false, fetchFn: direct.fetchFn })(view);
+    expect(direct.calls.length).toBe(tilePlan(view).tiles.length);
+    for (const c of direct.calls) expect(c.url).toContain('.basemaps.cartocdn.com/dark_all/');
+    const relay = fakeTiles();
+    await createBasemap({
+      tilesUrl: 'https://t.example/api/tiles',
+      retint: false,
+      fetchFn: relay.fetchFn,
+    })(view);
+    for (const c of relay.calls) expect(c.url).toMatch(/\/api\/tiles\/\d+\/\d+\/\d+@2x\.png$/);
+    const res = await checkCarto({ cartoKey: 'k', retint: false, fetchFn: fakeTiles().fetchFn });
+    expect(res.detail).toBe('512-px tile, as CARTO draws it (CARTO_RETINT off)');
+    expect(loadConfig({ CARTO_RETINT: 'off' }).retint).toBe(false);
+    expect(loadConfig({ CARTO_RETINT: ' 0 ' }).retint).toBe(false);
+    expect(loadConfig({}).retint).toBe(true);
+  });
+
+  it("reports in `check` whether CARTO's style is still the one it tints", async () => {
+    const ok = await checkCarto({ cartoKey: 'k', fetchFn: styledTiles('today') });
+    expect(ok).toEqual({ ok: true, detail: '512-px tiles, tinted to Dark Matter' });
+    const changed = await checkCarto({ cartoKey: 'k', fetchFn: styledTiles('restyled') });
+    expect(changed.ok).toBe(true);
+    expect(changed.detail).toMatch(/CARTO's style has changed/);
+  });
+});
+
 describe('the CARTO basemap', () => {
   it('stitches tiles that line up with the drawing projection', async () => {
     const { fetchFn } = fakeTiles();
@@ -390,9 +530,11 @@ describe('the CARTO basemap', () => {
   it('asks the relay without a key or a Referer', async () => {
     const { fetchFn, calls } = fakeTiles();
     await createBasemap({ tilesUrl: 'https://tracker.example/api/tiles', fetchFn })(view);
-    expect(calls.length).toBeGreaterThan(1);
+    expect(calls.length).toBe(2 * tilePlan(view).tiles.length);
     for (const c of calls) {
-      expect(c.url).toMatch(/^https:\/\/tracker\.example\/api\/tiles\/\d+\/\d+\/\d+@2x\.png$/);
+      expect(c.url).toMatch(
+        /^https:\/\/tracker\.example\/api\/tiles\/dark_(nolabels|only_labels)\/\d+\/\d+\/\d+@2x\.png$/,
+      );
       expect(c.headers.referer).toBeUndefined();
       expect(c.headers['user-agent']).toContain('septa-transit-alerts-bots');
     }
@@ -511,7 +653,8 @@ describe('checkCarto', () => {
   it('reports a working relay', async () => {
     const { fetchFn } = fakeTiles();
     const res = await checkCarto({ tilesUrl: 'https://tracker.example/api/tiles', fetchFn });
-    expect(res).toEqual({ ok: true, detail: '512-px tile' });
+    expect(res.ok).toBe(true);
+    expect(res.detail).toMatch(/^512-px tiles, /);
   });
 
   it('reports what went wrong without the key', async () => {

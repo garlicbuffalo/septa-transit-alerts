@@ -37,7 +37,7 @@ export function createRuntime(config, { logFn = log } = {}) {
   const carto = config.tilesUrl ? 'the relay' : config.cartoKey ? 'a key' : null;
   if (carto) {
     logFn(
-      `maps: CARTO tiles through ${carto}${config.mapboxToken ? ', Mapbox as a fallback' : ''}`,
+      `maps: CARTO tiles through ${carto}${config.retint ? ', tinted to Dark Matter' : ', as CARTO draws them'}${config.mapboxToken ? ', Mapbox as a fallback' : ''}`,
     );
   } else if (config.mapboxToken) {
     logFn('maps: Mapbox (set TILES_URL or CARTO_KEY for the CARTO map the site uses)');
@@ -49,6 +49,7 @@ export function createRuntime(config, { logFn = log } = {}) {
     tilesUrl: config.tilesUrl,
     cartoKey: config.cartoKey,
     cartoReferer: config.cartoReferer,
+    retint: config.retint,
     log: logFn,
   });
   const poster = createPoster({ db, client, log: logFn });
