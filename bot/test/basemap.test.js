@@ -6,7 +6,9 @@ import {
   cartoTileUrl,
   checkCarto,
   createBasemap,
+  overlayLabels,
   PLACEHOLDER_BG,
+  retintBase,
   tilePlan,
 } from '../map/basemap.js';
 import { fitView, project } from '../map/projection.js';
@@ -142,6 +144,145 @@ describe('cartoTileUrl', () => {
       /^https:\/\/[a-d]\.basemaps\.cartocdn\.com\/dark_all\/13\/2385\/3101@2x\.png\?key=k%20e%2Fy$/,
     );
   });
+
+  it('names the layer it wants from CARTO; the relay has only one', () => {
+    expect(cartoTileUrl({ cartoKey: 'k' }, 13, 2385, 3101, 'dark_only_labels')).toMatch(
+      /^https:\/\/[a-d]\.basemaps\.cartocdn\.com\/dark_only_labels\/13\/2385\/3101@2x\.png\?key=k$/,
+    );
+    expect(
+      cartoTileUrl({ tilesUrl: 'https://t.example/api/tiles' }, 13, 1, 2, 'dark_nolabels'),
+    ).toBe('https://t.example/api/tiles/13/1/2@2x.png');
+  });
+});
+
+// A tile in CARTO's new style, drawn by hand: `paint(x, y)` gives each pixel's
+// colour as [r, g, b] (or [r, g, b, a] for labels).
+function tile(size, channels, paint) {
+  const px = Buffer.alloc(size * size * channels);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) px.set(paint(x, y), (y * size + x) * channels);
+  }
+  return px;
+}
+const grey = (v) => [v, v, v];
+const NEW = {
+  land: grey(0x0e),
+  water: [0x2c, 0x35, 0x3c],
+  street: [0x41, 0x47, 0x58],
+  main: [0x53, 0x56, 0x66],
+  motorway: grey(0x49),
+  building16: grey(0x39),
+};
+const mix = (a, b, t) => a.map((v, i) => Math.round(v * (1 - t) + b[i] * t));
+
+describe("re-tinting CARTO's new dark map to Dark Matter", () => {
+  const S = 64;
+  const at = (px, x, y) => px[(y * S + x) * 3];
+
+  it('gives land, water and streets their old colours, edges blended alike', () => {
+    // Water on the left, land in the middle, a street on the right, with a
+    // half-and-half pixel column between land and street.
+    const px = tile(S, 3, (x) =>
+      x < 20
+        ? NEW.water
+        : x < 40
+          ? NEW.land
+          : x === 40
+            ? mix(NEW.land, NEW.street, 0.5)
+            : NEW.street,
+    );
+    const out = retintBase(px, S, S, 3, 16);
+    expect(at(out, 5, 30)).toBe(0x26); // @water
+    expect(at(out, 30, 30)).toBe(0x09); // @landmass_fill
+    expect(at(out, 55, 30)).toBe(0x19); // @street
+    expect(Math.abs(at(out, 40, 30) - (0x09 + 0x19) / 2)).toBeLessThanOrEqual(1);
+    // Grey throughout: no blue left.
+    for (let i = 0; i < out.length; i += 3) expect(out[i + 2]).toBe(out[i]);
+  });
+
+  it('draws main roads and motorways dark with a lighter casing', () => {
+    for (const road of [NEW.main, NEW.motorway]) {
+      // A 12-px road across the middle of the land.
+      const px = tile(S, 3, (_, y) => (y >= 26 && y < 38 ? road : NEW.land));
+      const out = retintBase(px, S, S, 3, 15);
+      expect(at(out, 30, 31)).toBe(0x03); // @main / @motorway
+      expect(at(out, 30, 26)).toBe(0x2a); // @main_case
+      expect(at(out, 30, 37)).toBe(0x2a);
+      expect(at(out, 30, 10)).toBe(0x09);
+      // Not at the tile's own edge, where the road carries on into the next.
+      expect(at(out, 0, 31)).toBe(0x03);
+    }
+  });
+
+  it('turns buildings black with a #111 outline, light roofs and all', () => {
+    // A building with a lighter roof section, and a thin line of the same grey
+    // as a building (a path) that is not one.
+    const px = tile(S, 3, (x, y) => {
+      if (x >= 10 && x < 40 && y >= 10 && y < 40) {
+        // The roof as CARTO draws one: its own grey, a darker line round it.
+        if (x >= 19 && x < 31 && y >= 19 && y < 31) {
+          return x === 19 || x === 30 || y === 19 || y === 30 ? grey(0x2a) : grey(0x34);
+        }
+        return NEW.building16;
+      }
+      if (y === 50) return grey(0x26);
+      return NEW.land;
+    });
+    const out = retintBase(px, S, S, 3, 16);
+    expect(at(out, 15, 15)).toBe(0x00); // @buildings
+    expect(at(out, 25, 25)).toBe(0x00); // the roof: building, not a lighter grey
+    expect(at(out, 10, 25)).toBe(0x11); // @building_outline
+    expect(at(out, 39, 25)).toBe(0x11);
+    expect(at(out, 25, 5)).toBe(0x09);
+    // The line stays a line a little lighter than the land, as in Dark Matter.
+    expect(at(out, 30, 50)).toBeGreaterThan(0x09);
+  });
+
+  it('reads the zoom: below z14 a light grey area is no building', () => {
+    const px = tile(S, 3, (x, y) =>
+      x >= 10 && x < 40 && y >= 10 && y < 40 ? NEW.building16 : NEW.land,
+    );
+    expect(at(retintBase(px, S, S, 3, 13), 25, 25)).toBeGreaterThan(0x20);
+    expect(at(retintBase(px, S, S, 3, 17), 25, 25)).toBe(0x00);
+  });
+
+  it('takes RGBA tiles as they come', () => {
+    const px = tile(S, 4, () => [...NEW.street, 255]);
+    expect(at(retintBase(px, S, S, 4, 15), 30, 30)).toBe(0x19);
+  });
+
+  it('tints labels to Dark Matter: road names #333 on #030303, places #444 on #191919', () => {
+    // Left half a road name, right half a place name: halo all round (80%
+    // opaque), text (opaque) in a 4-px stroke in the middle.
+    const px = tile(S, 4, (x, y) => {
+      const road = x < 32;
+      const halo = road ? 0x2d : 0x3c;
+      const text = road ? 0x71 : 0xa1;
+      if (y < 20 || y >= 30 || x % 32 < 2 || x % 32 >= 30) return [0, 0, 0, 0];
+      if (y >= 23 && y < 27 && x % 32 >= 6 && x % 32 < 26) return [...grey(text), 255];
+      return [...grey(halo), 204];
+    });
+    const base = Buffer.alloc(S * S * 3, 0x09);
+    overlayLabels(px, base, S, S);
+    const over = (c) => Math.round(0x09 * 0.2 + c * 0.8); // the halo is 80% opaque
+    expect(at(base, 16, 21)).toBe(over(0x03));
+    expect(at(base, 16, 25)).toBe(0x33);
+    expect(at(base, 48, 21)).toBe(over(0x19));
+    expect(at(base, 48, 25)).toBe(0x44);
+    expect(at(base, 16, 5)).toBe(0x09); // no label: the map shows through
+  });
+
+  it('splits antialiased text between the old text and halo', () => {
+    // Half text over the halo: alpha 0.9, colour (0.5·T + 0.4·H) / 0.9.
+    const a = 0.9;
+    const c = Math.round((0.5 * 0xa1 + 0.4 * 0x3c) / a);
+    const px = tile(S, 4, (x) =>
+      x === 30 ? [...grey(c), Math.round(a * 255)] : [...grey(0x3c), 204],
+    );
+    const base = Buffer.alloc(S * S * 3, 0);
+    overlayLabels(px, base, S, S);
+    expect(Math.abs(at(base, 30, 30) - (0.5 * 0x44 + 0.4 * 0x19))).toBeLessThanOrEqual(1);
+  });
 });
 
 describe('the CARTO basemap', () => {
@@ -264,8 +405,13 @@ describe('the CARTO basemap', () => {
       cartoReferer: 'https://site.example/',
       fetchFn,
     })(view);
+    // Two layers per tile, re-tinted and laid together: the map and its labels.
+    const layers = (layer) =>
+      calls.filter((c) => c.url.includes(`.basemaps.cartocdn.com/${layer}/`));
+    expect(layers('dark_nolabels').length).toBe(tilePlan(view).tiles.length);
+    expect(layers('dark_only_labels').length).toBe(tilePlan(view).tiles.length);
+    expect(layers('dark_all').length).toBe(0);
     for (const c of calls) {
-      expect(c.url).toContain('basemaps.cartocdn.com/dark_all/');
       expect(c.url).toContain('key=SECRET');
       expect(c.headers.referer).toBe('https://site.example/');
     }
