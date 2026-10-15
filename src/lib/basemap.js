@@ -22,11 +22,19 @@
 //       /{z}/{x}/{y}[@2x].png, adding its own key from a Cloudflare secret, so
 //       none is in the page. Wins over a key if both are set.
 //
+// Either way CARTO's map is tinted back to its classic Dark Matter look, which
+// CARTO replaced on 2026-10-14 (darkMatter.js, the same tint as the bots'
+// maps): each tile is fetched as its map and its labels, two layers, and
+// tinted in a Web Worker (darkMatterTiles.js). VITE_CARTO_RETINT=off, or a
+// browser that can't run the worker, gets dark_all as CARTO draws it.
+//
 // Without either, or if the tiles can't be had (a bad address, the relay down),
 // the maps use OpenStreetMap's own tiles, darkened by a CSS filter, the way the
 // tracker does. CARTO answers a missing or unaccepted key with an ordinary
 // image carrying a watermark, which can't be told from a good tile in code:
 // look at a map after setting a key.
+
+import { canTint, onStyleNote } from './darkMatterTiles.js';
 
 const TILE_TARGET = 300; // SVG units a tile should span; the zoom is chosen near it
 const MIN_ZOOM = 1;
@@ -129,14 +137,26 @@ const OSM_CREDIT = {
 const CARTO_CREDIT = { label: '© CARTO', href: 'https://carto.com/attributions' };
 const CARTO_DIRECT = 'https://{s}.basemaps.cartocdn.com/dark_all';
 
+// A CARTO source's other two layers, for the tint: always @2x (the tint is made
+// for them; a page without a retina screen shows them scaled down).
+function cartoLayers(layerUrl) {
+  return {
+    base: layerUrl('dark_nolabels'),
+    labels: layerUrl('dark_only_labels'),
+  };
+}
+
 /**
  * The tile sources, in order of preference: CARTO through the tracker's relay
  * when `tilesUrl` is set, else CARTO directly when `cartoKey` is, then
  * OpenStreetMap (the only one with no fallback).
+ * A CARTO source carries `layers`, the addresses of its map and labels for the
+ * tint, unless `tint` is false.
  * @param {string} [tilesUrl] the relay's /api/tiles address
  * @param {string} [cartoKey] a CARTO key limited to this site's domain
+ * @param {boolean} [tint] tint CARTO's map back to Dark Matter
  */
-export function tileSources(tilesUrl, cartoKey) {
+export function tileSources(tilesUrl, cartoKey, tint = false) {
   const base = String(tilesUrl || '').replace(/\/+$/, '');
   const key = String(cartoKey || '').trim();
   const osm = {
@@ -148,8 +168,9 @@ export function tileSources(tilesUrl, cartoKey) {
   if (base) {
     return {
       primary: {
-        id: 'carto',
+        id: tint ? 'carto-dm' : 'carto',
         url: `${base}/{z}/{x}/{y}{r}.png`,
+        layers: tint ? cartoLayers((layer) => `${base}/${layer}/{z}/{x}/{y}@2x.png`) : null,
         filter: null,
         credits: [OSM_CREDIT, CARTO_CREDIT],
       },
@@ -157,10 +178,13 @@ export function tileSources(tilesUrl, cartoKey) {
     };
   }
   if (key) {
+    const direct = (layer) =>
+      `${CARTO_DIRECT.replace(/dark_all$/, layer)}/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(key)}`;
     return {
       primary: {
-        id: 'carto',
-        url: `${CARTO_DIRECT}/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(key)}`,
+        id: tint ? 'carto-dm' : 'carto',
+        url: direct('dark_all'),
+        layers: tint ? cartoLayers((layer) => direct(layer).replace('{r}', '@2x')) : null,
         filter: null,
         credits: [OSM_CREDIT, CARTO_CREDIT],
       },
@@ -172,7 +196,19 @@ export function tileSources(tilesUrl, cartoKey) {
 
 /** A tile's address; `retina` asks for the @2x image where the source has one. */
 export function tileUrl(source, tile, z, retina) {
-  return source.url
+  return fillUrl(source.url, tile, z, retina);
+}
+
+/** A tinted source's tile: the addresses of its map and labels layers. */
+export function layerUrls(source, tile, z) {
+  return {
+    base: fillUrl(source.layers.base, tile, z, true),
+    labels: fillUrl(source.layers.labels, tile, z, true),
+  };
+}
+
+function fillUrl(template, tile, z, retina) {
+  return template
     .replace('{z}', z)
     .replace('{x}', tile.x)
     .replace('{y}', tile.y)
@@ -183,8 +219,15 @@ export function tileUrl(source, tile, z, retina) {
 // One source for the whole page: the first time the primary shows it can't
 // serve (two tiles fail before any has loaded), every map moves to the
 // fallback together instead of each discovering it separately.
-const sources = tileSources(import.meta.env?.VITE_TILES_URL, import.meta.env?.VITE_CARTO_KEY);
+const tintWanted = () => !/^(off|0|no|false)$/i.test(import.meta.env?.VITE_CARTO_RETINT ?? '');
+const sources = tileSources(
+  import.meta.env?.VITE_TILES_URL,
+  import.meta.env?.VITE_CARTO_KEY,
+  tintWanted() && canTint(),
+);
 let active = sources.primary;
+// What the tint's check of CARTO's style finds, should CARTO restyle again.
+onStyleNote((said) => console.info(`maps: ${said}`));
 let loaded = 0;
 let failed = 0;
 const listeners = new Set();
@@ -199,6 +242,18 @@ export function noteTileLoaded() {
   loaded++;
 }
 
+/**
+ * The tint can't run in this browser after all (its worker failed): every map
+ * goes back to CARTO's dark_all as CARTO draws it.
+ */
+export function noteTintFailed() {
+  const plain = (source) => (source?.layers ? { ...source, id: 'carto', layers: null } : source);
+  if (!active.layers) return;
+  sources.primary = plain(sources.primary);
+  active = plain(active);
+  for (const l of listeners) l();
+}
+
 export function noteTileFailed(source) {
   if (source !== active || !sources.fallback || loaded > 0) return;
   if (++failed < 2) return;
@@ -207,10 +262,11 @@ export function noteTileFailed(source) {
 }
 
 // For tests: start over.
-export function resetSource(tilesUrl, cartoKey) {
+export function resetSource(tilesUrl, cartoKey, tint = false) {
   const next = tileSources(
     tilesUrl ?? import.meta.env?.VITE_TILES_URL,
     cartoKey ?? import.meta.env?.VITE_CARTO_KEY,
+    tint,
   );
   sources.primary = next.primary;
   sources.fallback = next.fallback;

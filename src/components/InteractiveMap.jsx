@@ -3,11 +3,14 @@ import 'leaflet/dist/leaflet.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   activeSource,
+  layerUrls,
   noteTileFailed,
   noteTileLoaded,
+  noteTintFailed,
   subscribeSource,
   tileUrl,
 } from '../lib/basemap.js';
+import { tintedTile } from '../lib/darkMatterTiles.js';
 import { SourceCredit } from './Basemap.jsx';
 
 // A street map the reader can pan and zoom, with lines and dots drawn on it:
@@ -61,11 +64,32 @@ const HINT_MS = 1600;
 // A wheel's notch is about 100 pixels; a notch zooms by about half a level.
 const WHEEL_ZOOM_PER_PX = 1 / 200;
 
-// Leaflet's tile layer, asking the page's tile source for each tile.
+// Leaflet's tile layer, asking the page's tile source for each tile. A source
+// with `layers` (CARTO's, tinted back to Dark Matter) gets each tile from the
+// tile worker, as an object URL, rather than by address.
 const SourceTiles = L.TileLayer.extend({
   getTileUrl(coords) {
     const retina = (globalThis.devicePixelRatio ?? 1) > 1;
     return tileUrl(activeSource(), { x: coords.x, y: coords.y }, coords.z, retina);
+  },
+  createTile(coords, done) {
+    const source = activeSource();
+    if (!source.layers) return L.TileLayer.prototype.createTile.call(this, coords, done);
+    const img = document.createElement('img');
+    img.alt = '';
+    img.setAttribute('role', 'presentation');
+    img.onload = () => done(null, img);
+    img.onerror = (e) => done(e, img);
+    tintedTile(layerUrls(source, { x: coords.x, y: coords.y }, coords.z), coords.z).then(
+      (url) => {
+        img.src = url;
+      },
+      (err) => {
+        if (err.kind === 'tint') noteTintFailed();
+        done(err, img);
+      },
+    );
+    return img;
   },
 });
 
