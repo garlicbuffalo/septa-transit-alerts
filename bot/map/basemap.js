@@ -33,7 +33,7 @@ import {
 import { escapeXml, FONT, textWidth } from './draw.js';
 import { TILE_SIZE, worldPx } from './projection.js';
 
-// The tint itself is shared with the site (src/lib/darkMatter.js); these are
+// The tint itself is in src/lib/darkMatter.js (plain JavaScript); these are
 // here too for the bots' tests.
 export { judgeStyle, labelFit, overlayLabels, retintBase, styleFit };
 
@@ -172,31 +172,51 @@ function tileFetcher({ tilesUrl, cartoKey, referer, fetchFn, retryDelayMs }) {
  * labels, two requests, with how well each fits the style the tint was made
  * for; `drawTile` then draws it, tinted or not as the map's tiles together say.
  */
-function tileLoader({ retint = true, ...opts }) {
+//
+// CARTO's list of raster styles names dark_nolabels but not dark_only_labels
+// (dashboard.basemaps.carto.com/v1/plans, 2026-10-15), so the labels layer
+// could go without notice. A tile whose labels can't be had is drawn without
+// them, and the labels layer is not asked for again for LABELS_RETRY_MS.
+const LABELS_RETRY_MS = 60 * 60 * 1000;
+function tileLoader({ retint = true, now = Date.now, ...opts }) {
   const getTile = tileFetcher(opts);
   if (!retint) return async (z, x, y) => ({ image: await getTile(z, x, y) });
+  let labelsGoneUntil = 0;
+  const getLabels = async (z, x, y) => {
+    if (now() < labelsGoneUntil) return { missing: 'not asked again yet' };
+    try {
+      return await getTile(z, x, y, 'dark_only_labels');
+    } catch (err) {
+      labelsGoneUntil = now() + LABELS_RETRY_MS;
+      return { missing: err.message.replace(/^tile [\d/]+: /, '') };
+    }
+  };
   return async (z, x, y) => {
     const [base, labels] = await Promise.all([
       getTile(z, x, y, 'dark_nolabels'),
-      getTile(z, x, y, 'dark_only_labels'),
+      getLabels(z, x, y),
     ]);
     const b = await sharp(base).removeAlpha().raw().toBuffer({ resolveWithObject: true });
-    const l = await sharp(labels).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const { width, height } = b.info;
-    if (l.info.width !== width || l.info.height !== height) {
-      throw new Error(`tile ${z}/${x}/${y}: labels ${l.info.width} px, map ${width} px`);
-    }
-    return {
+    const tile = {
       z,
       width,
       height,
       base: b.data,
-      labels: l.data,
+      labels: null,
       fit: {
         base: styleFit(b.data, width, height, 3, z),
-        labels: labelFit(l.data, width, height),
+        labels: { known: 0, total: 0 },
       },
     };
+    if (labels.missing) return { ...tile, labelsMissing: labels.missing };
+    const l = await sharp(labels).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    if (l.info.width !== width || l.info.height !== height) {
+      throw new Error(`tile ${z}/${x}/${y}: labels ${l.info.width} px, map ${width} px`);
+    }
+    tile.labels = l.data;
+    tile.fit.labels = labelFit(l.data, width, height);
+    return tile;
   };
 }
 
@@ -205,7 +225,9 @@ function drawTile(tile, style) {
   if (tile.image) return sharp(tile.image);
   const { z, width, height } = tile;
   const rgb = style.base ? retintBase(tile.base, width, height, 3, z) : Buffer.from(tile.base);
-  if (style.labels) overlayLabels(tile.labels, rgb, width, height);
+  if (style.noLabels || !tile.labels) {
+    // Without CARTO's labels layer: the map alone.
+  } else if (style.labels) overlayLabels(tile.labels, rgb, width, height);
   else layOver(tile.labels, rgb, width, height);
   return sharp(rgb, { raw: { width, height, channels: 3 } });
 }
@@ -229,7 +251,12 @@ async function stitch(view, loadTile, onStyle = () => {}) {
   const loaded = await mapLimit(plan.tiles, FETCH_AT_ONCE, (t) => loadTile(plan.z, t.x, t.y));
   const fits = loaded.filter((t) => t.fit).map((t) => t.fit);
   const style = fits.length ? judgeStyle(fits) : null;
-  if (style) onStyle(style);
+  // One tile without labels and the map goes without, rather than half of it.
+  const missing = loaded.find((t) => t.labelsMissing)?.labelsMissing;
+  if (style) {
+    style.noLabels = Boolean(missing);
+    onStyle(style, missing);
+  }
   const layers = (
     await mapLimit(plan.tiles, FETCH_AT_ONCE, async (t, k) => {
       const w = t.right - t.left;
@@ -283,7 +310,14 @@ export async function checkCarto({
       const { width } = await sharp(tile.image).metadata();
       return { ok: true, detail: `${width}-px tile, as CARTO draws it (CARTO_RETINT off)` };
     }
-    return { ok: true, detail: `${tile.width}-px tiles, ${describeStyle(judgeStyle([tile.fit]))}` };
+    const said = describeStyle(judgeStyle([tile.fit]));
+    if (tile.labelsMissing) {
+      return {
+        ok: true,
+        detail: `${tile.width}-px tiles, ${said}; no labels layer (${tile.labelsMissing}): maps drawn without street and place names`,
+      };
+    }
+    return { ok: true, detail: `${tile.width}-px tiles, ${said}` };
   } catch (err) {
     return { ok: false, detail: err.message.replace(/^tile [\d/]+: /, '') };
   }
@@ -307,14 +341,24 @@ export function createBasemap({
   fetchFn = fetch,
   log = () => {},
   retryDelayMs = 750,
+  now = Date.now,
 } = {}) {
   const sources = [];
   // Say when the maps stop (or start again) being tinted, not on every map.
   let lastStyle = 'tinted/tinted';
-  const onStyle = (style) => {
+  let lastMissing = null;
+  const onStyle = (style, missing) => {
     const now = `${style.base ? 'tinted' : 'as is'}/${style.labels ? 'tinted' : 'as is'}`;
     if (now !== lastStyle) log(`basemap: ${describeStyle(style)}`);
     lastStyle = now;
+    if (Boolean(missing) !== Boolean(lastMissing)) {
+      log(
+        missing
+          ? `basemap: CARTO's labels layer (dark_only_labels) failed (${missing}): maps drawn without street and place names`
+          : "basemap: CARTO's labels layer is back",
+      );
+    }
+    lastMissing = missing ?? null;
   };
   if (tilesUrl || cartoKey) {
     const loadTile = tileLoader({
@@ -324,6 +368,7 @@ export function createBasemap({
       retint,
       fetchFn,
       retryDelayMs,
+      now,
     });
     sources.push({ name: 'CARTO', render: (view) => stitch(view, loadTile, onStyle) });
   }

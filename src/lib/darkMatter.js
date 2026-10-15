@@ -1,7 +1,7 @@
-// CARTO's dark map, tinted back to its classic Dark Matter look — shared by
-// the bots' map images (bot/map/basemap.js, in Node with sharp) and the site's
-// maps (src/lib/darkMatterTiles.js, in a Web Worker). Plain JavaScript over
-// raw pixel arrays, nothing else, so it runs in both.
+// CARTO's dark raster map, tinted back to its classic Dark Matter look, for
+// the bots' map images (bot/map/basemap.js, which fetches the tiles and hands
+// the pixels over). Plain JavaScript over raw pixel arrays, nothing else, so
+// it could run in a browser as well as in Node.
 
 // ---- CARTO's new style, tinted back to Dark Matter --------------------------
 //
@@ -422,64 +422,4 @@ export function describeStyle(style) {
   if (style.labelShare != null) parts.push(`labels ${percent(style.labelShare)}`);
   const which = !style.base && !style.labels ? 'map and labels' : !style.base ? 'map' : 'labels';
   return `CARTO's style has changed (${parts.join(', ')}): ${which} drawn as CARTO draws them`;
-}
-
-/**
- * One tile for a page: its map and labels layers as RGBA (as a canvas gives
- * them), tinted as `style` says ({ base, labels } from judgeStyle), as RGBA.
- * @returns {Uint8ClampedArray}
- */
-export function tintTile(base, labels, width, height, z, style) {
-  const n = width * height;
-  let rgb;
-  if (style.base) {
-    rgb = retintBase(base, width, height, 4, z);
-  } else {
-    rgb = new Uint8Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      rgb[i * 3] = base[i * 4];
-      rgb[i * 3 + 1] = base[i * 4 + 1];
-      rgb[i * 3 + 2] = base[i * 4 + 2];
-    }
-  }
-  if (style.labels) overlayLabels(labels, rgb, width, height);
-  else layOver(labels, rgb, width, height);
-  const out = new Uint8ClampedArray(n * 4);
-  for (let i = 0; i < n; i++) {
-    out[i * 4] = rgb[i * 3];
-    out[i * 4 + 1] = rgb[i * 3 + 1];
-    out[i * 4 + 2] = rgb[i * 3 + 2];
-    out[i * 4 + 3] = 255;
-  }
-  return out;
-}
-
-/**
- * A page's running judgement: a page draws tiles one at a time rather than a
- * map at once, so each is judged with every tile the page has drawn before it.
- * `add(fit)` returns { style, said }, `said` being the judgement in words when
- * it differs from the one before (the first time only if it isn't a tint).
- * `sum()` is what it has added up so far, for judging a tile with it
- * (judgeStyle([sum, fit])) somewhere else, such as a worker.
- */
-export function styleTally() {
-  const sum = {
-    base: { known: 0, total: 0 },
-    labels: { known: 0, total: 0 },
-  };
-  let last = 'tinted/tinted';
-  return {
-    sum: () => ({ base: { ...sum.base }, labels: { ...sum.labels } }),
-    add(fit) {
-      for (const key of ['base', 'labels']) {
-        sum[key].known += fit[key].known;
-        sum[key].total += fit[key].total;
-      }
-      const style = judgeStyle([sum]);
-      const now = `${style.base ? 'tinted' : 'as is'}/${style.labels ? 'tinted' : 'as is'}`;
-      const said = now === last ? null : describeStyle(style);
-      last = now;
-      return { style, said };
-    },
-  };
 }

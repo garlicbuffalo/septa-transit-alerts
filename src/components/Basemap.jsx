@@ -1,14 +1,11 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import {
   activeSource,
-  layerUrls,
   noteTileFailed,
   noteTileLoaded,
-  noteTintFailed,
   subscribeSource,
   tileUrl,
 } from '../lib/basemap.js';
-import { tintedTile } from '../lib/darkMatterTiles.js';
 
 // Station labels drawn over a map's dark tiles: light text with a dark halo
 // (the page's own white-halo labels would vanish on them).
@@ -36,56 +33,24 @@ export function BasemapTiles({ basemap }) {
         style={source.filter ? { filter: source.filter } : undefined}
       >
         {basemap.tiles.map((t) => (
-          <TileImage
+          <img
             key={`${source.id}/${basemap.z}/${t.x}/${t.y}`}
-            source={source}
-            tile={t}
-            z={basemap.z}
-            retina={retina}
+            src={tileUrl(source, t, basemap.z, retina)}
+            alt=""
+            draggable={false}
+            onLoad={noteTileLoaded}
+            onError={() => noteTileFailed(source)}
+            className="absolute max-w-none select-none"
+            style={{
+              left: `${t.left}%`,
+              top: `${t.top}%`,
+              width: `${t.w}%`,
+              height: `${t.h}%`,
+            }}
           />
         ))}
       </div>
     </div>
-  );
-}
-
-// One tile: CARTO's as it comes, or (a source with `layers`) tinted back to
-// Dark Matter, which takes a moment in the tile worker before there is
-// anything to show.
-function TileImage({ source, tile, z, retina }) {
-  const tinted = Boolean(source.layers);
-  const [src, setSrc] = useState(tinted ? null : tileUrl(source, tile, z, retina));
-  useEffect(() => {
-    if (!tinted) return;
-    let live = true;
-    tintedTile(layerUrls(source, tile, z), z).then(
-      (url) => live && setSrc(url),
-      (err) => {
-        if (!live) return;
-        if (err.kind === 'tint') noteTintFailed();
-        else noteTileFailed(source);
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [tinted, source, tile, z]);
-  if (!src) return null;
-  return (
-    <img
-      src={src}
-      alt=""
-      draggable={false}
-      onLoad={noteTileLoaded}
-      onError={() => noteTileFailed(source)}
-      className="absolute max-w-none select-none"
-      style={{
-        left: `${tile.left}%`,
-        top: `${tile.top}%`,
-        width: `${tile.w}%`,
-        height: `${tile.h}%`,
-      }}
-    />
   );
 }
 

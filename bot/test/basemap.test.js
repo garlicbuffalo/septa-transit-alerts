@@ -425,6 +425,69 @@ describe('the safety valve for another CARTO restyle', () => {
   });
 });
 
+describe("without CARTO's labels layer", () => {
+  // CARTO's map in today's style; its labels layer answering 404 while `gone`.
+  function labelsGone() {
+    const state = { gone: true, calls: [] };
+    const today = styledTiles('today');
+    state.fetchFn = async (url, init) => {
+      state.calls.push(String(url));
+      if (state.gone && /only_labels/.test(url))
+        return new Response('no such style', { status: 404 });
+      return today(url, init);
+    };
+    return state;
+  }
+  const small = { ...view, zoom: 15, width: 600, height: 300 };
+
+  it('draws the map without labels, says so once, and asks again an hour later', async () => {
+    const state = labelsGone();
+    let clock = 0;
+    const logs = [];
+    const basemap = createBasemap({
+      cartoKey: 'k',
+      fetchFn: state.fetchFn,
+      retryDelayMs: 0,
+      now: () => clock,
+      log: (m) => logs.push(m),
+    });
+    const png = await basemap(small);
+    const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+    expect([info.width, info.height]).toEqual([600, 300]);
+    // Tinted all the same: no blue left anywhere but the credit.
+    for (let i = 0; i < 600 * 250 * info.channels; i += info.channels) {
+      expect(data[i + 2]).toBe(data[i]);
+    }
+    expect(logs).toEqual([
+      "basemap: CARTO's labels layer (dark_only_labels) failed (HTTP 404): maps drawn without street and place names",
+    ]);
+    // Tiles load eight at a time, so each of the first few tries (three times);
+    // after that, no tile asks for the labels layer until the hour is up.
+    const asked = () => state.calls.filter((u) => /only_labels/.test(u)).length;
+    const first = asked();
+    expect(first).toBeGreaterThan(0);
+    expect(first).toBeLessThanOrEqual(3 * 8);
+    await basemap({ ...small, lat: small.lat + 0.05 });
+    expect(asked()).toBe(first);
+    expect(logs.length).toBe(1);
+
+    // An hour later it asks again, and finds it back.
+    clock += 60 * 60 * 1000;
+    state.gone = false;
+    await basemap({ ...small, lat: small.lat + 0.1 });
+    expect(asked()).toBeGreaterThan(first);
+    expect(logs[1]).toBe("basemap: CARTO's labels layer is back");
+  });
+
+  it('says so in `check`', async () => {
+    const res = await checkCarto({ cartoKey: 'k', fetchFn: labelsGone().fetchFn });
+    expect(res.ok).toBe(true);
+    expect(res.detail).toMatch(
+      /no labels layer \(HTTP 404\): maps drawn without street and place names/,
+    );
+  });
+});
+
 describe('the CARTO basemap', () => {
   it('stitches tiles that line up with the drawing projection', async () => {
     const { fetchFn } = fakeTiles();
