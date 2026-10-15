@@ -65,6 +65,10 @@ The maps in the posts are the CARTO dark map the site uses. CARTO wants an API k
 
 Each map's tiles are fetched (@2x), stitched to the map's own projection with sharp, and cropped to the image; a credit is drawn in the corner. If CARTO can't be reached and `MAPBOX_TOKEN` is set, that map comes from Mapbox instead; a map that can't get a basemap at all is posted without its image, as before. With none of the three settings, maps render on a plain background. `sudo septa-bots check` fetches one tile, and the service logs which source it's using when it starts. CARTO answers a key it doesn't accept with an ordinary image stamped "API KEY REQUIRED", which `check` can't tell from a good tile: look at a map (`sudo septa-bots map alert-136615`) after setting a key.
 
+**The tint back to Dark Matter.** On 2026-10-14 CARTO restyled its dark map in blue-grey: lavender roads, grey buildings lighter than the land. The bots tint it back to the classic Dark Matter look (`retintBase` and `overlayLabels` in `map/basemap.js`). To do that they fetch each tile twice, from CARTO or through the relay: the map without labels (`dark_nolabels`) and the labels alone (`dark_only_labels`). Each is re-coloured, then the labels are laid over the map. The relay serves those two layers from the septa-tracker version that added them. Deploy that first, or maps through `TILES_URL` fail (and fall back to Mapbox, or are posted without an image) until it is.
+
+The tint is made for the colours CARTO used in October 2026, so every map checks its tiles first. Today 63–90% of a map tile's pixels are one of the style's flat colours, and about 90% of the label halos one of its two halo greys. If CARTO restyles again, those shares drop. Below 40% (map) or 50% (labels), that layer is drawn as CARTO draws it. The log then says `basemap: CARTO's style has changed (…)` once, and again when the tint is back. `sudo septa-bots check` says which it is. To turn the tint off by hand, set `CARTO_RETINT=off`: the bots then take `dark_all` as it comes, one request a tile.
+
 ## Operating it
 
 | | |
