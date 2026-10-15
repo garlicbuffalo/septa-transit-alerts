@@ -5,9 +5,11 @@ import {
   activeSource,
   noteTileFailed,
   noteTileLoaded,
+  noteVectorFailed,
   subscribeSource,
   tileUrl,
 } from '../lib/basemap.js';
+import { leafletLayer } from '../lib/vectorMap.js';
 import { SourceCredit } from './Basemap.jsx';
 
 // A street map the reader can pan and zoom, with lines and dots drawn on it:
@@ -203,11 +205,35 @@ export default function InteractiveMap({
       if (container) container.style.filter = activeSource().filter ?? '';
     };
     tiles.on('add', applySource);
-    tiles.addTo(map);
-    const unsubscribe = subscribeSource(() => {
-      applySource();
-      tiles.redraw();
-    });
+    // CARTO's vector map in the site's style (vectorMap.js) when the source has
+    // one; raster tiles otherwise, or once it can't be had.
+    let vector = null;
+    let gone = false;
+    const showSource = () => {
+      const source = activeSource();
+      if (!source.vector) {
+        if (vector && map.hasLayer(vector)) map.removeLayer(vector);
+        if (!map.hasLayer(tiles)) tiles.addTo(map);
+        applySource();
+        tiles.redraw();
+        return;
+      }
+      if (map.hasLayer(tiles)) map.removeLayer(tiles);
+      if (vector) {
+        if (!map.hasLayer(vector)) vector.addTo(map);
+        return;
+      }
+      leafletLayer(source.vector.key, noteVectorFailed).then(
+        (layer) => {
+          if (gone || vector) return;
+          vector = layer;
+          if (activeSource().vector) vector.addTo(map);
+        },
+        () => noteVectorFailed(),
+      );
+    };
+    showSource();
+    const unsubscribe = subscribeSource(showSource);
 
     // The wheel zooms only with Ctrl or ⌘ held, unless the map is the page.
     const onWheel = (e) => {
@@ -291,6 +317,7 @@ export default function InteractiveMap({
     return () => {
       stopWatching();
       clearTimeout(hintTimer.current);
+      gone = true;
       unsubscribe();
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('touchstart', onTouchStart);

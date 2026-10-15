@@ -22,11 +22,20 @@
 //       /{z}/{x}/{y}[@2x].png, adding its own key from a Cloudflare secret, so
 //       none is in the page. Wins over a key if both are set.
 //
+// With a key, the maps draw CARTO's vector tiles in the site's own style
+// (public/maps/dark-matter.json: CARTO's dark style in the colours the bots'
+// maps tint CARTO's raster map to, since CARTO restyled it on 2026-10-14) with
+// MapLibre GL (vectorMap.js). A browser without WebGL, a relay instead of a
+// key, VITE_CARTO_VECTOR=off, or vector tiles that can't be had, get the
+// raster dark_all as CARTO draws it.
+//
 // Without either, or if the tiles can't be had (a bad address, the relay down),
 // the maps use OpenStreetMap's own tiles, darkened by a CSS filter, the way the
 // tracker does. CARTO answers a missing or unaccepted key with an ordinary
 // image carrying a watermark, which can't be told from a good tile in code:
 // look at a map after setting a key.
+
+import { canDrawVector } from './vectorMap.js';
 
 const TILE_TARGET = 300; // SVG units a tile should span; the zoom is chosen near it
 const MIN_ZOOM = 1;
@@ -39,6 +48,14 @@ const rad = (deg) => (deg * Math.PI) / 180;
 export function mercator(lat, lon) {
   const s = Math.sin(rad(Math.max(-85.0511, Math.min(85.0511, lat))));
   return { x: (lon + 180) / 360, y: 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI) };
+}
+
+/** The inverse of `mercator`. */
+export function unmercator(x, y) {
+  return {
+    lat: (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI,
+    lon: x * 360 - 180,
+  };
 }
 
 /** Which tile of zoom `z` holds a point. */
@@ -57,8 +74,11 @@ export function tileOf(lat, lon, z) {
  * @returns {{
  *   width: number, height: number,
  *   project: (lat: number, lon: number) => { x: number, y: number },
- *   basemap: { z: number, tiles: Array<{ x: number, y: number, left: number, top: number, w: number, h: number }> },
+ *   basemap: { z: number, tiles: Array<{ x: number, y: number, left: number, top: number, w: number, h: number }>,
+ *     view: { lat: number, lon: number, zoom: number, width: number, height: number } },
  * } | null}
+ *   `view` is the canvas's centre and its MapLibre zoom (512-px tiles) when the
+ *   canvas is drawn `width` CSS pixels wide.
  */
 export function fitMercator(points, { maxWidth, maxHeight, margin, minHeight = 200 }) {
   let minX = Number.POSITIVE_INFINITY;
@@ -113,7 +133,9 @@ export function fitMercator(points, { maxWidth, maxHeight, margin, minHeight = 2
       });
     }
   }
-  return { width, height, project, basemap: { z, tiles } };
+  const centre = unmercator(cx, cy);
+  const view = { ...centre, zoom: Math.log2(k / 512), width, height };
+  return { width, height, project, basemap: { z, tiles, view } };
 }
 
 // ---- where tiles come from -------------------------------------------------
@@ -132,11 +154,14 @@ const CARTO_DIRECT = 'https://{s}.basemaps.cartocdn.com/dark_all';
 /**
  * The tile sources, in order of preference: CARTO through the tracker's relay
  * when `tilesUrl` is set, else CARTO directly when `cartoKey` is, then
- * OpenStreetMap (the only one with no fallback).
+ * OpenStreetMap (the only one with no fallback). With a key and `vector`, the
+ * CARTO source carries `vector: { key }`: the maps draw CARTO's vector tiles in
+ * the site's style instead of its raster tiles (`url`, kept for falling back).
  * @param {string} [tilesUrl] the relay's /api/tiles address
  * @param {string} [cartoKey] a CARTO key limited to this site's domain
+ * @param {boolean} [vector] draw CARTO's vector map (the browser can)
  */
-export function tileSources(tilesUrl, cartoKey) {
+export function tileSources(tilesUrl, cartoKey, vector = false) {
   const base = String(tilesUrl || '').replace(/\/+$/, '');
   const key = String(cartoKey || '').trim();
   const osm = {
@@ -159,8 +184,9 @@ export function tileSources(tilesUrl, cartoKey) {
   if (key) {
     return {
       primary: {
-        id: 'carto',
+        id: vector ? 'carto-vector' : 'carto',
         url: `${CARTO_DIRECT}/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(key)}`,
+        vector: vector ? { key } : null,
         filter: null,
         credits: [OSM_CREDIT, CARTO_CREDIT],
       },
@@ -183,7 +209,12 @@ export function tileUrl(source, tile, z, retina) {
 // One source for the whole page: the first time the primary shows it can't
 // serve (two tiles fail before any has loaded), every map moves to the
 // fallback together instead of each discovering it separately.
-const sources = tileSources(import.meta.env?.VITE_TILES_URL, import.meta.env?.VITE_CARTO_KEY);
+const vectorWanted = () => !/^(off|0|no|false)$/i.test(import.meta.env?.VITE_CARTO_VECTOR ?? '');
+const sources = tileSources(
+  import.meta.env?.VITE_TILES_URL,
+  import.meta.env?.VITE_CARTO_KEY,
+  vectorWanted() && canDrawVector(),
+);
 let active = sources.primary;
 let loaded = 0;
 let failed = 0;
@@ -199,6 +230,19 @@ export function noteTileLoaded() {
   loaded++;
 }
 
+/**
+ * CARTO's vector map can't be drawn after all (its tiles or style failed, or
+ * MapLibre couldn't start): every map goes to CARTO's raster tiles instead,
+ * which may still work, and from there to OpenStreetMap as before.
+ */
+export function noteVectorFailed() {
+  const raster = (source) => (source?.vector ? { ...source, id: 'carto', vector: null } : source);
+  if (!active.vector) return;
+  sources.primary = raster(sources.primary);
+  active = raster(active);
+  for (const l of listeners) l();
+}
+
 export function noteTileFailed(source) {
   if (source !== active || !sources.fallback || loaded > 0) return;
   if (++failed < 2) return;
@@ -207,10 +251,11 @@ export function noteTileFailed(source) {
 }
 
 // For tests: start over.
-export function resetSource(tilesUrl, cartoKey) {
+export function resetSource(tilesUrl, cartoKey, vector = false) {
   const next = tileSources(
     tilesUrl ?? import.meta.env?.VITE_TILES_URL,
     cartoKey ?? import.meta.env?.VITE_CARTO_KEY,
+    vector,
   );
   sources.primary = next.primary;
   sources.fallback = next.fallback;

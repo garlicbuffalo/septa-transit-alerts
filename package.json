@@ -15,11 +15,14 @@
     "collect": "node collector/collect.js --data-dir public/data --cache-dir .collector-cache",
     "reference-data": "node scripts/build-reference-data.js && biome format --write src/lib",
     "brand-assets": "node scripts/render-brand-assets.js",
+    "map-style": "node scripts/build-map-style.js",
     "test:bot": "vitest run --root bot"
   },
   "dependencies": {
     "@fontsource-variable/overpass": "^5.3.0",
+    "@maplibre/maplibre-gl-leaflet": "^0.1.4",
     "leaflet": "^1.9.4",
+    "maplibre-gl": "^5.24.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

@@ -6,7 +6,16 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!node_modules", "!dist", "!public/data", "!data-branch", "!**/*.min.js"]
+    "includes": [
+      "**",
+      "!node_modules",
+      "!dist",
+      "!public/data",
+      "!data-branch",
+      "!**/*.min.js",
+      "!public/maps",
+      "!scripts/carto-dark-matter-style.json"
+    ]
   },
   "formatter": {
     "enabled": true,
