@@ -423,3 +423,22 @@ export function describeStyle(style) {
   const which = !style.base && !style.labels ? 'map and labels' : !style.base ? 'map' : 'labels';
   return `CARTO's style has changed (${parts.join(', ')}): ${which} drawn as CARTO draws them`;
 }
+
+/**
+ * The tint's palette, for the site's vector style (darkMatterStyle.js), which
+ * gives CARTO's vector map the same colours: each of CARTO's new flat colours
+ * and what the tint makes it, as #rrggbb.
+ */
+const greyHex = (v) => `#${v.toString(16).padStart(2, '0').repeat(3)}`;
+export const PALETTE = {
+  flat: HUES.map((h) => ({ rgb: h.rgb, to: greyHex(h.old ?? ROAD_OLD) })),
+  building: greyHex(BUILDING_OLD),
+  buildingLine: greyHex(BUILDING_LINE),
+  roadCase: greyHex(ROAD_CASE),
+  greyShift: GREY_SHIFT,
+  haloOpacity: HALO_OPACITY,
+  roadText: greyHex(TEXT.to[0]),
+  roadHalo: greyHex(HALO.to[0]),
+  placeText: greyHex(TEXT.to[1]),
+  placeHalo: greyHex(HALO.to[1]),
+};

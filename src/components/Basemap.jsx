@@ -1,11 +1,13 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   activeSource,
   noteTileFailed,
   noteTileLoaded,
+  noteVectorFailed,
   subscribeSource,
   tileUrl,
 } from '../lib/basemap.js';
+import { staticMap } from '../lib/vectorMap.js';
 
 // Station labels drawn over a map's dark tiles: light text with a dark halo
 // (the page's own white-halo labels would vanish on them).
@@ -28,29 +30,61 @@ export function BasemapTiles({ basemap }) {
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] bg-[#262626]"
     >
-      <div
-        className="absolute inset-0"
-        style={source.filter ? { filter: source.filter } : undefined}
-      >
-        {basemap.tiles.map((t) => (
-          <img
-            key={`${source.id}/${basemap.z}/${t.x}/${t.y}`}
-            src={tileUrl(source, t, basemap.z, retina)}
-            alt=""
-            draggable={false}
-            onLoad={noteTileLoaded}
-            onError={() => noteTileFailed(source)}
-            className="absolute max-w-none select-none"
-            style={{
-              left: `${t.left}%`,
-              top: `${t.top}%`,
-              width: `${t.w}%`,
-              height: `${t.h}%`,
-            }}
-          />
-        ))}
-      </div>
+      {source.vector ? (
+        <VectorPicture source={source} view={basemap.view} />
+      ) : (
+        <div
+          className="absolute inset-0"
+          style={source.filter ? { filter: source.filter } : undefined}
+        >
+          {basemap.tiles.map((t) => (
+            <img
+              key={`${source.id}/${basemap.z}/${t.x}/${t.y}`}
+              src={tileUrl(source, t, basemap.z, retina)}
+              alt=""
+              draggable={false}
+              onLoad={noteTileLoaded}
+              onError={() => noteTileFailed(source)}
+              className="absolute max-w-none select-none"
+              style={{
+                left: `${t.left}%`,
+                top: `${t.top}%`,
+                width: `${t.w}%`,
+                height: `${t.h}%`,
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+// CARTO's vector map of the canvas, as one picture drawn by MapLibre
+// (vectorMap.js): the canvas's own size, at the screen's density (at most 2).
+function VectorPicture({ source, view }) {
+  const [src, setSrc] = useState(null);
+  const { lat, lon, zoom, width, height } = view;
+  useEffect(() => {
+    let live = true;
+    const pixelRatio = Math.min(2, Math.max(1, globalThis.devicePixelRatio ?? 1));
+    staticMap({ lat, lon, zoom, width, height, pixelRatio }, source.vector.key).then(
+      (url) => live && setSrc(url),
+      () => live && noteVectorFailed(),
+    );
+    return () => {
+      live = false;
+    };
+  }, [source, lat, lon, zoom, width, height]);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      onLoad={noteTileLoaded}
+      className="absolute inset-0 h-full w-full max-w-none select-none"
+    />
   );
 }
 
