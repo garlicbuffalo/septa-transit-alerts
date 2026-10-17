@@ -352,11 +352,11 @@ describe('bus and Metro standings', () => {
 describe('Regional Rail standings', () => {
   it('takes on time and delays from the trains that ran, and cancellations from all of them', () => {
     const { db } = testPoster();
-    // 40 Trenton trains: 30 on time (2 min late), 6 at 20 min late, 4 cancelled.
+    // 40 Trenton trains: 30 on time (2 or 5 min late), 6 late (6 or 20 min), 4 cancelled.
     const trains = Array.from({ length: 40 }, (_, k) => ({
       trainno: String(k),
       line: 'Trenton',
-      late: k < 30 ? 2 : k < 36 ? 20 : 999,
+      late: k < 25 ? 2 : k < 30 ? 5 : k < 33 ? 6 : k < 36 ? 20 : 999,
     }));
     recordTrains(db, Date.UTC(2026, 9, 6, 16), trains);
     // Too few trains on a line to rank it.
@@ -369,7 +369,11 @@ describe('Regional Rail standings', () => {
     expect(entries[0]).toMatchObject({
       route: 'tre',
       counts: { cancelled: 4, trains: 40 },
-      measures: { onTime: (100 * 30) / 36, cancelled: 10, delay: (30 * 2 + 6 * 20) / 36 },
+      measures: {
+        onTime: (100 * 30) / 36,
+        cancelled: 10,
+        delay: (25 * 2 + 5 * 5 + 3 * 6 + 3 * 20) / 36,
+      },
     });
     expect(entries[0].measures.speed).toBeCloseTo(31, 5);
   });
@@ -497,7 +501,7 @@ describe('composing the lists', () => {
       '9.4 min',
       '28.1',
     ]);
-    expect(shame.chart.note).toContain('under 15 min late');
+    expect(shame.chart.note).toContain('on time: up to 5 min late');
   });
 
   it('always fits in a post, dropping the footer and intro before it drops a route', () => {

@@ -15,7 +15,8 @@
 //   gaps are counted per reading of the speed tallies (about a minute of a
 //   vehicle in service), so a route running twice the buses isn't marked
 //   down for having twice the chances to bunch.
-// - Regional Rail: the share of trains that ran on time, the share cancelled,
+// - Regional Rail: the share of trains that ran on time (never more than 5
+//   minutes late), the share cancelled,
 //   the average delay of the trains that ran (all from rail_trains, as in the
 //   weekly recap), and average speed.
 //
@@ -38,7 +39,7 @@ import { getMeta, setMeta } from '../lib/db.js';
 import { routeShortLabel } from '../lib/routes.js';
 import { firstThatFits } from '../lib/text.js';
 import { renderScorecard } from '../map/chart.js';
-import { LATE_MIN, MIN_LINE_TRAINS, MIN_RECAP_TRAINS } from './rail.js';
+import { MIN_LINE_TRAINS, MIN_RECAP_TRAINS } from './rail.js';
 import { MPH_PER_MPS } from './speedmaps.js';
 
 export const FAME = {
@@ -63,8 +64,9 @@ export const FAME = {
 };
 
 // On time for a bus or Metro vehicle: no more than 1 minute early or 5 minutes
-// late, the usual standard for buses. (Regional Rail keeps its recap's
-// LATE_MIN.)
+// late, the usual standard for buses. A Regional Rail train is on time when it
+// was never more than 5 minutes late (stricter than the recap's LATE_MIN, which
+// is what riders feel as late; this tells the lines apart).
 export const ON_TIME = { earlyMin: 1, lateMin: 5 };
 
 // The measures behind the score, by account, in the order the scorecard shows
@@ -287,8 +289,8 @@ export function transitStandings(db, incidents, { mode, fromKey, toKey }) {
 
 /**
  * A Regional Rail week's measures, per line with MIN_LINE_TRAINS or more
- * trains: on time is the share of the trains that ran that were under
- * LATE_MIN late, cancelled the share SEPTA cancelled, delay the average of the
+ * trains: on time is the share of the trains that ran that were never more
+ * than ON_TIME.lateMin late, cancelled the share SEPTA cancelled, delay the average of the
  * worst lateness seen on each train that ran. `trains` is everything the bot
  * saw.
  */
@@ -310,7 +312,7 @@ export function railStandings(db, { fromKey, toKey }) {
     }
     const late = Math.max(0, r.max_late ?? 0);
     l.late += late;
-    if (late < LATE_MIN) l.onTime++;
+    if (late <= ON_TIME.lateMin) l.onTime++;
   }
   const speeds = new Map(
     speedStandings(db, { mode: 'regional_rail', fromKey, toKey }).entries.map((s) => [
@@ -476,7 +478,7 @@ export function composeList(account, kind, entries, { label, ranked }) {
     }),
     note:
       account === 'rail'
-        ? `Each ranked against the week's ${ranked} lines · on time: under ${LATE_MIN} min late · SEPTA TrainView`
+        ? `Each ranked against the week's ${ranked} lines · on time: up to ${ON_TIME.lateMin} min late · SEPTA TrainView`
         : `Each ranked against the week's ${ranked} ${spec.noun} · on time: 1 min early to ${ON_TIME.lateMin} late · SEPTA`,
   };
   const described = entries.map(

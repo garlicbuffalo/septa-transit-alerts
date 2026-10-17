@@ -163,7 +163,7 @@ The score weighs several measures of the week:
 
 | | Bus and Metro | Regional Rail |
 |---|---|---|
-| On time | 30%: the share of vehicle reports between 1 min early and 5 min late, by SEPTA's TransitView lateness | 35%: the share of trains that ran that were under 15 min late (as in the recap) |
+| On time | 30%: the share of vehicle reports between 1 min early and 5 min late, by SEPTA's TransitView lateness | 35%: the share of trains that ran that were never more than 5 min late (stricter than the recap's 15) |
 | Cancellations | 20%: cancelled trips in SEPTA's trip feed | 25%: the share of trains SEPTA cancelled |
 | Speed | 20%: average speed, from the speed tallies behind the site's speed maps (time at stops counts, layovers at the ends of a route don't) | 20%: the same |
 | Bunching | 15%: bunching detections, posted or not | — |
