@@ -196,6 +196,20 @@ const MIGRATIONS = [
   ALTER TABLE observations ADD COLUMN estimated INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE capture_samples ADD COLUMN estimated INTEGER NOT NULL DEFAULT 0;
   `,
+  `
+  -- On-time history for the Hall of Fame: per Philadelphia day, each bus and
+  -- Metro route's vehicle reports that carried SEPTA's lateness (timed), and
+  -- how many of those were on time. Rolled up from the observations once a
+  -- day is over, before they're pruned.
+  CREATE TABLE route_days (
+    day TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    route TEXT NOT NULL,
+    timed INTEGER NOT NULL,
+    on_time INTEGER NOT NULL,
+    PRIMARY KEY (day, mode, route)
+  ) WITHOUT ROWID;
+  `,
 ];
 
 /**
@@ -253,8 +267,8 @@ export function clearCooldown(db, keys) {
 
 /**
  * Delete old observations, expired cooldowns, finished captures' samples (the
- * capture rows themselves stay a month, as a record), and rail train tallies
- * over 400 days old.
+ * capture rows themselves stay a month, as a record), on-time tallies over 60
+ * days old, and rail train tallies over 400 days old.
  */
 export function pruneDb(db, now, { observationRetentionDays }) {
   const DAY = 24 * 60 * 60 * 1000;
@@ -270,6 +284,8 @@ export function pruneDb(db, now, { observationRetentionDays }) {
   db.prepare('DELETE FROM captures WHERE end_ts < ?').run(now - 30 * DAY);
   // The speed history keeps the site's week, plus a day's margin.
   db.prepare('DELETE FROM speed_bins WHERE day < ?').run(easternDateKey(now - 9 * DAY));
+  // Two months of on-time history, for the weekly Hall of Fame.
+  db.prepare('DELETE FROM route_days WHERE day < ?').run(easternDateKey(now - 60 * DAY));
   // A year of trains, plus a month's margin, for the recaps.
   const railCutoff = new Date(now - 400 * DAY).toISOString().slice(0, 10);
   db.prepare('DELETE FROM rail_trains WHERE service_date < ?').run(railCutoff);
