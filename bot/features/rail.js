@@ -27,9 +27,10 @@ export { recapWindow };
 
 const HOUR_MS = 60 * 60 * 1000;
 export const RAIL_ROLLUP_MINUTE = 14;
-// Late by this much counts as late (SEPTA's own on-time standard is 6 min;
-// cta-insights' Metra recaps used 15, which is what riders feel as "late").
-export const LATE_MIN = 15;
+// A train is on time when it was never more than this many minutes late
+// (SEPTA's own standard: under 6 minutes late). The hourly roundup's delays
+// are the collector's incidents, 15+ minutes late (DELAY_THRESHOLD_MIN).
+export const ON_TIME_MAX = 5;
 // Trains listed per kind in an hourly roundup before "+N more".
 const LIST_CAP = 10;
 // A line needs this many trains in a recap window to be ranked.
@@ -194,7 +195,7 @@ export async function maybePostRailRollup({ incidents, poster, db, now, log = ()
 
 /**
  * On-time figures for the service days fromKey..toKey (inclusive). A train
- * is on time when it ran less than LATE_MIN late; cancelled when SEPTA
+ * is on time when it was never more than ON_TIME_MAX late; cancelled when SEPTA
  * marked it so and it never ran.
  */
 export function railRecapStats(db, { fromKey, toKey }) {
@@ -214,7 +215,7 @@ export function railRecapStats(db, { fromKey, toKey }) {
       cancelled++;
       continue;
     }
-    if ((r.max_late ?? 0) >= LATE_MIN) late++;
+    if ((r.max_late ?? 0) > ON_TIME_MAX) late++;
     else l.onTime++;
     if (r.max_late != null && (!worst || r.max_late > worst.max_late)) worst = r;
   }
@@ -241,7 +242,7 @@ const pct0 = (v) => `${Math.round(v)}%`;
 export function composeRailRecap(stats, { label }) {
   const worst = stats.worst;
   const worstText =
-    worst && worst.max_late >= LATE_MIN
+    worst && worst.max_late > ON_TIME_MAX
       ? `Worst delay: ${worst.max_late} min, #${worst.train_no}${worst.origin ? ` from ${worst.origin}` : ''} (${dayLabel(worst.service_date)})`
       : null;
   const least = stats.lines
@@ -250,7 +251,7 @@ export function composeRailRecap(stats, { label }) {
     .join(' · ');
   const text = [
     `🚆 Regional Rail recap · ${label}`,
-    `On time (under ${LATE_MIN} min late, not cancelled): ${pct1(stats.pct)} of ${stats.trains.toLocaleString('en-US')} trains`,
+    `On time (up to ${ON_TIME_MAX} min late, not cancelled): ${pct1(stats.pct)} of ${stats.trains.toLocaleString('en-US')} trains`,
     [least ? `Least reliable: ${least}` : null, `Cancelled: ${stats.cancelled}`, worstText]
       .filter(Boolean)
       .join('\n'),
@@ -258,7 +259,7 @@ export function composeRailRecap(stats, { label }) {
   ].join('\n\n');
   const chart = {
     title: `Regional Rail on time · ${label}`,
-    subtitle: `Share of trains under ${LATE_MIN} min late and not cancelled`,
+    subtitle: `Share of trains up to ${ON_TIME_MAX} min late and not cancelled`,
     rows: stats.lines.map((l) => ({
       label: lineLabel(l.line),
       value: l.pct,

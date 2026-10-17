@@ -18,6 +18,7 @@
 // The counts come from the site's archive (every incident the collector has
 // kept), so the comparisons work from the archive's first day; Regional Rail's
 // on-time share comes from the bot's TrainView tally (rail_trains).
+import { DELAY_THRESHOLD_MIN } from '../../collector/lib/railTrains.js';
 import { easternDateKey, easternParts, easternToEpoch } from '../../collector/lib/time.js';
 import { TRIP_CANCELLATIONS } from '../../collector/lib/tripCancellations.js';
 import { isPlannedWork } from '../../src/lib/incidents.js';
@@ -28,7 +29,7 @@ import { routeShortLabel } from '../lib/routes.js';
 import { graphemeLength, linkFacets, POST_MAX_GRAPHEMES } from '../lib/text.js';
 import { ALERTS_ACCOUNT, alertGate } from './alerts.js';
 import { startOfEasternDay } from './history.js';
-import { LATE_MIN, railRecapStats } from './rail.js';
+import { ON_TIME_MAX, railRecapStats } from './rail.js';
 
 export const INSIGHTS_ACCOUNT = ALERTS_ACCOUNT;
 const HOUR_MS = 60 * 60 * 1000;
@@ -370,10 +371,10 @@ export function digestStats({ period, incidents, outages, db, now, dataStartTs =
 
 function railLine(rail, w) {
   if (rail?.trains >= MIN_RAIL_TRAINS) {
-    return `🚆 Regional Rail: ${Math.round(rail.pct)}% on time (under ${LATE_MIN} min late), ${rail.cancelled} cancelled`;
+    return `🚆 Regional Rail: ${Math.round(rail.pct)}% on time (up to ${ON_TIME_MAX} min late), ${rail.cancelled} cancelled`;
   }
   if (!w.late && !w.cancelled) return null;
-  return `🚆 Regional Rail: ${plural(w.late, 'train')} ${LATE_MIN}+ min late, ${w.cancelled} cancelled`;
+  return `🚆 Regional Rail: ${plural(w.late, 'train')} ${DELAY_THRESHOLD_MIN}+ min late, ${w.cancelled} cancelled`;
 }
 
 /** The elevators line, with and without the longest outage. */
@@ -530,7 +531,7 @@ export function composeRoughHour({ start, end, type, usual, weeks, current }) {
   const stuck = routes('stuck');
   const missing = routes('missing');
   const trains = parts([
-    [current.late, (n) => `${plural(n, 'train')} ${LATE_MIN}+ min late`],
+    [current.late, (n) => `${plural(n, 'train')} ${DELAY_THRESHOLD_MIN}+ min late`],
     [current.cancelled, (n) => `${n} cancelled`],
   ]);
   const day = type === 'weekday' ? 'a weekday' : `a ${type}`;

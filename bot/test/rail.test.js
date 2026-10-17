@@ -197,19 +197,19 @@ describe('Regional Rail recaps', () => {
     const { db } = testPoster();
     const ts = Date.UTC(2026, 9, 6, 16);
     recordTrains(db, ts, [{ trainno: '9531', line: 'Paoli/Thorndale', late: 999 }]);
-    recordTrains(db, ts + MIN, [{ trainno: '9531', line: 'Paoli/Thorndale', late: 12 }]);
+    recordTrains(db, ts + MIN, [{ trainno: '9531', line: 'Paoli/Thorndale', late: 5 }]);
     recordTrains(db, ts + 2 * MIN, [{ trainno: '9531', line: 'Paoli/Thorndale', late: 4 }]);
     expect(db.prepare('SELECT * FROM rail_trains').all()).toMatchObject([
       {
         service_date: '2026-10-06',
         train_no: '9531',
         line: 'pao',
-        max_late: 12,
+        max_late: 5,
         ran: 1,
         cancelled: 1,
       },
     ]);
-    // A train SEPTA cancelled but later ran counts as having run.
+    // A train SEPTA cancelled but later ran counts as having run, and 5 min late is on time.
     expect(railRecapStats(db, { fromKey: '2026-10-06', toKey: '2026-10-06' })).toMatchObject({
       trains: 1,
       cancelled: 0,
@@ -227,7 +227,7 @@ describe('Regional Rail recaps', () => {
     const { text, chart, alt } = composeRailRecap(stats, { label: 'Oct 1 – Oct 7' });
     expect(text.split('\n\n')).toEqual([
       '🚆 Regional Rail recap · Oct 1 – Oct 7',
-      'On time (under 15 min late, not cancelled): 86.1% of 560 trains',
+      'On time (up to 5 min late, not cancelled): 86.1% of 560 trains',
       'Least reliable: Paoli/Thorndale 75% · Trenton 97%\nCancelled: 14\nWorst delay: 48 min, #70 from Trenton (Oct 3)',
       "Counts every train on SEPTA's TrainView.",
     ]);

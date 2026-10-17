@@ -163,7 +163,7 @@ The score weighs several measures of the week:
 
 | | Bus and Metro | Regional Rail |
 |---|---|---|
-| On time | 30%: the share of vehicle reports between 1 min early and 5 min late, by SEPTA's TransitView lateness | 35%: the share of trains that ran that were never more than 5 min late (stricter than the recap's 15) |
+| On time | 30%: the share of vehicle reports between 1 min early and 5 min late, by SEPTA's TransitView lateness | 35%: the share of trains that ran that were never more than 5 min late (as in the recap) |
 | Cancellations | 20%: cancelled trips in SEPTA's trip feed | 25%: the share of trains SEPTA cancelled |
 | Speed | 20%: average speed, from the speed tallies behind the site's speed maps (time at stops counts, layovers at the ends of a route don't) | 20%: the same |
 | Bunching | 15%: bunching detections, posted or not | — |
@@ -176,7 +176,7 @@ A bus or Metro route needs 300 speed readings on 3 days of the week to be ranked
 
 **PCC trolleys** (metro account). Most G1 trips run with buses, but on some days SEPTA runs its vintage PCC trolleys. The collector picks them out of TransitView's G1 positions each tick by fleet number (four digits starting with 23; see [`src/lib/pcc.js`](../src/lib/pcc.js)) and hands them to the bot. When the day's first PCC comes out, the metro account posts it with a map of the G1 and the car marked, where it's headed, and how many of the G1's other vehicles are buses. Each car that comes out later that day gets a reply in the same thread listing every PCC out now. Each car is posted once a day, and only after it's been out for 3 minutes, so a one-poll blip never posts. Every post links to the [G Trolley Tracker](https://septa-g-trolley-tracker.netlify.app/) to follow the cars live. `PCC_POSTS=0` turns these posts off. The site's `/line/g1` banner reads the same data from `pcc.json`. The PCC posts' maps show the line's buses too, and a G1 detection's text calls its vehicles buses, trolleys, or, for a mix, vehicles.
 
-**Regional Rail** (rail account). At 14 past each hour, the bot posts a roundup of the trains SEPTA cancelled and the trains running 15+ minutes late that the collector picked up in the hour before, worst delays first, threaded when it runs long. It's silent when there were none, and each train's incident on the site links to the roundup. Every Sunday (the past week) and on the 1st (the past month), a recap gives the share of trains on time (under 15 minutes late and not cancelled), the three least reliable lines, cancellations, and the worst delay, with a bar chart of every line. The recaps count every train on SEPTA's TrainView as the server polls it, not just the ones that were posted.
+**Regional Rail** (rail account). At 14 past each hour, the bot posts a roundup of the trains SEPTA cancelled and the trains running 15+ minutes late that the collector picked up in the hour before, worst delays first, threaded when it runs long. It's silent when there were none, and each train's incident on the site links to the roundup. Every Sunday (the past week) and on the 1st (the past month), a recap gives the share of trains on time (never more than 5 minutes late, and not cancelled), the three least reliable lines, cancellations, and the worst delay, with a bar chart of every line. The recaps count every train on SEPTA's TrainView as the server polls it, not just the ones that were posted.
 
 **Insights** (alerts account, titled "insights" on Bluesky). Besides SEPTA's alerts, the account posts the system-wide picture:
 

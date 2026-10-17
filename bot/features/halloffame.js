@@ -39,7 +39,7 @@ import { getMeta, setMeta } from '../lib/db.js';
 import { routeShortLabel } from '../lib/routes.js';
 import { firstThatFits } from '../lib/text.js';
 import { renderScorecard } from '../map/chart.js';
-import { MIN_LINE_TRAINS, MIN_RECAP_TRAINS } from './rail.js';
+import { MIN_LINE_TRAINS, MIN_RECAP_TRAINS, ON_TIME_MAX } from './rail.js';
 import { MPH_PER_MPS } from './speedmaps.js';
 
 export const FAME = {
@@ -64,9 +64,8 @@ export const FAME = {
 };
 
 // On time for a bus or Metro vehicle: no more than 1 minute early or 5 minutes
-// late, the usual standard for buses. A Regional Rail train is on time when it
-// was never more than 5 minutes late (stricter than the recap's LATE_MIN, which
-// is what riders feel as late; this tells the lines apart).
+// late, the usual standard for buses. (A Regional Rail train is on time as in
+// the recap: never more than ON_TIME_MAX late.)
 export const ON_TIME = { earlyMin: 1, lateMin: 5 };
 
 // The measures behind the score, by account, in the order the scorecard shows
@@ -290,7 +289,7 @@ export function transitStandings(db, incidents, { mode, fromKey, toKey }) {
 /**
  * A Regional Rail week's measures, per line with MIN_LINE_TRAINS or more
  * trains: on time is the share of the trains that ran that were never more
- * than ON_TIME.lateMin late, cancelled the share SEPTA cancelled, delay the average of the
+ * than ON_TIME_MAX late, cancelled the share SEPTA cancelled, delay the average of the
  * worst lateness seen on each train that ran. `trains` is everything the bot
  * saw.
  */
@@ -312,7 +311,7 @@ export function railStandings(db, { fromKey, toKey }) {
     }
     const late = Math.max(0, r.max_late ?? 0);
     l.late += late;
-    if (late <= ON_TIME.lateMin) l.onTime++;
+    if (late <= ON_TIME_MAX) l.onTime++;
   }
   const speeds = new Map(
     speedStandings(db, { mode: 'regional_rail', fromKey, toKey }).entries.map((s) => [
@@ -478,7 +477,7 @@ export function composeList(account, kind, entries, { label, ranked }) {
     }),
     note:
       account === 'rail'
-        ? `Each ranked against the week's ${ranked} lines · on time: up to ${ON_TIME.lateMin} min late · SEPTA TrainView`
+        ? `Each ranked against the week's ${ranked} lines · on time: up to ${ON_TIME_MAX} min late · SEPTA TrainView`
         : `Each ranked against the week's ${ranked} ${spec.noun} · on time: 1 min early to ${ON_TIME.lateMin} late · SEPTA`,
   };
   const described = entries.map(

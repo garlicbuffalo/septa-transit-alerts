@@ -374,7 +374,7 @@ describe('digests', () => {
           '⚠️ 2 unplanned SEPTA alerts',
           '🚫 60 bus and Metro trips cancelled',
           '🕳️ 2 long gaps and 1 bunch on buses and trolleys',
-          '🚆 Regional Rail: 92% on time (under 15 min late), 2 cancelled',
+          '🚆 Regional Rail: 92% on time (up to 5 min late), 2 cancelled',
         ].join('\n'),
         'Hardest hit: Route 23 (3)',
       ].join('\n\n'),
