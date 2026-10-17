@@ -91,7 +91,7 @@ The tint is made for the colours CARTO used in October 2026, so every map checks
 
 | Path | What it holds |
 |---|---|
-| `bots.sqlite` | Every post (so restarts never double-post and threads continue), recent vehicle positions, cooldowns, timelapse recordings, a year of Regional Rail train tallies, speed map history, every detection seen (for the recaps) |
+| `bots.sqlite` | Every post (so restarts never double-post and threads continue), recent vehicle positions, cooldowns, timelapse recordings, a year of Regional Rail train tallies, two months of daily on-time tallies by route, speed map history, every detection seen (for the recaps) |
 | `data/` | The checkout of the `data` branch |
 | `cache/` | The daily GTFS schedule index |
 | `bluesky-sessions/` | Cached logins, so the accounts stay under Bluesky's login limits |
@@ -120,7 +120,7 @@ features/timelapse.js   timelapse recordings: start, sample, render, post
 features/speedmaps.js   past-hour speeds binned along a route, round-robin
 features/speedhistory.js past week's speeds per route, for the site's pages
 features/recaps.js      weekly and monthly bunching hotspots and gap charts
-features/halloffame.js  weekly Hall of Fame and Wall of Shame: each account's best and worst five routes
+features/halloffame.js  weekly Hall of Fame and Wall of Shame: each account's best and worst five routes by an overall score
 features/cancellations.js  twice-daily cancelled-trip roundups
 features/insights.js    the insights account: reposts, rough hours, daily and weekly digests
 features/pcc.js         posts when the G1's vintage PCC trolleys come out
@@ -157,7 +157,22 @@ Each route gets at most one post per kind per hour, and a few per day: 3 gaps, 3
 
 **Recaps.** Sunday mornings (the past week) and on the 1st (the past month), the bus and metro accounts post a map of the places vehicles bunched most often, with bubbles sized by count, and a reply charting the routes with the most long gaps. They count every bunching and gap detection the bot saw, posted or not.
 
-**Hall of Fame and Wall of Shame.** Sundays from noon, after the recaps (tried every half hour until 3 pm, so a restart or outage at noon doesn't lose the week), each of the bus, metro, and rail accounts posts a thread about the week just ended (Sunday through Saturday): the five best routes or lines with a bar chart, then a reply with the five worst. The rail account ranks Regional Rail lines by on-time share, counted as in its recap (under 15 minutes late and not cancelled, lines with 30+ trains). The bus and metro accounts rank by average speed, each route's distance over its time across the week from the speed tallies behind the site's speed maps, so time at stops counts and layovers at the ends of a route don't; a route needs 300 readings on 3 days of the week to be ranked. Both charts of a thread share one scale. Ten routes or lines are needed to fill both lists; with fewer (Metro has about nine that report positions) the ranking splits evenly, so nothing is in both, and with fewer than six there's no thread. A week the bot saw too little of (speeds on fewer than 5 days, or under 200 trains) gets no thread. The posts aren't highlighted, so the insights account doesn't repost them.
+**Hall of Fame and Wall of Shame.** Sundays from noon, after the recaps (tried every half hour until 3 pm, so a restart or outage at noon doesn't lose the week), each of the bus, metro, and rail accounts posts a thread about the week just ended (Sunday through Saturday): the five best routes or lines with a scorecard, then a reply with the five worst. Each list gives every route an overall score out of 100 and the measure it did best (or worst) on, e.g. "1. Route 23 — 12 · bunched 31 times"; the scorecard shows all the measures, with the one that stood out in bold.
+
+The score weighs several measures of the week:
+
+| | Bus and Metro | Regional Rail |
+|---|---|---|
+| On time | 30%: the share of vehicle reports between 1 min early and 5 min late, by SEPTA's TransitView lateness | 35%: the share of trains that ran that were under 15 min late (as in the recap) |
+| Cancellations | 20%: cancelled trips in SEPTA's trip feed | 25%: the share of trains SEPTA cancelled |
+| Speed | 20%: average speed, from the speed tallies behind the site's speed maps (time at stops counts, layovers at the ends of a route don't) | 20%: the same |
+| Bunching | 15%: bunching detections, posted or not | — |
+| Gaps | 15%: gaps of more than twice the scheduled spacing | — |
+| Delays | — | 20%: the average of each train's worst lateness, over the trains that ran |
+
+Each measure is ranked among the week's routes (worst 0, best 1, ties sharing the middle), and the score is the weighted average of those ranks. Ranks rather than raw figures, so no one measure's scale swamps the others: a route 2 mph faster and one 20 points more on time are simply each ahead. Scores are relative to the week's other routes, so a route at the bottom of a good week can still have run well. Cancellations, bunching, and gaps are counted per minute of service seen (the speed tallies' readings), so a route running twice the buses isn't marked down for having twice the chances to bunch; the posts and scorecard show the counts as seen. A route with no figure for a measure is scored on the rest if they carry at least 60% of the weight; the bus and Metro on-time shares come from a daily tally the bot started keeping with this version (`route_days`, from the observations before they're pruned), so the first week's are short.
+
+A bus or Metro route needs 300 speed readings on 3 days of the week to be ranked, and a Regional Rail line 30+ trains. Ten routes or lines are needed to fill both lists; with fewer (Metro has about nine that report positions) the ranking splits evenly, so nothing is in both, and with fewer than six there's no thread. A week the bot saw too little of (speeds on fewer than 5 days, or under 200 trains) gets no thread. The weights are `WEIGHTS` in `features/halloffame.js`. The posts aren't highlighted, so the insights account doesn't repost them.
 
 **PCC trolleys** (metro account). Most G1 trips run with buses, but on some days SEPTA runs its vintage PCC trolleys. The collector picks them out of TransitView's G1 positions each tick by fleet number (four digits starting with 23; see [`src/lib/pcc.js`](../src/lib/pcc.js)) and hands them to the bot. When the day's first PCC comes out, the metro account posts it with a map of the G1 and the car marked, where it's headed, and how many of the G1's other vehicles are buses. Each car that comes out later that day gets a reply in the same thread listing every PCC out now. Each car is posted once a day, and only after it's been out for 3 minutes, so a one-poll blip never posts. Every post links to the [G Trolley Tracker](https://septa-g-trolley-tracker.netlify.app/) to follow the cars live. `PCC_POSTS=0` turns these posts off. The site's `/line/g1` banner reads the same data from `pcc.json`. The PCC posts' maps show the line's buses too, and a G1 detection's text calls its vehicles buses, trolleys, or, for a mix, vehicles.
 

@@ -15,12 +15,14 @@
 //   recaps       Sundays and the 1st: bunching hotspots and gaps (bus,
 //                metro), the Regional Rail on-time recap
 //   hall of fame Sundays: each mode account's best and worst five routes of
-//                the week (average speed; Regional Rail by on-time share)
+//                the week, by a score weighing on-time running, cancellations,
+//                speed, and bunching and gaps (Regional Rail: delays)
 //   speed maps   every 2 hours by day: one route's speeds per account
 //   speed rollup every 10 minutes: fold new positions into the per-day speed
 //                tallies; the past week's speeds are published hourly with the
 //                data, for the site's route and line pages
-//   housekeeping hourly: prune old observations and dry-run assets
+//   housekeeping hourly: tally the day just ended's on-time running, then
+//                prune old observations and dry-run assets
 //   backup       nightly: a consistent copy of the database
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -37,7 +39,7 @@ import { maybePostCancellationRoundups } from '../features/cancellations.js';
 import { postCrossBunching } from '../features/crossBunching.js';
 import { linkDetectionPosts, postDetections } from '../features/detections.js';
 import { maybePostGhostRollups } from '../features/ghosts.js';
-import { postHallOfFame } from '../features/halloffame.js';
+import { postHallOfFame, rollupRouteDays } from '../features/halloffame.js';
 import {
   maybePostDigests,
   maybePostRoughHour,
@@ -230,8 +232,11 @@ export function createPipeline({
     },
 
     /** Post an account's weekly Hall of Fame and Wall of Shame thread. */
-    hallOfFame(account) {
-      return postHallOfFame({ db, poster, account, now: now(), log });
+    async hallOfFame(account) {
+      // The week's cancelled trips are in the collector's incidents.
+      const { incidents } =
+        account === 'rail' ? { incidents: new Map() } : await loadArchive(config.dataDir);
+      return postHallOfFame({ db, poster, account, incidents, now: now(), log });
     },
 
     /** Map and post one route's past-hour speeds for an account. */
@@ -476,6 +481,8 @@ export function createPipeline({
     },
 
     async housekeeping() {
+      // Before the observations behind them are pruned.
+      const tallied = await step('route-days', () => rollupRouteDays(db, now()));
       const pruned = pruneDb(db, now(), config);
       let assets = 0;
       try {
@@ -487,7 +494,7 @@ export function createPipeline({
           }
         }
       } catch {}
-      return { ...pruned, assetDays: assets };
+      return { ...pruned, assetDays: assets, routeDays: tallied.days ?? 0 };
     },
 
     async backup() {

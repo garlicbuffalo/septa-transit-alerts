@@ -1,5 +1,6 @@
 // Horizontal bar charts for recap posts (on-time share by line, gaps by
-// route), drawn as SVG and rasterized with sharp. One measure per chart, so
+// route), and the Hall of Fame's scorecards, drawn as SVG and rasterized with
+// sharp. One measure per chart, so
 // one hue: the reference palette's dark-surface blue, which clears the
 // lightness, chroma, and 3:1 contrast checks on this surface. Bars grow from
 // a zero baseline, square there and rounded 4 px at the data end, at most
@@ -86,6 +87,78 @@ export function barChartSvg({
 /** The chart as a JPEG. */
 export async function renderBarChart(opts) {
   const { svg, width, height } = barChartSvg(opts);
+  const doc = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${svg}</svg>`;
+  return sharp(Buffer.from(doc)).jpeg({ quality: 90 }).toBuffer();
+}
+
+/**
+ * A scorecard: one row per route, its overall score as a bar on a 0–100 scale,
+ * then a column per measure behind the score, as text. A cell marked `strong`
+ * (the measure a route stood out on) is set bold in primary ink rather than
+ * colored, so it reads without color.
+ * @param {{ title: string, subtitle?: string, columns: string[], rows: Array<{ label: string,
+ *   score: number, display?: string, cells: Array<{ text: string, strong?: boolean }> }>,
+ *   note?: string }} opts
+ * @returns {{ svg: string, width: number, height: number }}
+ */
+export function scorecardSvg({ title, subtitle = null, columns, rows, note = null }) {
+  const head = subtitle ? 150 : 110;
+  const top = head + 40; // the column headings sit above the first row
+  const labelW = Math.min(320, Math.max(...rows.map((r) => textWidth(r.label, 26))) + 24);
+  const left = 48 + labelW;
+  const colW = 112;
+  const colsLeft = WIDTH - 32 - columns.length * colW;
+  const right = colsLeft - 76; // room for the score at the tip
+  const bottom = top + rows.length * ROW;
+  const height = bottom + (note ? 110 : 70);
+  const x = (v) => left + ((right - left) * Math.max(0, Math.min(v, 100))) / 100;
+
+  let svg = `<rect width="${WIDTH}" height="${height}" fill="${CHART.surface}"/>`;
+  svg += text(48, 70, title, { size: 40, color: CHART.textPrimary, weight: 700 });
+  if (subtitle) svg += text(48, 114, subtitle, { size: 26, color: CHART.textSecondary });
+  svg += text(left, top - 14, 'Score', { size: 20, color: CHART.muted });
+  columns.forEach((c, i) => {
+    svg += text(colsLeft + (i + 0.5) * colW, top - 14, c, {
+      size: 20,
+      color: CHART.muted,
+      anchor: 'middle',
+    });
+  });
+  for (const t of [0, 25, 50, 75, 100]) {
+    svg += `<line x1="${x(t).toFixed(1)}" y1="${top - 4}" x2="${x(t).toFixed(1)}" y2="${bottom}" stroke="${CHART.grid}" stroke-width="1"/>`;
+    svg += text(x(t), bottom + 30, String(t), { size: 20, color: CHART.muted, anchor: 'middle' });
+  }
+  rows.forEach((r, i) => {
+    const cy = top + i * ROW + ROW / 2;
+    svg += text(left - 20, cy + 9, r.label, {
+      size: 26,
+      color: CHART.textSecondary,
+      anchor: 'end',
+    });
+    const w = x(r.score) - left;
+    if (w > 0) svg += `<path d="${barPath(left, cy - BAR / 2, w, BAR)}" fill="${CHART.bar}"/>`;
+    svg += text(left + w + 12, cy + 9, r.display ?? String(Math.round(r.score)), {
+      size: 24,
+      color: CHART.textPrimary,
+      weight: 700,
+    });
+    r.cells.forEach((c, j) => {
+      svg += text(colsLeft + (j + 0.5) * colW, cy + 9, c.text, {
+        size: 24,
+        color: c.strong ? CHART.textPrimary : CHART.textSecondary,
+        weight: c.strong ? 700 : 400,
+        anchor: 'middle',
+      });
+    });
+  });
+  svg += `<line x1="${left}" y1="${top - 4}" x2="${left}" y2="${bottom}" stroke="${CHART.muted}" stroke-width="2"/>`;
+  if (note) svg += text(48, height - 36, note, { size: 22, color: CHART.muted });
+  return { svg, width: WIDTH, height };
+}
+
+/** The scorecard as a JPEG. */
+export async function renderScorecard(opts) {
+  const { svg, width, height } = scorecardSvg(opts);
   const doc = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${svg}</svg>`;
   return sharp(Buffer.from(doc)).jpeg({ quality: 90 }).toBuffer();
 }
