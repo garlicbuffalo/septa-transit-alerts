@@ -1,6 +1,8 @@
 // How fast is "slow": the color bands the speed maps use, shared by the site's
 // route and line pages and the bots' posted maps (whose post text uses the
-// emoji as its legend). Road vehicles are buses, trolleys, and the M1.
+// emoji as its legend). Road vehicles are buses and trolleys. The M1, formerly
+// the Norristown High-Speed Line, runs on its own right of way at up to about
+// 50 mph, so it is judged by the rail bands, not the road ones.
 
 export const SPEED_BANDS = {
   road: [
@@ -17,6 +19,10 @@ export const SPEED_BANDS = {
     { below: Infinity, color: '#2ad17f', emoji: '🟩', label: '45+ mph' },
   ],
 };
+
+/** The bands for a route: `kind` is 'rail', 'metro' or 'bus', `route` its id (m1, t1, 17...). */
+export const bandsFor = (kind, route) =>
+  kind === 'rail' || (kind === 'metro' && route === 'm1') ? SPEED_BANDS.rail : SPEED_BANDS.road;
 
 export const NO_DATA_COLOR = '#4a4a48';
 

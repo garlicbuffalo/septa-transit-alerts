@@ -2,7 +2,7 @@
 // vehicles moved there, gray where there was no data. Modeled on
 // cta-insights' speedmaps (ISC), including its traffic-light colors, which
 // match the colored squares the post text uses as its legend.
-import { bandFor, NO_DATA_COLOR, SPEED_BANDS } from '../../src/lib/speedBands.js';
+import { bandFor, bandsFor, NO_DATA_COLOR, SPEED_BANDS } from '../../src/lib/speedBands.js';
 import { sliceAlong } from '../lib/geo.js';
 import { composite, legend, line, titlePill } from './draw.js';
 import { bboxOf, fitView, project } from './projection.js';
@@ -11,7 +11,7 @@ export const SPEED_MAP_SIZE = 1200;
 export const NO_DATA = NO_DATA_COLOR;
 
 // The bands and the colors are shared with the site (src/lib/speedBands.js).
-export { bandFor, SPEED_BANDS };
+export { bandFor, bandsFor, SPEED_BANDS };
 
 /**
  * @param {{ measured: { points: number[][], cum: number[], length: number },

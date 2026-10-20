@@ -12,7 +12,7 @@ import { locateAlong, measureShape, sliceAlong } from '../lib/geo.js';
 import { recordObservations } from '../lib/observations.js';
 import { graphemeLength } from '../lib/text.js';
 import { createBasemap } from '../map/basemap.js';
-import { bandFor, renderSpeedMap, SPEED_BANDS } from '../map/speedMap.js';
+import { bandFor, bandsFor, renderSpeedMap, SPEED_BANDS } from '../map/speedMap.js';
 import { fakeShapes, NOW, testPoster, vehicle } from './helpers.js';
 
 const MIN = 60_000;
@@ -108,6 +108,20 @@ describe('speeds along a route', () => {
     expect(r.bins).toHaveLength(14);
     expect(r.avgMph).toBeCloseTo(40, 0);
     expect(bandFor(SPEED_BANDS.rail, r.avgMph).emoji).toBe('🟪');
+  });
+});
+
+describe('speed bands by route', () => {
+  it('judges the M1 (the old Norristown High-Speed Line) and Regional Rail by the rail bands', () => {
+    expect(bandsFor('rail', 'pao')).toBe(SPEED_BANDS.rail);
+    expect(bandsFor('metro', 'm1')).toBe(SPEED_BANDS.rail);
+    expect(bandFor(bandsFor('metro', 'm1'), 22).label).toBe('15–25');
+    expect(bandFor(bandsFor('metro', 'm1'), 48).label).toBe('45+ mph');
+  });
+
+  it('keeps trolleys and buses on the road bands', () => {
+    expect(bandsFor('metro', 't1')).toBe(SPEED_BANDS.road);
+    expect(bandsFor('bus', '23')).toBe(SPEED_BANDS.road);
   });
 });
 
