@@ -7,6 +7,7 @@
 #   sudo septa-bots map <id>   render the alert map for an incident
 #   sudo septa-bots snapshot   record and post the system snapshots now
 #   sudo septa-bots speedmap bus      post a speed map now (bus, metro, rail)
+#   sudo septa-bots speedmap metro m1 the same, of one route (if it has data this hour)
 #   sudo septa-bots recap rail week   post a recap now (week or month)
 #   sudo septa-bots halloffame bus    post a Hall of Fame thread now (bus, metro, rail)
 #   sudo septa-bots digest day        post the insights digest now (day or week)
@@ -37,7 +38,7 @@ case "${1:-}" in
     exec runuser -u septa-bots --preserve-environment -- node bot/cli.js "$@"
     ;;
   *)
-    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac

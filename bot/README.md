@@ -79,7 +79,7 @@ The tint is made for the colours CARTO used in October 2026, so every map checks
 | One manual tick | `sudo septa-bots once` |
 | Re-render an alert's map | `sudo septa-bots map alert-136615` |
 | Record and post the system timelapses now | `sudo septa-bots snapshot` (15 minutes; `snapshot 3` for 3) |
-| Post a speed map now | `sudo septa-bots speedmap bus` (or `metro`, `rail`) |
+| Post a speed map now | `sudo septa-bots speedmap bus` (or `metro`, `rail`); add a route to map that one, e.g. `speedmap metro m1` (nothing is posted if it has too little data in the past hour) |
 | Post a recap now | `sudo septa-bots recap rail week` (`bus`, `metro`, `rail`; `week` or `month`) |
 | Post a Hall of Fame thread now | `sudo septa-bots halloffame bus` (`bus`, `metro`, `rail`) |
 | Post the insights digest now | `sudo septa-bots digest day` (or `week`) |

@@ -226,6 +226,39 @@ describe('speed map posts', () => {
     });
   });
 
+  it('maps the route asked for, not the next in turn, and skips one with no data', async () => {
+    const t = testPoster();
+    for (const route of ['23', '47']) {
+      record(
+        t.db,
+        [
+          ...trip('a', { from: 40.045, mph: 10, minutes: 25, route }),
+          ...trip('b', { from: 40.0, mph: 4, minutes: 25, route }),
+          ...trip('c', { from: 40.02, mph: 7, minutes: 25, route }),
+        ].map((s) => ({ ...s, vehicle_id: `${route}${s.vehicle_id}` })),
+      );
+    }
+    t.db
+      .prepare("INSERT INTO speedmap_runs (account, route, ts, avg_mph) VALUES ('bus', '47', ?, 9)")
+      .run(NOW - 3 * MIN);
+    const args = {
+      db: t.db,
+      poster: t.poster,
+      shapes: fakeShapes({ 23: SHAPE, 47: SHAPE }),
+      basemap: createBasemap(),
+      account: 'bus',
+      now: NOW,
+    };
+    // 23 is next in turn (47 was mapped just now), but 47 was asked for.
+    expect(await postSpeedMap({ ...args, only: '47' })).toMatchObject({ posted: '47' });
+    expect(t.client.posts[0].opts.text).toMatch(/^🚦 Route 47/);
+    expect(await postSpeedMap({ ...args, only: '99' })).toEqual({
+      skipped: 'no-route',
+      candidates: 0,
+    });
+    expect(t.client.posts).toHaveLength(1);
+  });
+
   it('renders stretches in their band colors', async () => {
     const m = measureShape(SHAPE);
     const jpg = await renderSpeedMap({
