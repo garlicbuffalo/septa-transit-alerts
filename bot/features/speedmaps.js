@@ -209,13 +209,26 @@ function routeSamples(db, account, route, { since, shapes }) {
 }
 
 /**
- * Map and post one route's past hour for an account ('bus', 'metro', 'rail').
+ * Map and post one route's past hour for an account ('bus', 'metro', 'rail'):
+ * the one asked for with `only`, else the least recently mapped. A route asked
+ * for is skipped if it has too little data this hour, rather than another taken.
  */
-export async function postSpeedMap({ db, poster, shapes, basemap, account, now, log = () => {} }) {
+export async function postSpeedMap({
+  db,
+  poster,
+  shapes,
+  basemap,
+  account,
+  now,
+  only = null,
+  log = () => {},
+}) {
   if (!poster.client.hasAccount(account)) return null;
   const cfg = SPEED_CONFIG[account];
   const start = now - HOUR_MS;
-  const candidates = speedCandidates(db, account, { since: start });
+  const candidates = speedCandidates(db, account, { since: start }).filter(
+    (c) => !only || c.route.toLowerCase() === only.toLowerCase(),
+  );
   for (const { route } of candidates.slice(0, SPEED_CONFIG.attempts)) {
     const { samples, shape, direction } = routeSamples(db, account, route, {
       since: start,

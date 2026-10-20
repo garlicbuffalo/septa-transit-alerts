@@ -239,9 +239,9 @@ export function createPipeline({
       return postHallOfFame({ db, poster, account, incidents, now: now(), log });
     },
 
-    /** Map and post one route's past-hour speeds for an account. */
-    speedMap(account) {
-      return postSpeedMap({ db, poster, shapes, basemap, account, now: now(), log });
+    /** Map and post a route's past-hour speeds for an account (`only`: that route, else the next in turn). */
+    speedMap(account, only = null) {
+      return postSpeedMap({ db, poster, shapes, basemap, account, now: now(), only, log });
     },
 
     /** Fold the positions since the last run into the per-day speed tallies. */
