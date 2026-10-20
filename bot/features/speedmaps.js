@@ -14,7 +14,7 @@ import { locateAlong, measureShape, metersBetween } from '../lib/geo.js';
 import { observationsSince } from '../lib/observations.js';
 import { routeShortLabel } from '../lib/routes.js';
 import { firstThatFits, linkFacets } from '../lib/text.js';
-import { renderSpeedMap, SPEED_BANDS } from '../map/speedMap.js';
+import { bandsFor, renderSpeedMap } from '../map/speedMap.js';
 import { nearestShape } from '../video/scenes.js';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -216,7 +216,6 @@ export async function postSpeedMap({ db, poster, shapes, basemap, account, now, 
   const cfg = SPEED_CONFIG[account];
   const start = now - HOUR_MS;
   const candidates = speedCandidates(db, account, { since: start });
-  const bands = account === 'rail' ? SPEED_BANDS.rail : SPEED_BANDS.road;
   for (const { route } of candidates.slice(0, SPEED_CONFIG.attempts)) {
     const { samples, shape, direction } = routeSamples(db, account, route, {
       since: start,
@@ -226,6 +225,7 @@ export async function postSpeedMap({ db, poster, shapes, basemap, account, now, 
     const measured = measureShape(shape);
     const result = computeSpeeds(samples, measured, cfg);
     if (result.coverage < SPEED_CONFIG.minCoverage || result.avgMph == null) continue;
+    const bands = bandsFor(account, route);
     const callout = speedCallout(db, { account, route, avgMph: result.avgMph, now });
     const { text, alt, facets, title } = composeSpeedMap({
       mode: cfg.mode,

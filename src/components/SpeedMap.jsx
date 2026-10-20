@@ -8,7 +8,7 @@ import {
   stopsOf,
   summarizeSpeeds,
 } from '../lib/routeMaps.js';
-import { NO_DATA_COLOR, SPEED_BANDS } from '../lib/speedBands.js';
+import { bandsFor, NO_DATA_COLOR } from '../lib/speedBands.js';
 import MapPlaceholder from './MapPlaceholder.jsx';
 
 // Leaflet is heavy; it loads only for a page that has a map to show.
@@ -23,7 +23,7 @@ const plural = (n, word) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' 
 // the tunnel, and some routes are too thinly tracked.
 export default function SpeedMap({ route, label, mode = 'bus' }) {
   const rail = mode === 'rail';
-  const bands = rail ? SPEED_BANDS.rail : SPEED_BANDS.road;
+  const bands = bandsFor(mode, route);
   const noun = rail ? 'trains' : mode === 'metro' ? 'vehicles' : 'buses';
   const [file, setFile] = useState(null);
   const [directionId, setDirectionId] = useState(null);
