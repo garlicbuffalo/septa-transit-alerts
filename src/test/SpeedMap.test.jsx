@@ -188,13 +188,13 @@ describe('SpeedMap for Regional Rail', () => {
 });
 
 describe('SpeedMap for the M1', () => {
-  it('uses the rail speed bands, not the road ones', async () => {
-    serve({ 'speeds/m1.json': speeds([direction({ avg_mph: 27.5, mph: [12, null, 41, 52] })]) });
+  it('uses the M1’s own speed bands, not the road ones', async () => {
+    serve({ 'speeds/m1.json': speeds([direction({ avg_mph: 27.5, mph: [8, null, 41, 52] })]) });
     render(<SpeedMap route="m1" label="M1 line" mode="metro" />);
     expect(await screen.findByText('27.5 mph')).toBeInTheDocument();
-    expect(screen.getByText('45+ mph')).toBeInTheDocument();
+    expect(screen.getByText('40+ mph')).toBeInTheDocument();
     expect(screen.queryByText('15+ mph')).not.toBeInTheDocument();
-    expect(screen.getByText(/1 of 3 stretches under 15 mph/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 3 stretches under 10 mph/)).toBeInTheDocument();
   });
 });
 

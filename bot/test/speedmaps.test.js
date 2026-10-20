@@ -112,11 +112,11 @@ describe('speeds along a route', () => {
 });
 
 describe('speed bands by route', () => {
-  it('judges the M1 (the old Norristown High-Speed Line) and Regional Rail by the rail bands', () => {
+  it('gives Regional Rail the rail bands and the M1 (the old Norristown High-Speed Line) its own', () => {
     expect(bandsFor('rail', 'pao')).toBe(SPEED_BANDS.rail);
-    expect(bandsFor('metro', 'm1')).toBe(SPEED_BANDS.rail);
-    expect(bandFor(bandsFor('metro', 'm1'), 22).label).toBe('15–25');
-    expect(bandFor(bandsFor('metro', 'm1'), 48).label).toBe('45+ mph');
+    expect(bandsFor('metro', 'm1')).toBe(SPEED_BANDS.m1);
+    expect(bandFor(bandsFor('metro', 'm1'), 22).label).toBe('20–30');
+    expect(bandFor(bandsFor('metro', 'm1'), 42).label).toBe('40+ mph');
   });
 
   it('keeps trolleys and buses on the road bands', () => {
