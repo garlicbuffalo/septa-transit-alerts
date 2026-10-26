@@ -213,7 +213,16 @@ export function createBlueskyClient({
   const agents = new Map();
 
   async function agent(account) {
-    if (agents.has(account)) return agents.get(account);
+    const current = agents.get(account);
+    if (current?.session) return current;
+    // When Bluesky refuses to refresh a session (its refresh token expired or
+    // revoked, which a `septa-bots` command refreshing the same cached session
+    // can do), the agent drops it, and every call after that fails until the
+    // account logs in again.
+    if (current) {
+      agents.delete(account);
+      log(`bluesky: the ${account} session has ended; logging in again`);
+    }
     const creds = accounts[account];
     if (!creds) throw new Error(`no credentials for the ${account} account`);
     const store = sessionStore(sessionDir, creds.identifier);
@@ -242,6 +251,17 @@ export function createBlueskyClient({
     return a;
   }
 
+  /** Run fn with the account's agent, once more after logging in again if the session ends during it. */
+  async function withAgent(account, fn) {
+    const a = await agent(account);
+    try {
+      return await fn(a);
+    } catch (err) {
+      if (a.session) throw err;
+      return fn(await agent(account));
+    }
+  }
+
   return {
     dryRun: false,
     hasAccount: (account) => !!accounts[account],
@@ -255,17 +275,18 @@ export function createBlueskyClient({
      * @returns {Promise<{ uri: string, cid: string, url: string }>}
      */
     async post(account, opts) {
-      const a = await agent(account);
-      const embed = await buildEmbed(a, opts, { fetchFn });
-      const record = {
-        text: opts.text,
-        langs: opts.langs ?? ['en'],
-        ...(opts.facets?.length && { facets: opts.facets }),
-        ...(opts.reply && { reply: opts.reply }),
-        ...(embed && { embed }),
-      };
-      const res = await withRetry(() => a.post(record));
-      return { uri: res.uri, cid: res.cid, url: postUrl(res.uri) };
+      return withAgent(account, async (a) => {
+        const embed = await buildEmbed(a, opts, { fetchFn });
+        const record = {
+          text: opts.text,
+          langs: opts.langs ?? ['en'],
+          ...(opts.facets?.length && { facets: opts.facets }),
+          ...(opts.reply && { reply: opts.reply }),
+          ...(embed && { embed }),
+        };
+        const res = await withRetry(() => a.post(record));
+        return { uri: res.uri, cid: res.cid, url: postUrl(res.uri) };
+      });
     },
 
     /** The post record, or null if it's gone. */
@@ -319,14 +340,18 @@ export function createBlueskyClient({
 
     /** Repost a post as `account`. */
     async repost(account, { uri, cid }) {
-      const a = await agent(account);
-      const res = await withRetry(() => a.repost(uri, cid));
-      return { uri: res.uri, cid: res.cid };
+      return withAgent(account, async (a) => {
+        const res = await withRetry(() => a.repost(uri, cid));
+        return { uri: res.uri, cid: res.cid };
+      });
     },
 
+    /** Delete one of the account's posts or reposts. */
     async deletePost(account, uri) {
-      const a = await agent(account);
-      await withRetry(() => a.deletePost(uri));
+      const repost = uri.includes('/app.bsky.feed.repost/');
+      await withAgent(account, (a) =>
+        withRetry(() => (repost ? a.deleteRepost(uri) : a.deletePost(uri))),
+      );
     },
 
     /** Log in (or resume) and return the account's handle and DID. */

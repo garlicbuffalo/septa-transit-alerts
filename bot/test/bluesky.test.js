@@ -36,6 +36,7 @@ function fakeAgent({ failLogin = false } = {}) {
       return { data: { blob: { ref: `blob${calls.uploads.length}`, mimeType: encoding } } };
     },
     async post(record) {
+      if (!agent.session) throw new Error('Not logged in');
       calls.posts.push(record);
       return { uri: `at://did:plc:abc/app.bsky.feed.post/r${calls.posts.length}`, cid: 'cid' };
     },
@@ -79,6 +80,82 @@ describe('Bluesky client', () => {
     await expect(clientWith(fakeAgent(), dir).post('bus', { text: 'x' })).rejects.toThrow(
       /no credentials for the bus account/,
     );
+  });
+
+  it('deletes posts and reposts each from their own collection', async () => {
+    const agent = fakeAgent();
+    const deleted = [];
+    agent.deletePost = async (uri) => deleted.push(['post', uri]);
+    agent.deleteRepost = async (uri) => deleted.push(['repost', uri]);
+    const client = clientWith(agent, mkdtempSync(join(tmpdir(), 'bsky-')));
+    await client.deletePost('alerts', 'at://did:plc:abc/app.bsky.feed.post/p1');
+    await client.deletePost('alerts', 'at://did:plc:abc/app.bsky.feed.repost/r1');
+    expect(deleted).toEqual([
+      ['post', 'at://did:plc:abc/app.bsky.feed.post/p1'],
+      ['repost', 'at://did:plc:abc/app.bsky.feed.repost/r1'],
+    ]);
+  });
+
+  describe('when Bluesky ends a session', () => {
+    // Each new agent is a fresh one; `end` does what AtpAgent does when Bluesky refuses
+    // to refresh its session: drops it, clears the cached copy, and fails the call.
+    function sequence(dir) {
+      const made = [];
+      const logs = [];
+      const client = createBlueskyClient({
+        service: 'https://example.invalid',
+        accounts: { alerts: { identifier: 'alerts.example', password: 'pw' } },
+        sessionDir: dir,
+        log: (m) => logs.push(m),
+        agentFactory: ({ persistSession }) => {
+          const a = fakeAgent();
+          a.persist = persistSession;
+          a.end = () => {
+            a.session = undefined;
+            persistSession('expired');
+            return Object.assign(new Error('Token has been revoked'), {
+              status: 400,
+              error: 'ExpiredToken',
+            });
+          };
+          made.push(a);
+          return a;
+        },
+      });
+      return { client, made, logs };
+    }
+
+    it('logs in again rather than failing every later call', async () => {
+      const { client, made, logs } = sequence(mkdtempSync(join(tmpdir(), 'bsky-')));
+      await client.post('alerts', { text: 'one' });
+      made[0].end();
+      const res = await client.post('alerts', { text: 'two' });
+      expect(made).toHaveLength(2);
+      expect(made[1].calls.login).toBe(1);
+      expect(made[1].calls.posts.map((p) => p.text)).toEqual(['two']);
+      expect(res.uri).toMatch(/\/r1$/);
+      expect(logs).toContain('bluesky: the alerts session has ended; logging in again');
+    });
+
+    it('retries a call the session ended during, once', async () => {
+      const { client, made } = sequence(mkdtempSync(join(tmpdir(), 'bsky-')));
+      await client.post('alerts', { text: 'one' });
+      made[0].post = async () => {
+        throw made[0].end();
+      };
+      await client.post('alerts', { text: 'two' });
+      expect(made[1].calls.posts.map((p) => p.text)).toEqual(['two']);
+    });
+
+    it('leaves other failures alone', async () => {
+      const { client, made } = sequence(mkdtempSync(join(tmpdir(), 'bsky-')));
+      await client.post('alerts', { text: 'one' });
+      made[0].post = async () => {
+        throw Object.assign(new Error('Invalid record'), { status: 400 });
+      };
+      await expect(client.post('alerts', { text: 'two' })).rejects.toThrow('Invalid record');
+      expect(made).toHaveLength(1);
+    });
   });
 
   it('posts text with facets, language, and reply refs', async () => {
