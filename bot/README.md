@@ -80,8 +80,8 @@ The tint is made for the colours CARTO used in October 2026, so every map checks
 | Re-render an alert's map | `sudo septa-bots map alert-136615` |
 | Record and post the system timelapses now | `sudo septa-bots snapshot` (15 minutes; `snapshot 3` for 3) |
 | Post a speed map now | `sudo septa-bots speedmap bus` (or `metro`, `rail`); add a route to map that one, e.g. `speedmap metro m1` (nothing is posted if it has too little data in the past hour) |
-| Post a recap now | `sudo septa-bots recap rail week` (`bus`, `metro`, `rail`; `week` or `month`) |
-| Post a Hall of Fame thread now | `sudo septa-bots halloffame bus` (`bus`, `metro`, `rail`) |
+| Post a recap now | `sudo septa-bots recap rail week` (`bus`, `metro`, `rail`; `week` or `month`: the last full Sunday–Saturday week or calendar month, whatever day it's run) |
+| Post a Hall of Fame thread now | `sudo septa-bots halloffame bus` (`bus`, `metro`, `rail`; the last full Sunday–Saturday week, so one missed on Sunday can be posted later in the week) |
 | Post the insights digest now | `sudo septa-bots digest day` (or `week`) |
 | Turn videos off | set `VIDEOS=0`, restart |
 | Stop posting at once | set `BOT_MODE=dry-run`, restart |
@@ -92,11 +92,13 @@ The tint is made for the colours CARTO used in October 2026, so every map checks
 | Path | What it holds |
 |---|---|
 | `bots.sqlite` | Every post (so restarts never double-post and threads continue), recent vehicle positions, cooldowns, timelapse recordings, a year of Regional Rail train tallies, two months of daily on-time tallies by route, speed map history, every detection seen (for the recaps) |
-| `data/` | The checkout of the `data` branch |
+| `data/` | The checkout of the `data` branch: only the latest snapshot, since older ones are pruned hourly |
 | `cache/` | The daily GTFS schedule index |
 | `bluesky-sessions/` | Cached logins, so the accounts stay under Bluesky's login limits |
 | `assets/` | Dry-run output, kept 7 days |
-| `backups/` | A nightly copy of the database, last 7 kept |
+| `backups/` | A nightly copy of the database, last 7 kept; skipped (and logged) when the disk couldn't take another with 1 GB to spare |
+
+**If an account goes quiet,** look at the disk first: `df -h /var/lib/septa-bots`. A full disk stops the collector (the site's data then comes from the GitHub Actions fallback), the timelapses, and writes to the database. Then `sudo septa-bots logs`: a session Bluesky has ended logs `the <account> session has ended; logging in again`, and a post that couldn't be recorded is deleted again (`couldn't record …; deleting …`) rather than repeated on the next try.
 
 **Rebuilding a server:** run the setup command on a new one and copy `/etc/septa-bots.env` and `/var/lib/septa-bots/bots.sqlite` across. The post history keeps the new server from posting anything twice. Without the database it still won't flood the feed, because it never posts anything first seen before it started.
 
@@ -106,10 +108,13 @@ The tint is made for the colours CARTO used in October 2026, so every map checks
 main.js            scheduler: observe (1 min), collect (2 min), timelapse sample (15 s) and
                    render (30 s), snapshots, housekeeping, backup
 lib/pipeline.js    observe → collect (../collector) → post + link (beforePublish hook) → publish
-lib/bluesky.js     Bluesky client: cached sessions, images/video/link cards/quotes, threading, retries
+lib/bluesky.js     Bluesky client: cached sessions (logging in again when one ends), images/video/link
+                   cards/quotes, threading, retries
                    + the dry-run client with the same interface
-lib/poster.js      posts recorded in SQLite under (subject, kind): never twice, threads continue
-lib/publish.js     single-commit push of the data branch ("· server"), debounced deploy dispatch
+lib/poster.js      posts recorded in SQLite under (subject, kind): never twice, threads continue; one
+                   that can't be recorded is deleted again
+lib/publish.js     single-commit push of the data branch ("· server"), debounced deploy dispatch,
+                   old snapshots pruned from the checkout
 features/alerts.js which SEPTA alerts post, their text, ✅ cleared replies, links into the data
 features/detections.js  gap / bunching / stuck / silent-route posts, caps, follow-ups, quotes
 features/ghosts.js      hourly missing-vehicle roundups
