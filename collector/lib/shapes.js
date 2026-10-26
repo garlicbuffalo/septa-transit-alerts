@@ -4,9 +4,10 @@
 // lines under gaps, bunches, and stuck vehicles) and measures positions along
 // them. Built alongside the schedule index (see schedule.js) and cached as
 // SHAPES_FILE next to it.
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { cleanStopName } from '../../src/lib/stops.js';
+import { writeFileAtomic } from './files.js';
 import { eachCsvRow, parseCsvLine } from './gtfsFiles.js';
 import { classifyRoute } from './network.js';
 
@@ -356,7 +357,7 @@ export async function publishRouteShapes(dir, shapes) {
     const path = join(out, name);
     const current = await readFile(path, 'utf8').catch(() => null);
     if (current === body) continue;
-    await writeFile(path, body);
+    await writeFileAtomic(path, body);
     written++;
   }
   let removed = 0;
@@ -409,6 +410,6 @@ export async function publishSystemMap(dir, shapes) {
   const path = join(dir, SYSTEM_MAP_FILE);
   if ((await readFile(path, 'utf8').catch(() => null)) === body) return false;
   await mkdir(dir, { recursive: true });
-  await writeFile(path, body);
+  await writeFileAtomic(path, body);
   return true;
 }

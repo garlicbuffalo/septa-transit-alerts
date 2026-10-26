@@ -18,13 +18,14 @@
 // Exit code is non-zero only when every source failed, so a single flaky
 // endpoint doesn't fail the run (its changes are simply skipped this tick).
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { PCC_FILE, pccSightings } from '../src/lib/pcc.js';
 import { loadArchive, publishArchive } from './lib/archive.js';
 import { applyElevators } from './lib/elevators.js';
+import { writeFileAtomic } from './lib/files.js';
 import { decodeTripUpdates, decodeVehiclePositions } from './lib/gtfsRealtime.js';
 import { applyOfficialAlerts } from './lib/officialAlerts.js';
 import { advanceCancellations, applyTrainView } from './lib/railTrains.js';
@@ -325,12 +326,12 @@ export async function collect({
     }
     // Left as it was when TransitView failed: its updated_ts says how old it is.
     if (pcc)
-      await writeFile(
+      await writeFileAtomic(
         join(dataDir, PCC_FILE),
         `${JSON.stringify({ schema_version: 1, ...pcc })}\n`,
       );
     state.updated_at = now;
-    await writeFile(join(dataDir, STATE_FILE), `${JSON.stringify(state)}\n`);
+    await writeFileAtomic(join(dataDir, STATE_FILE), `${JSON.stringify(state)}\n`);
   }
   // A PCC coming out or going back to the depot is rider-visible (the G1 page's banner).
   summary.changed = ok

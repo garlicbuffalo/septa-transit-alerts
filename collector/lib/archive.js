@@ -13,8 +13,9 @@
 //
 // Writes are skipped when a file's bytes are unchanged, so a quiet run only
 // touches the few files that carry `generated_at`.
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { writeFileAtomic } from './files.js';
 import { easternDateKey, easternMonthKey } from './time.js';
 
 export const SCHEMA_VERSION = 2;
@@ -183,7 +184,7 @@ export async function publishArchive(
     }
     if (current === body) return;
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, body);
+    await writeFileAtomic(path, body);
     written.push(rel);
   };
 
