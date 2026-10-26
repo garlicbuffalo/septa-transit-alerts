@@ -24,7 +24,7 @@
 //   housekeeping hourly: tally the day just ended's on-time running, then
 //                prune old observations and dry-run assets
 //   backup       nightly: a consistent copy of the database
-import { mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat, statfs } from 'node:fs/promises';
 import { join } from 'node:path';
 import { collect } from '../../collector/collect.js';
 import { loadArchive } from '../../collector/lib/archive.js';
@@ -66,12 +66,22 @@ import { ensureRouteShapes, shapesFileStamp } from './shapes.js';
 
 const ASSET_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const BACKUPS_KEPT = 7;
+// A backup is a whole copy of the database; one isn't started unless the disk
+// would still have this much free after it.
+const BACKUP_HEADROOM_BYTES = 1024 ** 3;
+
+/** Bytes free to this process on the filesystem holding `dir`. */
+async function freeBytes(dir) {
+  const { bavail, bsize } = await statfs(dir);
+  return bavail * bsize;
+}
 
 /**
  * @param {{ config: ReturnType<typeof import('./config.js').loadConfig>,
  *   db: import('better-sqlite3').Database, poster: object, basemap: Function,
  *   publisher: ReturnType<typeof import('./publish.js').createPublisher>,
- *   log?: (m: string) => void, now?: () => number, sources?: object, fetchFn?: typeof fetch }} opts
+ *   log?: (m: string) => void, now?: () => number, sources?: object, fetchFn?: typeof fetch,
+ *   freeSpace?: (dir: string) => Promise<number> }} opts
  */
 export function createPipeline({
   config,
@@ -83,6 +93,7 @@ export function createPipeline({
   now = () => Date.now(),
   sources = createSources({ fixturesDir: config.fixturesDir }),
   fetchFn = fetch,
+  freeSpace = freeBytes,
 }) {
   const latest = { transitView: null, trainView: null, vehiclePositions: null };
   let shapes = null;
@@ -499,12 +510,29 @@ export function createPipeline({
 
     async backup() {
       const stamp = new Date(now()).toISOString().slice(0, 10);
-      const path = join(config.backupDir, `bots-${stamp}.sqlite`);
+      const name = `bots-${stamp}.sqlite`;
+      const path = join(config.backupDir, name);
       await mkdir(config.backupDir, { recursive: true });
-      await db.backup(path);
-      const files = (await readdir(config.backupDir)).filter((f) => f.endsWith('.sqlite')).sort();
-      for (const old of files.slice(0, Math.max(0, files.length - BACKUPS_KEPT))) {
+      // The oldest copies go first, to make room for the new one.
+      const files = (await readdir(config.backupDir))
+        .filter((f) => f.endsWith('.sqlite') && f !== name)
+        .sort();
+      for (const old of files.slice(0, Math.max(0, files.length - (BACKUPS_KEPT - 1)))) {
         await rm(join(config.backupDir, old), { force: true });
+      }
+      // As big as the database, the WAL's pages included.
+      const size =
+        db.pragma('page_count', { simple: true }) * db.pragma('page_size', { simple: true });
+      const free = await freeSpace(config.backupDir);
+      if (free < size + BACKUP_HEADROOM_BYTES) {
+        const mb = (n) => `${Math.round(n / 1024 ** 2)} MB`;
+        return `skipped: ${mb(free)} free, and a copy needs ${mb(size)} with ${mb(BACKUP_HEADROOM_BYTES)} to spare`;
+      }
+      try {
+        await db.backup(path);
+      } catch (err) {
+        await rm(path, { force: true });
+        throw err;
       }
       return path;
     },

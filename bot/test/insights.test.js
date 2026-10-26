@@ -160,6 +160,19 @@ describe('reposts', () => {
     expect(await repostHighlights({ db: off.db, poster: off.poster, now: NOW })).toBeNull();
   });
 
+  it('takes down a repost it can’t record, so the next tick doesn’t repeat it', async () => {
+    const t = testPoster();
+    await repostHighlights({ db: t.db, poster: t.poster, now: NOW - MIN });
+    await t.poster.post({ account: 'bus', kind: 'recap', text: 'recap', highlight: 'recap' });
+    t.db.exec(`CREATE TRIGGER full BEFORE INSERT ON posts
+      BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END`);
+    expect(await repostHighlights({ db: t.db, poster: t.poster, now: NOW + MIN })).toEqual({
+      reposted: 0,
+    });
+    expect(t.client.reposts).toHaveLength(1);
+    expect(t.client.deleted).toEqual([t.client.reposts[0].uri]);
+  });
+
   it('highlights a detection that is the route’s worst in 30 days', async () => {
     const t = testPoster();
     const day = startOfEasternDay(NOW);

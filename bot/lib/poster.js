@@ -27,6 +27,25 @@ export function createPoster({ db, client, log = () => {}, now = () => Date.now(
     'SELECT * FROM posts WHERE root_uri = ? AND dry_run = ? ORDER BY ts DESC, id DESC LIMIT 1',
   );
 
+  // Record a post (or repost) just made. One that can't be recorded is taken
+  // down again, or the feature would make it again on its next try: that is how
+  // the Regional Rail Hall of Fame went up six times on 2026-10-25.
+  async function record(row) {
+    try {
+      insert.run(row);
+    } catch (err) {
+      log(
+        `poster: couldn't record ${row.kind} ${row.subject} (${err.message}); deleting ${row.uri}`,
+      );
+      try {
+        await client.deletePost(row.account, row.uri);
+      } catch (e) {
+        log(`poster: couldn't delete ${row.uri}: ${e.message}`);
+      }
+      throw err;
+    }
+  }
+
   // A reply ref continuing the recorded thread of `uri`, or null.
   function recordedThread(uri) {
     const row = byUri.get(uri);
@@ -70,7 +89,7 @@ export function createPoster({ db, client, log = () => {}, now = () => Date.now(
         if (!replyRef) log(`poster: ${reply} is gone; posting ${kind} ${subject} unthreaded`);
       }
       const res = await client.post(account, { ...opts, ...(replyRef && { reply: replyRef }) });
-      insert.run({
+      await record({
         account,
         kind,
         subject,
@@ -94,7 +113,7 @@ export function createPoster({ db, client, log = () => {}, now = () => Date.now(
      */
     async repost({ account, kind = 'repost', subject, of }) {
       const res = await client.repost(account, { uri: of.uri, cid: of.cid });
-      insert.run({
+      await record({
         account,
         kind,
         subject,

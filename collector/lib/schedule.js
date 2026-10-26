@@ -24,8 +24,9 @@
 // the service date's midnight — GTFS times run past 24:00 for after-midnight
 // trips, so a trip belongs to the service date it was scheduled on, not the
 // calendar date it runs.
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { writeFileAtomic } from './files.js';
 import { eachCsvRow, GTFS_URL, parseCsvLine, readZip } from './gtfsFiles.js';
 import { classifyRoute } from './network.js';
 import { buildRouteShapes, SHAPES_FILE, SHAPES_REV } from './shapes.js';
@@ -296,10 +297,13 @@ export async function loadSchedule({ cacheDir, fixturesDir, now = Date.now(), lo
     index.shapes_rev = SHAPES_REV;
     if (cacheDir) {
       await mkdir(cacheDir, { recursive: true });
-      await writeAtomic(join(cacheDir, CACHE_FILE), JSON.stringify(index));
+      await writeFileAtomic(join(cacheDir, CACHE_FILE), JSON.stringify(index));
       // Route shapes come from the same download (used by the bot's maps).
       try {
-        await writeAtomic(join(cacheDir, SHAPES_FILE), JSON.stringify(buildRouteShapes(zip, now)));
+        await writeFileAtomic(
+          join(cacheDir, SHAPES_FILE),
+          JSON.stringify(buildRouteShapes(zip, now)),
+        );
       } catch (err) {
         log(`schedule: route shapes failed (${err.message})`);
       }
@@ -312,12 +316,6 @@ export async function loadSchedule({ cacheDir, fixturesDir, now = Date.now(), lo
     log(`schedule: GTFS download failed (${err.message})${cached ? '; using stale cache' : ''}`);
     return cached ? Schedule.from(cached) : null;
   }
-}
-
-async function writeAtomic(path, text) {
-  const tmp = `${path}.tmp`;
-  await writeFile(tmp, text);
-  await rename(tmp, path);
 }
 
 const dateKeyCompact = ({ year, month, day }) =>

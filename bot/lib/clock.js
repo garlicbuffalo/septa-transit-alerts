@@ -49,8 +49,10 @@ export function monthLabel(key) {
 }
 
 /**
- * The days a weekly or monthly recap covers, as date keys: the 7 days before
- * `now`'s service day, or the previous calendar month.
+ * The days a weekly or monthly recap covers, as date keys: the last Sunday–
+ * Saturday week before `now`'s service day (on a Sunday, when they're posted,
+ * the 7 days before; on any other day, as when one is posted by hand, still
+ * that week), or the previous calendar month.
  */
 export function recapWindow(period, now) {
   const today = serviceDateKey(now);
@@ -60,8 +62,8 @@ export function recapWindow(period, now) {
     const toKey = addDays(firstThis, -1);
     return { fromKey: `${toKey.slice(0, 7)}-01`, toKey, label: monthLabel(toKey) };
   }
-  const toKey = addDays(today, -1);
-  const fromKey = addDays(today, -7);
+  const toKey = addDays(today, -(keyDate(today).getUTCDay() + 1));
+  const fromKey = addDays(toKey, -6);
   return { fromKey, toKey, label: dateRangeLabel(fromKey, toKey) };
 }
 

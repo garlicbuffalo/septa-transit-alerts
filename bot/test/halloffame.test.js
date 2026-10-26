@@ -666,6 +666,25 @@ describe('Hall of Fame and Wall of Shame threads', () => {
     expect(await postHallOfFame(args)).toEqual({ skipped: 'posted' });
   });
 
+  it('takes down a post it can’t record, so trying again doesn’t repeat it', async () => {
+    const t = testPoster();
+    const incidents = seedBusWeek(t.db);
+    const args = { db: t.db, poster: t.poster, account: 'bus', incidents, now: SUNDAY };
+    // As on 2026-10-25: every post went out, and none could be recorded.
+    t.db.exec(`CREATE TRIGGER full BEFORE INSERT ON posts
+      BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END`);
+    for (let i = 0; i < 3; i++) {
+      await expect(postHallOfFame(args)).rejects.toThrow('database or disk is full');
+    }
+    expect(t.client.posts).toHaveLength(3);
+    expect(t.client.deleted).toEqual(t.client.posts.map((p) => p.uri));
+    t.db.exec('DROP TRIGGER full');
+    expect(await postHallOfFame(args)).toMatchObject({ posted: 'week' });
+    const fame = t.poster.find('halloffame:bus:2026-10-10', 'fame');
+    expect(t.poster.find('halloffame:bus:2026-10-10', 'shame').parent_uri).toBe(fame.uri);
+    expect(t.client.deleted).not.toContain(fame.uri);
+  });
+
   it('posts nothing for a week the bot hardly saw, or with too few routes to rank', async () => {
     const logs = [];
     const log = (m) => logs.push(m);

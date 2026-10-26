@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -405,6 +406,28 @@ describe('archive', () => {
       'alerts-recent.json',
       'daily-counts.json',
     ]);
+  });
+
+  it.skipIf(!existsSync('/dev/full'))('stays readable when the disk fills mid-write', async () => {
+    const incidents = new Map();
+    const outages = new Map();
+    applyOfficialAlerts(incidents, [alert()], NOW);
+    await publishArchive(dir, { incidents, outages, dataStartTs: NOW - DAY, now: NOW });
+    const shard = join(dir, 'alerts', '2026-10.json');
+    const before = await readFile(shard, 'utf8');
+    // Every write to the shard's new copy fails, as on a full disk.
+    await symlink('/dev/full', `${shard}.tmp`);
+    applyOfficialAlerts(
+      incidents,
+      [alert(), alert({ alert_id: '502', routes: ['23'] })],
+      NOW + MIN,
+    );
+    await expect(
+      publishArchive(dir, { incidents, outages, dataStartTs: NOW - DAY, now: NOW + MIN }),
+    ).rejects.toThrow(/ENOSPC/);
+    expect(await readFile(shard, 'utf8')).toBe(before);
+    expect(existsSync(`${shard}.tmp`)).toBe(false);
+    expect([...(await loadArchive(dir)).incidents.keys()]).toEqual(['alert-500']);
   });
 
   it('counts incidents per Philadelphia day by network', () => {

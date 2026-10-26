@@ -58,13 +58,19 @@ export function officialIncident({
 export function fakeLiveClient() {
   const posts = [];
   const reposts = [];
+  const deleted = [];
   let n = 0;
   const byUri = new Map();
   return {
     dryRun: false,
     posts,
     reposts,
+    deleted,
     hasAccount: () => true,
+    async deletePost(_account, uri) {
+      deleted.push(uri);
+      byUri.delete(uri);
+    },
     async repost(account, subject) {
       const uri = `at://did:plc:${account}/app.bsky.feed.repost/r${++n}`;
       reposts.push({ account, uri, subject });

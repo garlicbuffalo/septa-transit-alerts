@@ -1,5 +1,15 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -17,6 +27,16 @@ const FIXTURE_NOW = 1791244200000;
 
 const git = (dir, ...args) =>
   execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+
+/** Whether a checkout still holds an object. */
+function holds(dir, sha) {
+  try {
+    execFileSync('git', ['-C', dir, 'cat-file', '-e', sha], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function bareRemote() {
   const dir = mkdtempSync(join(tmpdir(), 'remote-'));
@@ -88,6 +108,92 @@ describe('publisher', () => {
     expect(git(remote, 'rev-list', '--count', 'data')).toBe('1');
     t += 10 * 60_000;
     expect(await publisher.publish({ changed: 0 })).toMatchObject({ deployed: true });
+  });
+
+  it('keeps no reflog and drops pushed snapshots from the checkout hourly', async () => {
+    const remote = bareRemote();
+    const dataDir = mkdtempSync(join(tmpdir(), 'data-'));
+    let t = FIXTURE_NOW;
+    const publisher = createPublisher({
+      dataDir,
+      github: {
+        repo: 'o/r',
+        token: 't',
+        dataBranch: 'data',
+        deployWorkflow: 'd',
+        deployRef: 'main',
+      },
+      db: openDb(':memory:'),
+      enabled: true,
+      deployMinGapMs: 60 * 60_000,
+      fetchFn: fakeGitHub().fetchFn,
+      now: () => t,
+      remoteUrl: remote,
+    });
+    await publisher.prepare();
+    const pushed = [];
+    for (let i = 0; i < 3; i++) {
+      writeFileSync(join(dataDir, 'alerts-recent.json'), JSON.stringify({ tick: i }));
+      expect(await publisher.publish({ changed: 1 })).toMatchObject({ pushed: true });
+      pushed.push(git(dataDir, 'rev-parse', 'HEAD'));
+      t += 10 * 60_000;
+    }
+    expect(existsSync(join(dataDir, '.git', 'logs'))).toBe(false);
+    // Within the hour every snapshot is still there…
+    expect(pushed.map((c) => holds(dataDir, c))).toEqual([true, true, true]);
+    // …and an hour on, only the one in hand is kept.
+    t += 60 * 60_000;
+    writeFileSync(join(dataDir, 'alerts-recent.json'), JSON.stringify({ tick: 3 }));
+    await publisher.publish({ changed: 1 });
+    const head = git(dataDir, 'rev-parse', 'HEAD');
+    expect(git(remote, 'rev-parse', 'data')).toBe(head);
+    expect(pushed.slice(0, 2).map((c) => holds(dataDir, c))).toEqual([false, false]);
+  });
+
+  it('clears out a checkout that kept every snapshot when it starts', async () => {
+    const remote = bareRemote();
+    const dataDir = mkdtempSync(join(tmpdir(), 'data-'));
+    // A checkout as the publisher used to leave it: a reflog holding every snapshot pushed.
+    git(dataDir, 'init', '-q', '-b', 'data');
+    const old = [];
+    for (let i = 0; i < 3; i++) {
+      writeFileSync(join(dataDir, 'alerts-recent.json'), JSON.stringify({ tick: i }));
+      git(dataDir, 'add', '-A');
+      const tree = git(dataDir, 'write-tree');
+      const commit = git(
+        dataDir,
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@t',
+        'commit-tree',
+        tree,
+        '-m',
+        `s${i}`,
+      );
+      git(dataDir, 'update-ref', 'HEAD', commit);
+      old.push(commit);
+    }
+    git(dataDir, 'push', '-q', remote, 'HEAD:refs/heads/data');
+    const publisher = createPublisher({
+      dataDir,
+      github: {
+        repo: 'o/r',
+        token: 't',
+        dataBranch: 'data',
+        deployWorkflow: 'd',
+        deployRef: 'main',
+      },
+      db: openDb(':memory:'),
+      enabled: true,
+      deployMinGapMs: 0,
+      fetchFn: fakeGitHub().fetchFn,
+      remoteUrl: remote,
+    });
+    expect(await publisher.prepare()).toMatchObject({ fetched: true });
+    expect(git(dataDir, 'config', 'core.logAllRefUpdates')).toBe('false');
+    expect(old.map((c) => holds(dataDir, c))).toEqual([false, false, true]);
+    expect(git(dataDir, 'rev-parse', 'HEAD')).toBe(old[2]);
   });
 
   it('never pushes before it has read the published branch', async () => {
@@ -369,5 +475,46 @@ describe('pipeline', () => {
     expect(summary.hook.alerts.posted).toBeGreaterThan(0);
     const recent = JSON.parse(readFileSync(join(config.dataDir, 'alerts-recent.json'), 'utf8'));
     expect(recent.incidents.some((i) => i.official_alert?.post_url)).toBe(false);
+  });
+
+  it('keeps seven backups, making room first, and skips one the disk has no room for', async () => {
+    const config = loadConfig({ STATE_DIR: mkdtempSync(join(tmpdir(), 'bot-')) });
+    const db = openDb(config.dbPath);
+    let free = 50 * 1024 ** 3;
+    const pipeline = createPipeline({
+      config,
+      db,
+      poster: createPoster({ db, client: fakeLiveClient() }),
+      basemap: null,
+      publisher: null,
+      log: () => {},
+      now: () => FIXTURE_NOW,
+      freeSpace: async () => free,
+    });
+    mkdirSync(config.backupDir, { recursive: true });
+    const old = Array.from({ length: 9 }, (_, i) => `bots-2026-09-0${i + 1}.sqlite`);
+    for (const name of old) writeFileSync(join(config.backupDir, name), 'old');
+    const path = await pipeline.backup();
+    expect(path).toBe(join(config.backupDir, 'bots-2026-10-05.sqlite'));
+    expect(readdirSync(config.backupDir).sort()).toEqual([
+      ...old.slice(3),
+      'bots-2026-10-05.sqlite',
+    ]);
+    expect(openDb(path).pragma('user_version', { simple: true })).toBeGreaterThan(0);
+
+    // No room for a copy: none is started.
+    rmSync(path);
+    free = 100 * 1024 ** 2;
+    expect(await pipeline.backup()).toMatch(/^skipped: 100 MB free/);
+    expect(existsSync(path)).toBe(false);
+
+    // A copy cut short is removed.
+    free = 50 * 1024 ** 3;
+    db.backup = async (p) => {
+      writeFileSync(p, 'partial');
+      throw new Error('ENOSPC: no space left on device');
+    };
+    await expect(pipeline.backup()).rejects.toThrow('ENOSPC');
+    expect(existsSync(path)).toBe(false);
   });
 });

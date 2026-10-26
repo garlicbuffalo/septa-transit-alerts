@@ -253,6 +253,21 @@ describe('Regional Rail recaps', () => {
     });
   });
 
+  it('still covers the Sunday–Saturday week just ended when posted by hand later on', () => {
+    const week = { fromKey: '2026-10-18', toKey: '2026-10-24', label: 'Oct 18 – Oct 24' };
+    // Monday morning, Wednesday afternoon, and late on the Saturday after.
+    for (const ts of [
+      Date.UTC(2026, 9, 26, 13),
+      Date.UTC(2026, 9, 28, 19),
+      Date.UTC(2026, 9, 31, 23),
+    ]) {
+      expect(recapWindow('week', ts)).toEqual(week);
+    }
+    // Saturday's trains run until early Sunday: just after midnight is still Saturday's service.
+    expect(recapWindow('week', Date.UTC(2026, 10, 1, 5))).toEqual(week);
+    expect(recapWindow('week', Date.UTC(2026, 10, 1, 16)).toKey).toBe('2026-10-31');
+  });
+
   it('posts the recap once with its chart, and skips a window it barely saw', async () => {
     const t = testPoster();
     const sunday = Date.UTC(2026, 9, 11, 14, 40);

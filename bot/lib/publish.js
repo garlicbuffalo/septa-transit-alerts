@@ -17,6 +17,13 @@ export const SERVER_MARK = '· server';
 // Push at least this often even without rider-visible changes, so the branch
 // (and the collector state the fallback would resume from) stays fresh.
 const MAX_PUSH_GAP_MS = 10 * 60 * 1000;
+// Every tick leaves the snapshot's changed files in the checkout's object
+// store (about 5 MB a push in October 2026, mostly the two 15 MB archive
+// files), and nothing else ever removed them: a gigabyte or more a day until
+// the service restarted. A pushed snapshot is of no further use here, so the
+// checkout keeps no reflog, and at most this often everything but the
+// snapshot in hand is dropped.
+const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
 function gitEnv(token) {
   const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
@@ -85,6 +92,18 @@ export function createPublisher({
   // doesn't exist yet). Until it does, nothing is pushed: an archive built
   // from an empty directory must never replace the real one.
   let synced = false;
+  let prunedAt = 0;
+
+  /** Drop every object but the snapshot in hand (see PRUNE_EVERY_MS). */
+  async function prune(t) {
+    prunedAt = t;
+    try {
+      await git(['reflog', 'expire', '--expire=now', '--expire-unreachable=now', '--all']);
+      await git(['gc', '--quiet', '--prune=now']);
+    } catch (err) {
+      log(`publish: couldn't prune the data checkout: ${err.message.split('\n')[0]}`);
+    }
+  }
 
   async function sync() {
     await mkdir(dataDir, { recursive: true });
@@ -93,6 +112,10 @@ export function createPublisher({
       await git(['config', 'user.name', 'septa-transit-bots']);
       await git(['config', 'user.email', 'septa-transit-bots@users.noreply.github.com']);
     }
+    // Also for checkouts made before the reflog was turned off: theirs still
+    // holds every snapshot pushed since the last restart.
+    await git(['config', 'core.logAllRefUpdates', 'false']);
+    await prune(now());
     // Reading the published branch needs no token (the repo is public), so
     // dry runs start from the same data the live service would.
     const listed = await git(['ls-remote', '--heads', remote, github.dataBranch]);
@@ -138,6 +161,7 @@ export function createPublisher({
       }
       const t = now();
       if (summary.changed > 0) setMeta(db, 'deploy_pending', '1');
+      if (t - prunedAt >= PRUNE_EVERY_MS) await prune(t);
       await git(['add', '-A']);
       const dirty = (await git(['status', '--porcelain'])).length > 0;
       const lastPush = Number(getMeta(db, 'last_push_ts') ?? 0);
