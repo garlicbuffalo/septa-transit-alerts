@@ -1,0 +1,1 @@
+{"schema_version":1,"updated_ts":1794062503043,"cars":[{"id":"2328","direction":"EastBound","destination":"Richmond-Westmoreland","next_stop":null,"lat":39.974097,"lon":-75.204493,"late_min":9,"first_seen_ts":1794061423011}],"buses":4}
