@@ -316,13 +316,16 @@ export async function rollupSpeeds(db, { shapes, now }) {
 const directionLabel = (text) => text[0].toUpperCase() + text.slice(1).toLowerCase();
 
 /**
- * The week's speeds for each route, as the files the site reads.
+ * The week's speeds for each route, as the files the site reads (`fromKey` and `toKey` pick
+ * other days: both date keys, inclusive).
  * @returns {Map<string, object>} `${mode}|${route}` → file contents
  */
-export function buildSpeedFiles(db, { shapes, now }) {
-  const days = Array.from({ length: HISTORY.days }, (_, i) =>
-    easternDateKey(now - i * DAY_MS),
-  ).reverse();
+export function buildSpeedFiles(db, { shapes, now, fromKey = null, toKey = null }) {
+  // The past week through today, or the days asked for (the weekly slow-zones post).
+  const days =
+    fromKey && toKey
+      ? [fromKey, toKey]
+      : Array.from({ length: HISTORY.days }, (_, i) => easternDateKey(now - i * DAY_MS)).reverse();
   const rows = db
     .prepare(
       `SELECT mode, route, dir, bin, SUM(dist) AS dist, SUM(dt) AS dt, SUM(n) AS n,

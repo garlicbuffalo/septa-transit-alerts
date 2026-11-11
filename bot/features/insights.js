@@ -10,10 +10,13 @@
 //   ended brought more new disruptions across SEPTA than the same hour on any
 //   comparable day (weekday, Saturday, or Sunday) in the past 4 weeks, and
 //   well over the usual (ROUGH_HOUR).
-// - A daily digest at 9:30 PM and a weekly one Sunday morning: unplanned
-//   SEPTA alerts, cancelled trips, gaps and bunching, Regional Rail, elevators
-//   out, the hardest-hit routes, and how the day or week compares with usual.
-//   Each links to the site's day or week page.
+// - A daily digest at 9:30 PM, a weekly one Sunday morning, and a monthly one
+//   on the 1st: unplanned SEPTA alerts, cancelled trips, gaps and bunching,
+//   Regional Rail, elevators out, the hardest-hit routes, and how the day,
+//   week, or month compares with usual. Each links to the site's day or week
+//   page (the month's to the calendar).
+// - A year in review on New Year's Day, as a two-post thread, once the
+//   archive covers enough of the year.
 //
 // The counts come from the site's archive (every incident the collector has
 // kept), so the comparisons work from the archive's first day; Regional Rail's
@@ -23,7 +26,7 @@ import { easternDateKey, easternParts, easternToEpoch } from '../../collector/li
 import { TRIP_CANCELLATIONS } from '../../collector/lib/tripCancellations.js';
 import { isPlannedWork } from '../../src/lib/incidents.js';
 import { SITE_ORIGIN } from '../../src/lib/site.js';
-import { addDays, clockRange, dateRangeLabel, dayLabel } from '../lib/clock.js';
+import { addDays, clockRange, dateRangeLabel, dayLabel, monthLabel } from '../lib/clock.js';
 import { getMeta, setMeta } from '../lib/db.js';
 import { routeShortLabel } from '../lib/routes.js';
 import { graphemeLength, linkFacets, POST_MAX_GRAPHEMES } from '../lib/text.js';
@@ -57,16 +60,23 @@ export const ROUGH_HOUR = {
   perDay: 2,
 };
 
-// Philadelphia times for the digests; the weekly one only on Sundays.
+// Philadelphia times for the digests; the weekly one only on Sundays, the
+// monthly one on the 1st.
 export const DIGEST_SLOTS = {
   day: { hour: 21, minute: 30 },
   week: { weekday: 0, hour: 11, minute: 0 },
+  month: { monthDay: 1, hour: 11, minute: 30 },
 };
 const DIGEST = {
   day: { lookback: 30, span: '30 days', minPrior: 14, like: Infinity },
   week: { lookback: 8, span: '8 weeks', minPrior: 4, like: 4 },
+  month: { lookback: 6, span: '6 months', minPrior: 3, like: 3 },
 };
-const MIN_LIKE = { weekday: 8, Saturday: 3, Sunday: 3, week: 2 };
+const MIN_LIKE = { weekday: 8, Saturday: 3, Sunday: 3, week: 2, month: 2 };
+// The year in review, on New Year's Day, needs the archive to cover this much
+// of the year.
+export const YEAR_SLOT = { month: 1, monthDay: 1, hour: 12, minute: 30 };
+const MIN_YEAR_DAYS = 60;
 // A record needs at least this much to be worth a mention.
 const MIN_RECORD = 3;
 // Regional Rail's on-time share needs this many trains in the tally.
@@ -283,8 +293,9 @@ function activeElevators(outages) {
 
 /**
  * The windows a digest covers, current first: today so far and the same
- * stretch of each earlier day, or last Sunday–Saturday week (the site's
- * /week page) and the weeks before it.
+ * stretch of each earlier day, last Sunday–Saturday week (the site's
+ * /week page) and the weeks before it, or last calendar month and the months
+ * before it.
  */
 function digestWindows(period, now) {
   const today = easternDateKey(now);
@@ -295,6 +306,17 @@ function digestWindows(period, now) {
       const key = addDays(today, -i);
       const to = i === 0 ? now : at(key, hour, minute);
       return { key, fromKey: key, toKey: key, from: at(key), to, type: dayType(key) };
+    });
+  }
+  if (period === 'month') {
+    // The calendar month before this one, and the months before it.
+    let first = `${today.slice(0, 7)}-01`;
+    return Array.from({ length: lookback + 1 }, () => {
+      const toKey = addDays(first, -1);
+      const fromKey = `${toKey.slice(0, 7)}-01`;
+      const w = { key: fromKey, fromKey, toKey, from: at(fromKey), to: at(first), type: 'month' };
+      first = fromKey;
+      return w;
     });
   }
   const lastSaturday = addDays(today, -(keyDate(today).getUTCDay() + 1));
@@ -310,7 +332,7 @@ function digestWindows(period, now) {
  * Everything a digest says: the window's counts, how each compares with
  * earlier windows, Regional Rail's on-time share, elevators out now, and the
  * hardest-hit routes.
- * @param {{ period: 'day' | 'week', incidents: Map<string, object>,
+ * @param {{ period: 'day' | 'week' | 'month', incidents: Map<string, object>,
  *   outages?: Map<string, object>, db: object, now: number, dataStartTs?: number | null }} opts
  */
 export function digestStats({ period, incidents, outages, db, now, dataStartTs = null }) {
@@ -392,14 +414,29 @@ function hardestLine(hardest) {
   return hardest.map((_, i) => `Hardest hit: ${hardest.slice(0, hardest.length - i).join(' · ')}`);
 }
 
+/** The day with the most disruptions among some events: { key, count }, or null. */
+export function roughestDay(items) {
+  const byDay = new Map();
+  for (const e of items) {
+    const key = easternDateKey(e.ts);
+    byDay.set(key, (byDay.get(key) ?? 0) + 1);
+  }
+  const [top] = [...byDay].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return top ? { key: top[0], count: top[1] } : null;
+}
+
 /** The digest's post text, link, and link card. */
 export function composeDigest(stats) {
   const { period, current: w, results, rail, elevators, hardest, now } = stats;
   const day = period === 'day';
+  const month = period === 'month';
   const when = day
     ? `${WEEKDAY.format(keyDate(w.key))}, ${dayLabel(w.key)}`
-    : dateRangeLabel(w.fromKey, w.toKey);
-  const head = `📊 SEPTA ${day ? 'today' : 'last week'} · ${when}`;
+    : month
+      ? monthLabel(w.key)
+      : dateRangeLabel(w.fromKey, w.toKey);
+  const head = month ? `📊 SEPTA in ${when}` : `📊 SEPTA ${day ? 'today' : 'last week'} · ${when}`;
+  const rough = month ? roughestDay(w.items) : null;
   const facts = [
     {
       rank: 1,
@@ -416,30 +453,40 @@ export function composeDigest(stats) {
           : null,
     },
     { rank: 3, text: railLine(rail, w) },
-    { rank: 6, text: elevatorLine(elevators, now) },
+    // A month's elevator count would be the ones out today, not the month's.
+    { rank: 6, text: month ? null : elevatorLine(elevators, now) },
+    {
+      rank: 5,
+      text:
+        rough && rough.count >= MIN_RECORD
+          ? `🔥 Roughest day: ${dayLabel(rough.key)} (${plural(rough.count, 'disruption')})`
+          : null,
+    },
   ];
-  const usualName = day ? w.type : 'week';
+  const usualName = day ? w.type : period;
   // The takeaway first, then the numbers.
   const verdict = {
     rank: 0,
     text: comparisonLine(results, { span: DIGEST[period].span, usualName }),
   };
-  const url = `${SITE_ORIGIN}/${day ? 'day' : 'week'}/${w.key}`;
+  const url = month ? `${SITE_ORIGIN}/calendar` : `${SITE_ORIGIN}/${day ? 'day' : 'week'}/${w.key}`;
   return {
     text: fitSections(head, [[verdict], facts, [{ rank: 5, text: hardestLine(hardest) }]]),
     link: {
       url,
-      title: day ? `SEPTA on ${when}` : `SEPTA, week of ${when}`,
+      title: day ? `SEPTA on ${when}` : month ? `SEPTA in ${when}` : `SEPTA, week of ${when}`,
       description: day
         ? 'Every alert and disruption of the day, on SEPTA Transit Alerts.'
-        : 'Every alert and disruption of the week, on SEPTA Transit Alerts.',
+        : month
+          ? 'Every day of the month, on the SEPTA Transit Alerts calendar.'
+          : 'Every alert and disruption of the week, on SEPTA Transit Alerts.',
       thumbUrl: `${url}/og.png`,
       fallbackThumbUrl: `${SITE_ORIGIN}/og-image.png`,
     },
   };
 }
 
-/** Post a digest now (once per day or week). */
+/** Post a digest now (once per day, week, or month). */
 export async function postDigest({
   period,
   incidents,
@@ -464,7 +511,7 @@ export async function postDigest({
   return { posted: period, url: res.url };
 }
 
-/** Post the day's digest after its slot, and Sundays the past week's. */
+/** Post the day's digest after its slot, Sundays the past week's, and on the 1st the past month's. */
 export async function maybePostDigests({ poster, db, now, ...rest }) {
   if (!poster.client.hasAccount(INSIGHTS_ACCOUNT)) return null;
   const today = easternDateKey(now);
@@ -473,12 +520,168 @@ export async function maybePostDigests({ poster, db, now, ...rest }) {
   for (const [period, slot] of Object.entries(DIGEST_SLOTS)) {
     if (hour * 60 + minute < slot.hour * 60 + slot.minute) continue;
     if (slot.weekday != null && keyDate(today).getUTCDay() !== slot.weekday) continue;
+    if (slot.monthDay != null && Number(today.slice(8)) !== slot.monthDay) continue;
     const key = metaKey(poster, `digest_${period}`);
     if (getMeta(db, key) === today) continue;
     setMeta(db, key, today);
     out[period] = await postDigest({ period, poster, db, now, ...rest });
   }
   return Object.keys(out).length ? out : null;
+}
+
+// ── Year in review ──────────────────────────────────────────────────────────
+
+/**
+ * A calendar year's figures, from the first day the archive covers: the same
+ * counts as the digests, Regional Rail's on-time share, the roughest day, the
+ * hardest-hit routes, and the route with the most cancelled trips.
+ * @param {{ year: number, incidents: Map<string, object>, db: object, dataStartTs?: number | null }} opts
+ */
+export function yearStats({ year, incidents, db, dataStartTs = null }) {
+  const firstKey = `${year}-01-01`;
+  const lastKey = `${year}-12-31`;
+  const startKey =
+    dataStartTs != null && easternDateKey(dataStartTs) > firstKey
+      ? easternDateKey(dataStartTs)
+      : firstKey;
+  const from = at(startKey);
+  const to = at(`${year + 1}-01-01`);
+  const counts = tally(disruptionEvents(incidents, from), from, to);
+  let trips = 0;
+  const tripsByRoute = new Map();
+  for (const inc of incidents.values()) {
+    const det = inc.detections?.[0];
+    if (det?.source !== TRIP_CANCELLATIONS) continue;
+    const { service_date: date, cancelled } = det.evidence?.details ?? {};
+    if (!date || !(cancelled > 0) || date < startKey || date > lastKey) continue;
+    trips += cancelled;
+    const key = `${inc.mode}|${inc.routes?.[0]}`;
+    tripsByRoute.set(key, (tripsByRoute.get(key) ?? 0) + cancelled);
+  }
+  const [mostCancelled] = [...tripsByRoute].sort((a, b) => b[1] - a[1]);
+  return {
+    year,
+    startKey,
+    partial: startKey > firstKey,
+    days: Math.round((to - from) / DAY_MS),
+    counts,
+    trips,
+    rail: railRecapStats(db, { fromKey: startKey, toKey: lastKey }),
+    roughest: roughestDay(counts.items),
+    hardest: hardestHit(counts.items, { min: 3, max: 3 }),
+    mostCancelled: mostCancelled
+      ? {
+          mode: mostCancelled[0].split('|')[0],
+          route: mostCancelled[0].split('|')[1],
+          n: mostCancelled[1],
+        }
+      : null,
+  };
+}
+
+/** The year in review as a two-post thread: the totals, then the standouts. */
+export function composeYear(stats) {
+  const { year, counts: w, trips, rail, roughest, hardest, mostCancelled } = stats;
+  const head = `🎆 SEPTA's ${year} in review${stats.partial ? ` · since ${dayLabel(stats.startKey)}` : ''}`;
+  const totals = fitSections(head, [
+    [
+      { rank: 1, text: `⚠️ ${plural(w.alert, 'unplanned SEPTA alert')}` },
+      { rank: 2, text: trips ? `🚫 ${plural(trips, 'bus and Metro trip')} cancelled` : null },
+      {
+        rank: 3,
+        text:
+          w.gap || w.bunch
+            ? `🕳️ ${plural(w.gap, 'long gap')} and ${plural(w.bunch, 'bunch', 'bunches')} on buses and trolleys`
+            : null,
+      },
+      { rank: 2, text: railLine(rail, w) },
+    ],
+    [{ rank: 4, text: 'What this archive recorded; real totals may be higher.' }],
+  ]);
+  const standouts = fitSections(`${year}'s standouts:`, [
+    [
+      {
+        rank: 1,
+        text: roughest
+          ? `🔥 Roughest day: ${dayLabel(roughest.key)} (${plural(roughest.count, 'disruption')})`
+          : null,
+      },
+      { rank: 2, text: hardestLine(hardest) },
+      {
+        rank: 3,
+        text: mostCancelled
+          ? `🚫 Most cancelled trips: ${routeShortLabel(mostCancelled.mode, mostCancelled.route)} (${mostCancelled.n.toLocaleString('en-US')})`
+          : null,
+      },
+      {
+        rank: 4,
+        text:
+          rail?.worst && rail.worst.max_late > ON_TIME_MAX
+            ? `🚆 Longest train delay: ${rail.worst.max_late} min, #${rail.worst.train_no} (${dayLabel(rail.worst.service_date)})`
+            : null,
+      },
+    ],
+    [{ rank: 0, text: `🔗 ${SITE_HOST}/calendar` }],
+  ]);
+  return {
+    totals,
+    standouts,
+    facets: linkFacets(standouts, [
+      { text: `${SITE_HOST}/calendar`, uri: `${SITE_ORIGIN}/calendar` },
+    ]),
+  };
+}
+
+/** Post the year in review for the calendar year before `now`'s (once per year). */
+export async function postYearInReview({
+  incidents,
+  db,
+  poster,
+  now,
+  dataStartTs,
+  log = () => {},
+}) {
+  if (!poster.client.hasAccount(INSIGHTS_ACCOUNT)) return null;
+  const year = easternParts(now).year - 1;
+  const subject = `year:${year}`;
+  if (poster.find(subject, 'year-standouts')) return { skipped: 'posted' };
+  const stats = yearStats({ year, incidents, db, dataStartTs });
+  if (stats.days < MIN_YEAR_DAYS || !stats.counts.total) {
+    log(
+      `insights: ${year} in review skipped, the archive covers ${Math.max(0, stats.days)} days of it`,
+    );
+    return { skipped: 'too-little-data', days: stats.days };
+  }
+  const { totals, standouts, facets } = composeYear(stats);
+  const first =
+    poster.find(subject, 'year') ??
+    (await poster.post({
+      account: INSIGHTS_ACCOUNT,
+      kind: 'year',
+      subject,
+      text: totals,
+    }));
+  const res = await poster.post({
+    account: INSIGHTS_ACCOUNT,
+    kind: 'year-standouts',
+    subject,
+    text: standouts,
+    facets,
+    reply: first.uri,
+  });
+  return { posted: year, url: res.url };
+}
+
+/** On New Year's Day, after its slot, post the year just ended. */
+export async function maybePostYearInReview({ poster, db, now, ...rest }) {
+  if (!poster.client.hasAccount(INSIGHTS_ACCOUNT)) return null;
+  const p = easternParts(now);
+  if (p.month !== YEAR_SLOT.month || p.day !== YEAR_SLOT.monthDay) return null;
+  if (p.hour * 60 + p.minute < YEAR_SLOT.hour * 60 + YEAR_SLOT.minute) return null;
+  const key = metaKey(poster, 'year');
+  if (Number(getMeta(db, key)) === p.year) return null;
+  setMeta(db, key, p.year);
+  return postYearInReview({ poster, db, now, ...rest });
 }
 
 // ── Rough hours ─────────────────────────────────────────────────────────────

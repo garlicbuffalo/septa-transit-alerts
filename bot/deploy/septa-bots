@@ -10,7 +10,11 @@
 #   sudo septa-bots speedmap metro m1 the same, of one route (if it has data this hour)
 #   sudo septa-bots recap rail week   post a recap now (week or month)
 #   sudo septa-bots halloffame bus    post a Hall of Fame thread now (bus, metro, rail)
-#   sudo septa-bots digest day        post the insights digest now (day or week)
+#   sudo septa-bots digest day        post the insights digest now (day, week or month)
+#   sudo septa-bots year              post the insights review of last year now
+#   sudo septa-bots outlook briefing  post an outlook post now (briefing, weekend, headsup, schedulechange)
+#   sudo septa-bots slowzones bus     post the week's slowest stretches now (bus, metro)
+#   sudo septa-bots latetrains        post the most-often-late Regional Rail trains now
 #   sudo septa-bots logs       follow the service log
 #   sudo septa-bots status     service status
 #   sudo septa-bots update     pull the latest code and restart
@@ -23,7 +27,7 @@ case "${1:-}" in
   logs) exec journalctl -u septa-bots -f -o cat ;;
   status) exec systemctl --no-pager status septa-bots ;;
   update) exec bash "$APP_DIR/bot/deploy/setup.sh" ;;
-  check | once | map | snapshot | speedmap | recap | halloffame | digest)
+  check | once | map | snapshot | speedmap | recap | halloffame | digest | year | outlook | slowzones | latetrains)
     if [[ $EUID -ne 0 ]]; then
       echo "Run with sudo (it reads ${ENV_FILE})." >&2
       exit 1
@@ -38,7 +42,7 @@ case "${1:-}" in
     exec runuser -u septa-bots --preserve-environment -- node bot/cli.js "$@"
     ;;
   *)
-    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac
