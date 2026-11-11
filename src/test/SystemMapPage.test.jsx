@@ -563,4 +563,76 @@ describe('SystemMapPage', () => {
       });
     });
   });
+
+  describe('the slow-zones layer', () => {
+    const SLOW = {
+      schema_version: 1,
+      generated_at: Date.now(),
+      from_day: '2026-11-04',
+      to_day: '2026-11-10',
+      zones: [
+        {
+          mode: 'bus',
+          route: '21',
+          dir: '0',
+          direction: 'Eastbound',
+          mph: 3.9,
+          route_mph: 7.2,
+          name: 'Chestnut St, 17th St to 12th St',
+          points: LINE,
+        },
+        {
+          mode: 'metro',
+          route: 't2',
+          dir: '1',
+          direction: 'Westbound',
+          mph: 6.5,
+          name: null,
+          points: LINE,
+        },
+      ],
+    };
+    const slowFetches = () =>
+      fetch.mock.calls.filter(([url]) => String(url).endsWith('/slow-zones.json')).length;
+
+    it('is off until asked for, then draws the zones over the lines and lists them', async () => {
+      const { __resetPublishedFiles } = await import('../lib/publishedFiles.js');
+      __resetPublishedFiles();
+      serve({ 'system-map.json': SYSTEM_MAP, 'slow-zones.json': SLOW });
+      await openAt();
+      expect(slowFetches()).toBe(0);
+      expect(screen.queryByRole('heading', { name: /Slowest stretches/ })).not.toBeInTheDocument();
+      await userEvent.click(chip('Slow zones'));
+      const list = await screen.findByRole('region', { name: /Slowest stretches/ });
+      expect(chip('Slow zones')).toHaveAttribute('aria-pressed', 'true');
+      expect(window.location.search).toBe('?layer=slow');
+      // In the speed maps' colours: under 5 mph is red, 5–10 orange.
+      expect(JSON.parse(screen.getByTestId('highlight-colors').textContent)).toEqual([
+        '#ff8c1a',
+        '#ff2a2a',
+      ]);
+      const rows = within(list).getAllByRole('row').slice(1);
+      expect(rows.map((r) => r.textContent)).toEqual([
+        expect.stringContaining('Route 21Chestnut St, 17th St to 12th St · Eastbound3.9 mph'),
+        expect.stringContaining('T2Westbound6.5 mph'),
+      ]);
+      expect(within(rows[0]).getByRole('link', { name: 'Route 21' })).toHaveAttribute(
+        'href',
+        '/route/21',
+      );
+      // Narrowing the map to a mode narrows the zones with it.
+      await userEvent.click(chip('SEPTA Metro'));
+      expect(
+        within(screen.getByRole('region', { name: /Slowest stretches/ })).getAllByRole('row'),
+      ).toHaveLength(2);
+    });
+
+    it('opens from a link, and says so when the file is missing', async () => {
+      const { __resetPublishedFiles } = await import('../lib/publishedFiles.js');
+      __resetPublishedFiles();
+      await openAt('?layer=slow');
+      expect(await screen.findByText(/Slow zones aren’t available right now/)).toBeInTheDocument();
+      expect(slowFetches()).toBe(1);
+    });
+  });
 });

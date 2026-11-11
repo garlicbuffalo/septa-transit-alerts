@@ -2,8 +2,10 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useBrowseData } from '../hooks/useBrowseData.js';
 import { useDarkMode } from '../hooks/useDarkMode.js';
 import { topLevelTrail } from '../lib/breadcrumbs.js';
+import { loadSlowZones } from '../lib/publishedFiles.js';
 import { loadSystemMapShapes } from '../lib/routeMaps.js';
 import { SITE_NAME } from '../lib/site.js';
+import { slowZoneBands, slowZoneLines, slowZoneRows, wantsSlowZones } from '../lib/slowZones.js';
 import {
   BUS_COLOR,
   buildBusLayer,
@@ -196,6 +198,11 @@ export default function SystemMapPage() {
   // Rail are bundled with the site and are there from the start.
   const [bus, setBus] = useState({ status: 'idle', layer: null });
   const busRequested = useRef(false);
+  // The slow-zones layer (?layer=slow): the past week's slowest stretches, from a file the
+  // bot server publishes, fetched the first time the layer is turned on.
+  const [slowOn, setSlowOn] = useState(() => wantsSlowZones(window.location.search));
+  const [slow, setSlow] = useState({ status: 'idle', file: null });
+  const slowRequested = useRef(false);
 
   useEffect(() => {
     document.title = `System map · ${SITE_NAME}`;
@@ -210,11 +217,22 @@ export default function SystemMapPage() {
     const value = modesParam(modes);
     if (value == null) params.delete('modes');
     else params.set('modes', value);
+    if (slowOn) params.set('layer', 'slow');
+    else params.delete('layer');
     const qs = params.toString().replace(/%2C/g, ',');
     const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`;
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     if (next !== current) window.history.replaceState(null, '', next);
-  }, [modes]);
+  }, [modes, slowOn]);
+
+  useEffect(() => {
+    if (!slowOn || slowRequested.current) return;
+    slowRequested.current = true;
+    setSlow({ status: 'loading', file: null });
+    loadSlowZones().then((file) => {
+      setSlow(file ? { status: 'ready', file } : { status: 'unavailable', file: null });
+    });
+  }, [slowOn]);
 
   // Fetch the bus routes the first time they're wanted, once.
   const wantBus = modes.includes('bus');
@@ -240,6 +258,16 @@ export default function SystemMapPage() {
   // The pinned routes are outlined in a layer of their own, so pinning (and letting go of
   // the pin as the map moves) doesn't redraw every line on the map.
   const outlined = useMemo(() => highlightLines(baseLines, pinnedIds), [baseLines, pinnedIds]);
+  const slowRows = useMemo(
+    () => (slowOn ? slowZoneRows(slow.file, modes) : []),
+    [slowOn, slow.file, modes],
+  );
+  // Drawn over every line, with the pinned routes' outlines.
+  const overlay = useMemo(
+    () => (slowRows.length ? [...outlined, ...slowZoneLines(slowRows)] : outlined),
+    [outlined, slowRows],
+  );
+  const slowBands = useMemo(() => slowZoneBands(slowRows), [slowRows]);
   const stops = useMemo(() => visibleStops(modes), [modes]);
   const dots = useMemo(() => (pin ? [{ id: 'pin', point: [pin.lat, pin.lon] }] : NO_DOTS), [pin]);
 
@@ -350,6 +378,16 @@ export default function SystemMapPage() {
                 </button>
               );
             })}
+            <span aria-hidden="true" className="mx-1 h-5 w-px bg-slate-200 dark:bg-gh-border" />
+            <button
+              type="button"
+              onClick={() => setSlowOn((on) => !on)}
+              aria-pressed={slowOn}
+              className={`${CHIP} ${slowOn ? CHIP_ON : CHIP_OFF}`}
+            >
+              <Swatch color="#ff2a2a" height={4} />
+              Slow zones
+            </button>
           </fieldset>
 
           <div className="bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border p-3 sm:p-4">
@@ -358,7 +396,7 @@ export default function SystemMapPage() {
                 label="Map of the SEPTA system"
                 fit={SYSTEM_FIT}
                 lines={baseLines}
-                highlight={outlined}
+                highlight={overlay}
                 dots={dots}
                 stops={stops}
                 stopZoom={STATION_ZOOM}
@@ -381,6 +419,21 @@ export default function SystemMapPage() {
                   Loading bus routes…
                 </p>
               )}
+              {slowOn && slow.status === 'loading' && (
+                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                  Loading slow zones…
+                </p>
+              )}
+              {slowOn &&
+                slow.status !== 'loading' &&
+                slow.status !== 'idle' &&
+                slowRows.length === 0 && (
+                  <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">
+                    {slow.status === 'unavailable'
+                      ? 'Slow zones aren’t available right now. They come from the project’s bot server.'
+                      : 'No slow zones for the modes on show. They cover buses and SEPTA Metro.'}
+                  </p>
+                )}
               {wantBus && bus.status === 'unavailable' && (
                 <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">
                   Bus route lines aren’t available right now, so only the other modes are drawn.
@@ -413,6 +466,12 @@ export default function SystemMapPage() {
                   Bus routes
                 </li>
               )}
+              {slowBands.map((band) => (
+                <li key={band.label} className="inline-flex items-center gap-1.5">
+                  <Swatch color={band.color} height={6} />
+                  Slow zone, {band.label}
+                </li>
+              ))}
             </ul>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
               Metro and Regional Rail stations appear as you zoom in. Bus stops aren’t shown, but
@@ -420,6 +479,77 @@ export default function SystemMapPage() {
               top.
             </p>
           </div>
+
+          {slowRows.length > 0 && (
+            <section
+              aria-labelledby="slow-zones-heading"
+              className="mt-4 bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border overflow-hidden"
+            >
+              <div className="p-4 border-b border-slate-100 dark:border-gh-border">
+                <h2
+                  id="slow-zones-heading"
+                  className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                >
+                  Slowest stretches · past 7 days
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  The slowest half mile or so of each route and direction, averaged over the week
+                  with stops included. Layovers at the ends of a route don’t count.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <tr className="border-b border-slate-100 dark:border-gh-border">
+                      <th scope="col" className="p-3 text-left font-semibold">
+                        Route
+                      </th>
+                      <th scope="col" className="p-3 text-left font-semibold">
+                        Where
+                      </th>
+                      <th scope="col" className="p-3 text-right font-semibold">
+                        Speed
+                      </th>
+                      <th scope="col" className="hidden sm:table-cell p-3 text-right font-semibold">
+                        Route average
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-gh-border">
+                    {slowRows.slice(0, 25).map((z) => (
+                      <tr key={z.id}>
+                        <td className="p-3 whitespace-nowrap">
+                          <a href={z.href} className="font-semibold text-blue-500 hover:underline">
+                            {z.label}
+                          </a>
+                        </td>
+                        <td className="p-3 text-slate-600 dark:text-slate-300">
+                          {z.name ?? z.direction}
+                          {z.name && z.direction && (
+                            <span className="text-slate-400 dark:text-slate-500">
+                              {' '}
+                              · {z.direction}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right tabular-nums whitespace-nowrap text-slate-800 dark:text-slate-100">
+                          <span
+                            aria-hidden="true"
+                            className="mr-1.5 inline-block h-2 w-2 rounded-full"
+                            style={{ backgroundColor: z.band.color }}
+                          />
+                          {z.mph.toFixed(1)} mph
+                        </td>
+                        <td className="hidden sm:table-cell p-3 text-right tabular-nums text-slate-500 dark:text-slate-400">
+                          {z.route_mph?.toFixed(1) ?? '–'} mph
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </div>
       </main>
       <Footer />

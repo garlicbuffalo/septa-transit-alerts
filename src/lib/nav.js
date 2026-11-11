@@ -14,15 +14,18 @@ export const PRIMARY_NAV = [
 
 // Which PRIMARY_NAV entry a path belongs to, or null for pages outside the
 // tabs (About, Privacy, a 404). Detail pages light up their parent tab: a line
-// or route page sits under Routes, a station page under Stations, and the
-// day/week/stats/compare views under History.
+// or route page sits under Routes, a station page under Stations, the
+// day/week/stats/compare/scorecards views under History, and planned work and
+// schedule changes under Now.
 export function activeNavKey(pathname) {
   const path = (pathname || '/').replace(/\/+$/, '') || '/';
   if (path === '/' || path.startsWith('/event/') || path.startsWith('/system/')) return 'now';
+  // What's coming sits with what's happening now.
+  if (/^\/(planned|schedule-changes)(\/|$)/.test(path)) return 'now';
   if (/^\/(routes|line|route|rail\/line)(\/|$)/.test(path)) return 'routes';
   if (/^\/map(\/|$)/.test(path)) return 'map';
   if (/^\/(stations|station|rail\/station)(\/|$)/.test(path)) return 'stations';
-  if (/^\/(calendar|day|week|stats|compare)(\/|$)/.test(path)) return 'history';
+  if (/^\/(calendar|day|week|stats|compare|scorecards)(\/|$)/.test(path)) return 'history';
   if (/^\/subscribe(\/|$)/.test(path)) return 'follow';
   return null;
 }

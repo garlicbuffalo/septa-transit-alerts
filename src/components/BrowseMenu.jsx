@@ -204,6 +204,24 @@ export default function BrowseMenu({ alerts, observations, align = 'right' }) {
                 </span>
                 Stats
               </a>
+              <a href="/scorecards" role="menuitem" className={ROW_LINK}>
+                <span aria-hidden="true" className="w-5 shrink-0 text-center">
+                  🏆
+                </span>
+                Scorecards
+              </a>
+              <a href="/planned" role="menuitem" className={ROW_LINK}>
+                <span aria-hidden="true" className="w-5 shrink-0 text-center">
+                  🚧
+                </span>
+                Planned work
+              </a>
+              <a href="/schedule-changes" role="menuitem" className={ROW_LINK}>
+                <span aria-hidden="true" className="w-5 shrink-0 text-center">
+                  🕒
+                </span>
+                Schedule changes
+              </a>
               <a href="/map" role="menuitem" className={ROW_LINK}>
                 <span aria-hidden="true" className="w-5 shrink-0 text-center">
                   🗺️

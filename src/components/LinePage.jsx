@@ -52,6 +52,7 @@ import PccBanner from './PccBanner.jsx';
 import RailCancellationDelayStats from './RailCancellationDelayStats.jsx';
 import RailUpcomingCancellations from './RailUpcomingCancellations.jsx';
 import RouteMap from './RouteMap.jsx';
+import RouteScorecard from './RouteScorecard.jsx';
 import { SignalBreakdownSingleRoute } from './SignalBreakdown.jsx';
 import SpeedMap from './SpeedMap.jsx';
 import Timeline from './Timeline.jsx';
@@ -731,6 +732,12 @@ export default function LinePage({ kind, lineId }) {
               route={effectiveLineId}
               label={isMetro ? `${heading} line` : heading}
               mode={isRail ? 'rail' : isMetro ? 'metro' : 'bus'}
+            />
+
+            {/* Last week's score, from the bot server's scorecards. */}
+            <RouteScorecard
+              mode={isRail ? 'rail' : isMetro ? 'metro' : 'bus'}
+              route={effectiveLineId}
             />
 
             {isLine && <AccessibilityOutagesSection outages={lineOutages} />}
