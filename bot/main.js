@@ -84,6 +84,19 @@ for (const [account, spec] of [
     log(`hall of fame ${account}: ${JSON.stringify(await pipeline.hallOfFame(account))}`),
   );
 }
+// Sundays after the recaps: the week's slowest stretches (bus, metro), and the
+// Regional Rail trains late most often over the past four weeks.
+for (const [account, spec] of [
+  ['bus', '10 11 * * 0'],
+  ['metro', '15 11 * * 0'],
+]) {
+  scheduler.cron(`slowzones-${account}`, spec, async () =>
+    log(`slow zones ${account}: ${JSON.stringify(await pipeline.slowZones(account))}`),
+  );
+}
+scheduler.cron('late-trains', '20 11 * * 0', async () =>
+  log(`late trains: ${JSON.stringify(await pipeline.lateTrains())}`),
+);
 scheduler.cron('housekeeping', '7 * * * *', async () => {
   const r = await pipeline.housekeeping();
   log(

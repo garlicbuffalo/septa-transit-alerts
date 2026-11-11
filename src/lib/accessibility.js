@@ -196,3 +196,120 @@ function addWeeklyDurations(buckets, start, end, cutoff) {
     cursor = next;
   }
 }
+
+// --- Elevator reliability -------------------------------------------------------
+// SEPTA's feed lists only the elevators that are out, so an elevator is known
+// here once it has been out at least once. Its uptime is over the part of the
+// window the archive covers; an elevator that has never appeared has, as far as
+// the archive can tell, been up throughout.
+
+const median = (values) => {
+  const s = [...values].sort((a, b) => a - b);
+  if (!s.length) return null;
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+};
+
+/**
+ * Each elevator's record over the window: how many times it went out, how long
+ * it was down in all, its uptime (the share of the covered window it wasn't
+ * down), its longest outage, and how long a repair usually took (the median of
+ * its finished outages). Most outages first, then most downtime.
+ * @param {object[]} outages
+ * @param {{ now?: number, windowDays?: number, dataStartTs?: number | null,
+ *   kind?: 'metro' | 'rail' | null, line?: string | null }} [opts]
+ */
+export function elevatorReliability(
+  outages = [],
+  { now = Date.now(), windowDays = 90, dataStartTs = null, kind = null, line = null } = {},
+) {
+  const from = Math.max(now - windowDays * DAY_MS, dataStartTs ?? 0);
+  const span = Math.max(1, now - from);
+  const byUnit = new Map();
+  for (const outage of outages) {
+    const outKind = outageKind(outage);
+    if (kind && outKind !== kind) continue;
+    if (!outageHasLine(outage, line)) continue;
+    const start = outage.lifecycle?.first_seen_ts;
+    if (start == null) continue;
+    const active = !!outage.lifecycle?.active;
+    const end = outage.lifecycle?.restored_ts ?? (active ? now : null);
+    if (end == null || end < from) continue;
+    const key = outage.unit_key ?? `${outKind}:${outage.station?.slug}:${outage.unit_label}`;
+    if (!byUnit.has(key)) {
+      byUnit.set(key, {
+        key,
+        kind: outKind,
+        slug: outage.station?.slug ?? null,
+        name: stationLabel(outage),
+        lines: outage.station?.lines || [],
+        unit: outage.unit_label || 'Elevator',
+        outageCount: 0,
+        totalDownMs: 0,
+        longestMs: 0,
+        currentlyOut: false,
+        lastStartTs: 0,
+        repairs: [],
+      });
+    }
+    const rec = byUnit.get(key);
+    const boundedStart = Math.max(start, from);
+    rec.outageCount += 1;
+    rec.totalDownMs += Math.max(0, end - boundedStart);
+    rec.longestMs = Math.max(rec.longestMs, end - start);
+    rec.lastStartTs = Math.max(rec.lastStartTs, start);
+    if (active) rec.currentlyOut = true;
+    else rec.repairs.push(end - start);
+  }
+  return [...byUnit.values()]
+    .map(({ repairs, ...rec }) => ({
+      ...rec,
+      uptime: Math.max(0, 1 - rec.totalDownMs / span),
+      typicalRepairMs: median(repairs),
+      windowMs: span,
+    }))
+    .sort(
+      (a, b) =>
+        b.outageCount - a.outageCount ||
+        b.totalDownMs - a.totalDownMs ||
+        a.name.localeCompare(b.name) ||
+        a.unit.localeCompare(b.unit),
+    );
+}
+
+/**
+ * The headline figures over the same rows: how many elevators went out, how
+ * many more than once, how long a repair usually took across all of them, and
+ * the days the window really covers.
+ */
+export function reliabilitySummary(
+  outages = [],
+  { now = Date.now(), windowDays = 90, dataStartTs = null, kind = null, line = null } = {},
+) {
+  const rows = elevatorReliability(outages, { now, windowDays, dataStartTs, kind, line });
+  const from = Math.max(now - windowDays * DAY_MS, dataStartTs ?? 0);
+  const repairs = [];
+  for (const outage of outages) {
+    if (kind && outageKind(outage) !== kind) continue;
+    if (!outageHasLine(outage, line)) continue;
+    const { first_seen_ts: start, restored_ts: end, active } = outage.lifecycle ?? {};
+    if (start == null || end == null || active || end < from) continue;
+    repairs.push(end - start);
+  }
+  const worst = [...rows].sort((a, b) => a.uptime - b.uptime)[0] ?? null;
+  return {
+    elevators: rows.length,
+    repeat: rows.filter((r) => r.outageCount >= 2).length,
+    outages: rows.reduce((n, r) => n + r.outageCount, 0),
+    typicalRepairMs: median(repairs),
+    longestRepairMs: repairs.length ? Math.max(...repairs) : null,
+    worst,
+    coveredDays: Math.max(1, Math.round((now - from) / DAY_MS)),
+  };
+}
+
+/** An uptime share as "99.2%"; "99.9%+" for one that rounds to all of it. */
+export function formatUptime(share) {
+  if (share >= 0.9995) return '99.9%+';
+  return `${(share * 100).toFixed(1)}%`;
+}

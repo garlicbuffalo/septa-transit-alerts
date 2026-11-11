@@ -10,14 +10,19 @@ import {
   comparisonLine,
   composeDigest,
   composeRoughHour,
+  composeYear,
   digestStats,
   disruptionEvents,
   fitSections,
   maybePostDigests,
   maybePostRoughHour,
+  maybePostYearInReview,
+  postDigest,
   REPOST_LIMITS,
   repostHighlights,
+  roughestDay,
   roughHour,
+  yearStats,
 } from '../features/insights.js';
 import { recordTrains } from '../features/rail.js';
 import { createDryRunClient } from '../lib/bluesky.js';
@@ -502,5 +507,164 @@ describe('digests', () => {
     });
     expect(res).toEqual({ day: { skipped: 'no-data' } });
     expect(t.client.posts).toHaveLength(0);
+  });
+});
+
+describe('the monthly digest', () => {
+  // Sunday, Nov 1, 2026, 11:31 AM: the month is October, against the months before.
+  const FIRST = at('2026-11-01', 11, 31);
+  /** Every day from `from` to `to`: an alert, some gaps and bunches, and cancelled trips. */
+  function days(from, to, { gaps = 2, cancelled = 20, extra = null } = {}) {
+    const list = [];
+    for (let key = from; key <= to; key = addDays(key, 1)) {
+      list.push(alert(at(key, 9)), trips(key, cancelled));
+      for (let n = 0; n < gaps; n++) list.push(det('gap', at(key, 10, n)));
+      list.push(det('bunching', at(key, 11)));
+      if (extra?.[key]) for (let n = 0; n < extra[key]; n++) list.push(det('gap', at(key, 14, n)));
+    }
+    return list;
+  }
+  const archive = () =>
+    asMap([
+      ...days('2026-06-01', '2026-09-30'),
+      // October: three times the cancellations, and one very rough day.
+      ...days('2026-10-01', '2026-10-31', { cancelled: 60, extra: { '2026-10-14': 30 } }),
+      det('gap', at('2026-11-01', 8)),
+    ]);
+
+  it('covers the calendar month just ended, against the months before', () => {
+    const { db } = testPoster();
+    const stats = digestStats({ period: 'month', incidents: archive(), db, now: FIRST });
+    expect(stats.current).toMatchObject({
+      key: '2026-10-01',
+      fromKey: '2026-10-01',
+      toKey: '2026-10-31',
+      type: 'month',
+      alert: 31,
+      gap: 92,
+      bunch: 31,
+      trips: 31 * 60,
+    });
+    const cancelled = stats.results.find((r) => r.metric.more === 'cancelled trips');
+    expect(cancelled).toMatchObject({ value: 1860, record: true });
+    expect(cancelled.usual).toBeGreaterThan(590);
+    expect(cancelled.usual).toBeLessThan(630);
+  });
+
+  it('names the month, its roughest day, and links to the calendar', () => {
+    const { db } = testPoster();
+    const { text, link } = composeDigest(
+      digestStats({ period: 'month', incidents: archive(), db, now: FIRST }),
+    );
+    const lines = text.split('\n');
+    expect(lines[0]).toBe('📊 SEPTA in October 2026');
+    expect(text).toContain('📈 Most cancelled trips in 6 months · most long gaps in 6 months');
+    expect(text).toContain('🚫 1,860 bus and Metro trips cancelled');
+    expect(text).toContain('🔥 Roughest day: Oct 14 (34 disruptions)');
+    expect(text).not.toContain('elevator');
+    expect(graphemeLength(text)).toBeLessThanOrEqual(300);
+    expect(link.url).toBe(`${SITE_ORIGIN}/calendar`);
+    expect(link.title).toBe('SEPTA in October 2026');
+  });
+
+  it('is posted on the 1st, after its slot, once', async () => {
+    const t = testPoster();
+    const opts = { incidents: archive(), outages: new Map(), db: t.db, poster: t.poster };
+    // The 2nd: no monthly digest.
+    expect((await maybePostDigests({ ...opts, now: at('2026-11-02', 12) }))?.month).toBeUndefined();
+    expect(
+      (await maybePostDigests({ ...opts, now: at('2026-11-01', 11, 29) }))?.month,
+    ).toBeUndefined();
+    const res = await maybePostDigests({ ...opts, now: FIRST });
+    expect(res.month).toMatchObject({ posted: 'month' });
+    expect((await maybePostDigests({ ...opts, now: FIRST + 5 * MIN }))?.month).toBeUndefined();
+    expect(await postDigest({ period: 'month', ...opts, now: FIRST + 9 * MIN })).toEqual({
+      skipped: 'posted',
+    });
+    const monthly = t.client.posts.filter((p) => p.opts.text.startsWith('📊 SEPTA in October'));
+    expect(monthly).toHaveLength(1);
+    expect(monthly[0].account).toBe('alerts');
+  });
+
+  it('finds the roughest day', () => {
+    expect(roughestDay([])).toBeNull();
+    expect(
+      roughestDay([
+        { ts: at('2026-10-02', 9) },
+        { ts: at('2026-10-03', 9) },
+        { ts: at('2026-10-03', 23) },
+      ]),
+    ).toEqual({ key: '2026-10-03', count: 2 });
+  });
+});
+
+describe('the year in review', () => {
+  // New Year's Day 2027, 12:31 PM.
+  const NEW_YEAR = at('2027-01-01', 12, 31);
+  const START = at('2026-10-05');
+  function archive() {
+    const list = [];
+    for (let key = '2026-10-05'; key <= '2026-12-31'; key = addDays(key, 1)) {
+      list.push(alert(at(key, 9)), trips(key, 10), trips(key, 4, '47'), det('gap', at(key, 10)));
+    }
+    for (let n = 0; n < 12; n++)
+      list.push(det('bunching', at('2026-11-17', 8, n), { route: '52' }));
+    // The year before, and the year after: neither counts.
+    list.push(alert(at('2025-12-31', 9)), det('gap', at('2027-01-01', 9)), trips('2027-01-01', 99));
+    return asMap(list);
+  }
+
+  it("counts the year from the archive's first day", () => {
+    const { db } = testPoster();
+    const stats = yearStats({ year: 2026, incidents: archive(), db, dataStartTs: START });
+    expect(stats).toMatchObject({ year: 2026, startKey: '2026-10-05', partial: true, days: 88 });
+    expect(stats.counts).toMatchObject({ alert: 88, gap: 88, bunch: 12 });
+    expect(stats.trips).toBe(88 * 14);
+    expect(stats.roughest).toEqual({ key: '2026-11-17', count: 14 });
+    expect(stats.mostCancelled).toEqual({ mode: 'bus', route: '23', n: 880 });
+    expect(
+      yearStats({ year: 2026, incidents: archive(), db, dataStartTs: at('2025-06-01') }).partial,
+    ).toBe(false);
+  });
+
+  it('is a two-post thread: the totals, then the standouts', () => {
+    const { db } = testPoster();
+    const { totals, standouts, facets } = composeYear(
+      yearStats({ year: 2026, incidents: archive(), db, dataStartTs: START }),
+    );
+    expect(totals.split('\n')[0]).toBe("🎆 SEPTA's 2026 in review · since Oct 5");
+    expect(totals).toContain('⚠️ 88 unplanned SEPTA alerts');
+    expect(totals).toContain('🚫 1,232 bus and Metro trips cancelled');
+    expect(standouts).toContain('🔥 Roughest day: Nov 17 (14 disruptions)');
+    expect(standouts).toContain('🚫 Most cancelled trips: Route 23 (880)');
+    expect(standouts).toContain('Hardest hit: Route 23 (88)');
+    expect(graphemeLength(totals)).toBeLessThanOrEqual(300);
+    expect(graphemeLength(standouts)).toBeLessThanOrEqual(300);
+    expect(facets[0].features[0].uri).toBe(`${SITE_ORIGIN}/calendar`);
+  });
+
+  it("is posted on New Year's Day, once, when the archive covers enough of the year", async () => {
+    const t = testPoster();
+    const opts = { incidents: archive(), db: t.db, poster: t.poster, dataStartTs: START };
+    expect(await maybePostYearInReview({ ...opts, now: at('2026-12-31', 13) })).toBeNull();
+    expect(await maybePostYearInReview({ ...opts, now: at('2027-01-01', 12, 29) })).toBeNull();
+    expect(await maybePostYearInReview({ ...opts, now: NEW_YEAR })).toMatchObject({ posted: 2026 });
+    expect(await maybePostYearInReview({ ...opts, now: NEW_YEAR + 5 * MIN })).toBeNull();
+    const [first, second] = t.client.posts;
+    expect(first.account).toBe('alerts');
+    expect(second.opts.reply.root.uri).toBe(first.uri);
+    expect(t.client.posts).toHaveLength(2);
+
+    const late = testPoster();
+    expect(
+      await maybePostYearInReview({
+        ...opts,
+        db: late.db,
+        poster: late.poster,
+        dataStartTs: at('2026-12-01'),
+        now: NEW_YEAR,
+      }),
+    ).toMatchObject({ skipped: 'too-little-data', days: 31 });
+    expect(late.client.posts).toHaveLength(0);
   });
 });

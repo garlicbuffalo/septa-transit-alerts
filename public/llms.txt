@@ -20,7 +20,10 @@ A collector polls SEPTA's public APIs every few minutes, and Bluesky bots post w
 - [This week](__SITE_ORIGIN__/week): Recap of the current Sun–Sat week. Archived weeks live at `__SITE_ORIGIN__/week/<YYYY-MM-DD>` (the week's Sunday).
 - [Stats](__SITE_ORIGIN__/stats): Worst day, worst hour, most-affected station, longest incident, Regional Rail cancellations and delays, plus year-over-year.
 - [Compare](__SITE_ORIGIN__/compare): Side-by-side reliability for up to 3 lines or routes (`?metro=l1,b1` / `?buses=17,33` / `?rail=pao,wtr`).
-- [Accessibility](__SITE_ORIGIN__/accessibility): Elevator outages and recent history.
+- [Accessibility](__SITE_ORIGIN__/accessibility): Elevator outages, recent history, and each elevator's reliability.
+- [Scorecards](__SITE_ORIGIN__/scorecards): Weekly scores for every route and line, and each Regional Rail train's four-week record.
+- [Planned work](__SITE_ORIGIN__/planned): Announced service changes, by when they happen.
+- [Schedule changes](__SITE_ORIGIN__/schedule-changes): What changes in SEPTA's bus and Metro timetable, and holiday timetables.
 - [Metro system health](__SITE_ORIGIN__/system/metro), [Bus system health](__SITE_ORIGIN__/system/buses), and [Regional Rail system health](__SITE_ORIGIN__/system/rail): Network-wide dashboards.
 - SEPTA Metro line pages: `__SITE_ORIGIN__/line/<line>` (e.g. `/line/l1`).
 - Regional Rail line pages: `__SITE_ORIGIN__/rail/line/<line>` (e.g. `/rail/line/pao`).

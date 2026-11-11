@@ -20,7 +20,16 @@
 //   speed maps   every 2 hours by day: one route's speeds per account
 //   speed rollup every 10 minutes: fold new positions into the per-day speed
 //                tallies; the past week's speeds are published hourly with the
-//                data, for the site's route and line pages
+//                data, for the site's route and line pages, and with them the
+//                slow zones for its system map and the scorecards (each week
+//                scored once, soon after it ends)
+//   outlook      from the collect tick: the insights account's morning
+//                briefing, Friday's weekend preview, the heads-up before a
+//                holiday timetable, and a post when new schedules are coming
+//   tunnel       from the collect tick: a post when the L1's trains slow in
+//                the tunnel
+//   slow zones   Sundays: the week's slowest stretches (bus, metro), and the
+//                Regional Rail trains late most often
 //   housekeeping hourly: tally the day just ended's on-time running, then
 //                prune old observations and dry-run assets
 //   backup       nightly: a consistent copy of the database
@@ -43,12 +52,25 @@ import { postHallOfFame, rollupRouteDays } from '../features/halloffame.js';
 import {
   maybePostDigests,
   maybePostRoughHour,
+  maybePostYearInReview,
   postDigest,
+  postYearInReview,
   repostHighlights,
 } from '../features/insights.js';
+import { postLateTrains } from '../features/latetrains.js';
+import {
+  maybePostOutlook,
+  postBriefing,
+  postHeadsUp,
+  postScheduleChange,
+  postWeekend,
+  readScheduleChanges,
+} from '../features/outlook.js';
 import { maybePostPcc } from '../features/pcc.js';
 import { maybePostRailRollup, postRailRecap, recordTrains } from '../features/rail.js';
 import { postRecap } from '../features/recaps.js';
+import { maybePublishScorecards } from '../features/scorecards.js';
+import { postSlowZones, publishSlowZones } from '../features/slowzones.js';
 import { maybePublishSpeeds, rollupSpeeds } from '../features/speedhistory.js';
 import { postSpeedMap } from '../features/speedmaps.js';
 import {
@@ -58,6 +80,7 @@ import {
   startSnapshots,
   VIDEO_LIMITS,
 } from '../features/timelapse.js';
+import { maybePostTunnel } from '../features/tunnel.js';
 import { renderAlertMap } from '../map/lineMap.js';
 import { ffmpegAvailable } from '../video/encode.js';
 import { pruneDb } from './db.js';
@@ -114,6 +137,8 @@ export function createPipeline({
   let tunnelState = {};
   let tunnelAt = 0;
   let tunnelTroubleRoutes = new Set();
+  // The incidents of the last tick, for the scorecards' cancelled trips.
+  let lastIncidents = null;
   // Timelapses need ffmpeg; checkVideo() confirms it's there.
   let videoReady = false;
   const limits = { ...VIDEO_LIMITS, dailyPerAccount: config.videoDailyCap };
@@ -265,10 +290,38 @@ export function createPipeline({
       return postRailRecap({ db, poster, now: now(), period, log });
     },
 
-    /** Post the insights account's daily or weekly digest from the data directory. */
+    /** Post the insights account's daily, weekly, or monthly digest from the data directory. */
     async digest(period) {
       const { incidents, outages, dataStartTs } = await loadArchive(config.dataDir);
       return postDigest({ period, incidents, outages, db, poster, now: now(), dataStartTs, log });
+    },
+
+    /** Post the insights account's review of the year before this one. */
+    async yearInReview() {
+      const { incidents, dataStartTs } = await loadArchive(config.dataDir);
+      return postYearInReview({ incidents, db, poster, now: now(), dataStartTs, log });
+    },
+
+    /** Post one of the insights account's outlook posts now, from the data directory. */
+    async outlook(kind) {
+      const { incidents, outages } = await loadArchive(config.dataDir);
+      const scheduleChanges = await readScheduleChanges(config.dataDir);
+      const opts = { incidents, outages, scheduleChanges, poster, now: now() };
+      if (kind === 'briefing') return postBriefing(opts);
+      if (kind === 'weekend') return postWeekend(opts);
+      if (kind === 'headsup') return postHeadsUp(opts);
+      if (kind === 'schedulechange') return postScheduleChange(opts);
+      throw new Error(`no outlook post called ${kind}`);
+    },
+
+    /** Post the bus or metro account's slowest stretches of the week just ended. */
+    slowZones(account) {
+      return postSlowZones({ db, poster, shapes, basemap, account, now: now(), log });
+    },
+
+    /** Post the rail account's most-often-late trains of the past four weeks. */
+    lateTrains() {
+      return postLateTrains({ db, poster, now: now(), log });
     },
 
     async observe() {
@@ -348,6 +401,7 @@ export function createPipeline({
           summary: { dataStartTs },
         }) => {
           if (tickSchedule) schedule = tickSchedule;
+          lastIncidents = incidents;
           tunnelTroubleRoutes = tunnelTrouble(incidents);
           // After a restart, pick up where the collector's tracking of the L1 is (the cars in
           // the tunnel, how long trains are taking through it).
@@ -427,6 +481,28 @@ export function createPipeline({
           const digests = await step('digests', () =>
             maybePostDigests({ incidents, outages, db, poster, now: tickNow, dataStartTs, log }),
           );
+          const yearInReview = await step('year-in-review', () =>
+            maybePostYearInReview({ incidents, db, poster, now: tickNow, dataStartTs, log }),
+          );
+          const outlook = await step('outlook', () =>
+            maybePostOutlook({
+              incidents,
+              outages,
+              dataDir: config.dataDir,
+              db,
+              poster,
+              now: tickNow,
+            }),
+          );
+          const tunnel = await step('tunnel', () =>
+            maybePostTunnel({
+              stretch: state?.subway?.stretch ?? null,
+              db,
+              poster,
+              now: tickNow,
+              log,
+            }),
+          );
           const linked = linkAlertPosts(incidents, poster) + linkDetectionPosts(incidents, poster);
           return {
             alerts,
@@ -439,6 +515,9 @@ export function createPipeline({
             reposts,
             roughHour,
             digests,
+            yearInReview,
+            outlook,
+            tunnel,
             linked,
           };
         },
@@ -447,8 +526,17 @@ export function createPipeline({
       if (ok) {
         // The week's speeds ride along with the data (hourly, and with the
         // bot's other files, never on their own).
-        await step('speed-files', () =>
+        const speeds = await step('speed-files', () =>
           maybePublishSpeeds(db, { dataDir: config.dataDir, shapes, now: t }),
+        );
+        // The slow zones are read off the same tallies, so they go out with them.
+        if (speeds?.routes != null) {
+          await step('slow-zones', () =>
+            publishSlowZones(db, { dataDir: config.dataDir, shapes, now: t }),
+          );
+        }
+        await step('scorecards', () =>
+          maybePublishScorecards(db, { dataDir: config.dataDir, incidents: lastIncidents, now: t }),
         );
         try {
           published = await publisher.publish(summary);
@@ -483,6 +571,12 @@ export function createPipeline({
             .filter(([, r]) => r?.posted)
             .map(([period]) => `, ${period} digest posted`)
             .join('') +
+          Object.entries(summary.hook?.outlook ?? {})
+            .filter(([, r]) => r?.posted)
+            .map(([kind]) => `, ${kind} posted`)
+            .join('') +
+          (summary.hook?.yearInReview?.posted ? ', year in review posted' : '') +
+          (summary.hook?.tunnel?.posted ? ', tunnel slowdown posted' : '') +
           (published?.pushed ? ', pushed' : '') +
           (published?.deployed ? ', deploy triggered' : '') +
           (errors.length ? ` — ${errors.join('; ')}` : ''),

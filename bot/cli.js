@@ -12,7 +12,12 @@
 //                                  of that route if given, else the next in turn
 //   node bot/cli.js recap <account> <week|month>  post a recap now
 //   node bot/cli.js halloffame <account>    post the Hall of Fame and Wall of Shame thread now
-//   node bot/cli.js digest <day|week>       post the insights account's digest now
+//   node bot/cli.js digest <day|week|month> post the insights account's digest now
+//   node bot/cli.js year                    post the insights account's review of last year now
+//   node bot/cli.js outlook <briefing|weekend|headsup|schedulechange>
+//                                  post one of the insights account's outlook posts now
+//   node bot/cli.js slowzones <bus|metro>   post the week's slowest stretches now
+//   node bot/cli.js latetrains              post the rail account's most-often-late trains now
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createBlueskyClient } from './lib/bluesky.js';
@@ -158,13 +163,20 @@ else if (command === 'recap' && ACCOUNT_NAMES.includes(args[0]) && /^(week|month
   await runOnce((p) => (args[0] === 'rail' ? p.railRecap(args[1]) : p.recap(args[0], args[1])));
 else if (command === 'halloffame' && ACCOUNT_NAMES.includes(args[0]))
   await runOnce((p) => p.hallOfFame(args[0]));
-else if (command === 'digest' && /^(day|week)$/.test(args[0]))
+else if (command === 'digest' && /^(day|week|month)$/.test(args[0]))
   await runOnce((p) => p.digest(args[0]));
+else if (command === 'year') await runOnce((p) => p.yearInReview());
+else if (command === 'outlook' && /^(briefing|weekend|headsup|schedulechange)$/.test(args[0]))
+  await runOnce((p) => p.outlook(args[0]));
+else if (command === 'slowzones' && /^(bus|metro)$/.test(args[0]))
+  await runOnce((p) => p.slowZones(args[0]));
+else if (command === 'latetrains') await runOnce((p) => p.lateTrains());
 else {
   log(
     'usage: node bot/cli.js check | once | map <incident-id> | snapshot [minutes] | ' +
       'speedmap <bus|metro|rail> [route] | recap <bus|metro|rail> <week|month> | ' +
-      'halloffame <bus|metro|rail> | digest <day|week>',
+      'halloffame <bus|metro|rail> | digest <day|week|month> | year | ' +
+      'outlook <briefing|weekend|headsup|schedulechange> | slowzones <bus|metro> | latetrains',
   );
   process.exit(2);
 }

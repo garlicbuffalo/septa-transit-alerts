@@ -3,12 +3,15 @@ import { useDarkMode } from '../hooks/useDarkMode.js';
 import { useNow } from '../hooks/useNow.js';
 import {
   currentlyOut,
+  elevatorReliability,
   fetchAccessibilityData,
+  formatUptime,
   groupOutagesByStation,
   kindLabel,
   outageDuration,
   outageHasLine,
   outageKind,
+  reliabilitySummary,
   stationHref,
   stationReliability,
   summarizeOutages,
@@ -299,6 +302,25 @@ export default function AccessibilityPage() {
     [outages, now, kindFilter, line],
   );
 
+  const reliabilityOpts = {
+    now,
+    windowDays: 90,
+    dataStartTs: data?.data_start_ts ?? null,
+    kind: kindFilter,
+    line,
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the options are spelled out
+  const elevators = useMemo(
+    () => elevatorReliability(outages, reliabilityOpts),
+    [outages, now, data?.data_start_ts, kindFilter, line],
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the options are spelled out
+  const summary = useMemo(
+    () => reliabilitySummary(outages, reliabilityOpts),
+    [outages, now, data?.data_start_ts, kindFilter, line],
+  );
+  const [allElevators, setAllElevators] = useState(false);
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-gh-canvas flex flex-col">
       <Header
@@ -378,10 +400,150 @@ export default function AccessibilityPage() {
               )}
             </section>
 
+            {elevators.length > 0 && (
+              <section
+                aria-labelledby="elevator-reliability-heading"
+                className="bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border overflow-hidden"
+              >
+                <div className="p-4 border-b border-slate-100 dark:border-gh-border">
+                  <h2
+                    id="elevator-reliability-heading"
+                    className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                  >
+                    Elevator reliability · last {summary.coveredDays} days
+                  </h2>
+                  <dl className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <dt className="text-xs text-slate-500 dark:text-slate-400">
+                        Elevators that went out
+                      </dt>
+                      <dd className="text-lg font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                        {summary.elevators}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-slate-500 dark:text-slate-400">
+                        Out more than once
+                      </dt>
+                      <dd className="text-lg font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                        {summary.repeat}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-slate-500 dark:text-slate-400">
+                        Typical time to repair
+                      </dt>
+                      <dd className="text-lg font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                        {summary.typicalRepairMs != null
+                          ? formatDuration(summary.typicalRepairMs) || 'under 1m'
+                          : '–'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-slate-500 dark:text-slate-400">Longest repair</dt>
+                      <dd className="text-lg font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                        {summary.longestRepairMs != null
+                          ? formatDuration(summary.longestRepairMs) || 'under 1m'
+                          : '–'}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      <tr className="border-b border-slate-100 dark:border-gh-border">
+                        <th scope="col" className="text-left font-semibold p-3">
+                          Elevator
+                        </th>
+                        <th scope="col" className="text-right font-semibold p-3">
+                          Outages
+                        </th>
+                        <th scope="col" className="text-right font-semibold p-3">
+                          Uptime
+                        </th>
+                        <th
+                          scope="col"
+                          className="hidden sm:table-cell text-right font-semibold p-3"
+                        >
+                          Typical repair
+                        </th>
+                        <th
+                          scope="col"
+                          className="hidden sm:table-cell text-right font-semibold p-3"
+                        >
+                          Longest outage
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-gh-border">
+                      {(allElevators ? elevators : elevators.slice(0, 10)).map((row) => {
+                        const href = stationHref(row);
+                        return (
+                          <tr key={row.key}>
+                            <td className="p-3 text-slate-800 dark:text-slate-100">
+                              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                {href ? (
+                                  <a href={href} className="font-medium hover:underline">
+                                    {row.name}
+                                  </a>
+                                ) : (
+                                  <span className="font-medium">{row.name}</span>
+                                )}
+                                <span className="text-slate-500 dark:text-slate-400">
+                                  {row.unit}
+                                </span>
+                                {row.currentlyOut && (
+                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-400/15 dark:text-amber-200">
+                                    out now
+                                  </span>
+                                )}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right tabular-nums text-slate-600 dark:text-slate-300">
+                              {row.outageCount}
+                            </td>
+                            <td className="p-3 text-right tabular-nums text-slate-600 dark:text-slate-300">
+                              {formatUptime(row.uptime)}
+                            </td>
+                            <td className="hidden sm:table-cell p-3 text-right tabular-nums text-slate-600 dark:text-slate-300">
+                              {row.typicalRepairMs != null
+                                ? formatDuration(row.typicalRepairMs) || 'under 1m'
+                                : '–'}
+                            </td>
+                            <td className="hidden sm:table-cell p-3 text-right tabular-nums text-slate-600 dark:text-slate-300">
+                              {formatDuration(row.longestMs) || 'under 1m'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {elevators.length > 10 && (
+                  <div className="p-3 border-t border-slate-100 dark:border-gh-border">
+                    <button
+                      type="button"
+                      onClick={() => setAllElevators((v) => !v)}
+                      aria-expanded={allElevators}
+                      className="text-sm text-blue-500 hover:text-blue-400 hover:underline"
+                    >
+                      {allElevators ? 'Show fewer' : `Show all ${elevators.length} elevators`}
+                    </button>
+                  </div>
+                )}
+                <p className="p-4 pt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Most outages first. Uptime is the share of the period an elevator wasn’t reported
+                  out. SEPTA lists only the elevators that are out, so one that never appears here
+                  was, as far as this archive can tell, working throughout.
+                </p>
+              </section>
+            )}
+
             <section className="bg-white dark:bg-gh-surface rounded-lg border border-slate-200 dark:border-gh-border overflow-hidden">
               <div className="p-4 border-b border-slate-100 dark:border-gh-border">
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Reliability over the last 90 days
+                  By station · last 90 days
                 </h2>
               </div>
               <div className="overflow-x-auto">

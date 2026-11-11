@@ -31,6 +31,11 @@ import { applyOfficialAlerts } from './lib/officialAlerts.js';
 import { advanceCancellations, applyTrainView } from './lib/railTrains.js';
 import { loadSchedule } from './lib/schedule.js';
 import {
+  buildScheduleChanges,
+  publishScheduleChanges,
+  SCHEDULE_CHANGES_FILE,
+} from './lib/scheduleChanges.js';
+import {
   loadRouteShapes,
   PUBLISHED_SHAPES_DIR,
   publishRouteShapes,
@@ -282,6 +287,33 @@ export async function collect({
     }
   }
 
+  // What the timetable says is coming (schedule changes, holiday timetables), worked out again
+  // whenever the schedule index has been rebuilt: daily, which also moves the special days on.
+  let scheduleChanges = null;
+  if (sched) {
+    try {
+      const path = join(dataDir, SCHEDULE_CHANGES_FILE);
+      const builtAt = sched.index.built_at ?? null;
+      if (state.scheduleProfile?.built_at !== builtAt || !existsSync(path)) {
+        const prevFile = await readFile(path, 'utf8')
+          .then(JSON.parse)
+          .catch(() => null);
+        scheduleChanges = {
+          ...buildScheduleChanges({
+            schedule: sched,
+            prevProfile: state.scheduleProfile ?? null,
+            prevFile,
+            now,
+          }),
+          prevFile,
+        };
+        state.scheduleProfile = scheduleChanges.profile;
+      }
+    } catch (err) {
+      warn(`schedule changes: ${err.message}`);
+    }
+  }
+
   const ok = Object.values(summary.sources).some((s) => !s.error);
   if (ok && beforePublish) {
     try {
@@ -323,6 +355,19 @@ export async function collect({
       }
     } catch (err) {
       warn(`route shapes: ${err.message}`);
+    }
+    if (scheduleChanges) {
+      try {
+        const { file, prevFile } = scheduleChanges;
+        if (await publishScheduleChanges(dataDir, file, prevFile)) {
+          summary.scheduleChanges = {
+            changes: file.changes.length,
+            specialDays: file.special_days.length,
+          };
+        }
+      } catch (err) {
+        warn(`schedule changes: ${err.message}`);
+      }
     }
     // Left as it was when TransitView failed: its updated_ts says how old it is.
     if (pcc)

@@ -26,8 +26,11 @@ const DayPage = lazy(() => import('./components/DayPage.jsx'));
 const EventPage = lazy(() => import('./components/EventPage.jsx'));
 const LinePage = lazy(() => import('./components/LinePage.jsx'));
 const NotFoundPage = lazy(() => import('./components/NotFoundPage.jsx'));
+const PlannedWorkPage = lazy(() => import('./components/PlannedWorkPage.jsx'));
 const PrivacyPage = lazy(() => import('./components/PrivacyPage.jsx'));
 const RoutesIndexPage = lazy(() => import('./components/RoutesIndexPage.jsx'));
+const ScheduleChangesPage = lazy(() => import('./components/ScheduleChangesPage.jsx'));
+const ScorecardsPage = lazy(() => import('./components/ScorecardsPage.jsx'));
 const StationPage = lazy(() => import('./components/StationPage.jsx'));
 const StationsIndexPage = lazy(() => import('./components/StationsIndexPage.jsx'));
 const StatsPage = lazy(() => import('./components/StatsPage.jsx'));
@@ -63,6 +66,10 @@ const WeekPage = lazy(() => import('./components/WeekPage.jsx'));
 //   /compare       → side-by-side comparison of up to 3 Metro lines, bus routes,
 //                    or Regional Rail lines
 //   /accessibility → SEPTA Metro + Regional Rail elevator outage archive
+//   /scorecards    → weekly scores for every route and line, and each Regional
+//                    Rail train's record (?mode=rail&train=9531)
+//   /planned       → planned work ahead, by date
+//   /schedule-changes → what changes in SEPTA's timetable, and holiday timetables
 //   /system/metro  → network-wide health dashboard for SEPTA Metro
 //   /system/buses  → network-wide health dashboard for buses
 //   /system/rail   → network-wide health dashboard for Regional Rail
@@ -82,6 +89,9 @@ const calendarMatch = /^\/calendar\/?$/.exec(path);
 const statsMatch = /^\/stats\/?$/.exec(path);
 const compareMatch = /^\/compare\/?$/.exec(path);
 const accessibilityMatch = /^\/accessibility\/?$/.exec(path);
+const scorecardsMatch = /^\/scorecards\/?$/.exec(path);
+const plannedMatch = /^\/planned\/?$/.exec(path);
+const scheduleChangesMatch = /^\/schedule-changes\/?$/.exec(path);
 const systemMatch = /^\/system\/(metro|buses|rail)\/?$/.exec(path);
 const aboutMatch = /^\/about\/?$/.exec(path);
 const subscribeMatch = /^\/subscribe\/?$/.exec(path);
@@ -118,6 +128,12 @@ if (eventMatch) {
   page = <ComparePage />;
 } else if (accessibilityMatch) {
   page = <AccessibilityPage />;
+} else if (scorecardsMatch) {
+  page = <ScorecardsPage />;
+} else if (plannedMatch) {
+  page = <PlannedWorkPage />;
+} else if (scheduleChangesMatch) {
+  page = <ScheduleChangesPage />;
 } else if (systemMatch) {
   page = <SystemHealthPage kind={systemMatch[1] === 'buses' ? 'bus' : systemMatch[1]} />;
 } else if (aboutMatch) {

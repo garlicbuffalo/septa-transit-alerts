@@ -69,6 +69,9 @@ function main() {
   entries.push(urlEntry(`${SITE}/stats`, generatedIso, 'daily', 0.7));
   entries.push(urlEntry(`${SITE}/compare`, generatedIso, 'monthly', 0.5));
   entries.push(urlEntry(`${SITE}/accessibility`, generatedIso, 'daily', 0.7));
+  entries.push(urlEntry(`${SITE}/scorecards`, generatedIso, 'weekly', 0.7));
+  entries.push(urlEntry(`${SITE}/planned`, generatedIso, 'daily', 0.7));
+  entries.push(urlEntry(`${SITE}/schedule-changes`, generatedIso, 'daily', 0.6));
   entries.push(urlEntry(`${SITE}/system/metro`, generatedIso, 'daily', 0.7));
   entries.push(urlEntry(`${SITE}/system/buses`, generatedIso, 'daily', 0.7));
   entries.push(urlEntry(`${SITE}/system/rail`, generatedIso, 'daily', 0.7));

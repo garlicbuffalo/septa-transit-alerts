@@ -1,5 +1,6 @@
 // Prerender minimal HTML stubs for the static, non-data-driven SPA routes
-// (/about, /subscribe, /privacy). Unlike the line/route/station pages, these
+// (/about, /subscribe, /privacy) and the pages whose data loads in the browser
+// (/scorecards, /planned, /schedule-changes). Unlike the line/route/station pages, these
 // aren't covered by prerender-pages.js, so without a real index.html they would
 // 404 for crawlers and inherit the homepage's canonical. Emit a self-canonical
 // stub each so they return 200, carry their own title/description, and are safe
@@ -39,6 +40,21 @@ const PAGES = [
     path: '/privacy',
     title: 'Privacy',
     desc: `Privacy policy for ${SITE_NAME}: no accounts, no cookies, no advertising, and no analytics.`,
+  },
+  {
+    path: '/scorecards',
+    title: 'Scorecards',
+    desc: 'Every SEPTA bus route, Metro line and Regional Rail line scored on the past week (on-time running, cancellations, speed, bunching and gaps), and each Regional Rail train on how often it runs late.',
+  },
+  {
+    path: '/planned',
+    title: 'Planned work',
+    desc: 'The SEPTA service changes announced in advance (shuttle buses, closures, diversions), by when they happen: this weekend, the next seven days, and later.',
+  },
+  {
+    path: '/schedule-changes',
+    title: 'Schedule changes',
+    desc: "What changes when SEPTA's bus and Metro timetable does, route by route, and the days ahead that run a holiday or special timetable.",
   },
   // Note: Regional Rail line pages and /system/rail are prerendered by
   // prerender-pages.js (which runs before this step) with their own OG cards,

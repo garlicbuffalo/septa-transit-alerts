@@ -210,6 +210,29 @@ const MIGRATIONS = [
     PRIMARY KEY (day, mode, route)
   ) WITHOUT ROWID;
   `,
+  `
+  -- Each finished Sunday–Saturday week's scorecard, per account (bus, metro,
+  -- rail): every ranked route's score and measures, as JSON. Worked out once,
+  -- while the week's speed tallies are still kept, and kept for the site's
+  -- scorecards page and the week-over-week comparisons.
+  CREATE TABLE scorecard_weeks (
+    week_to TEXT NOT NULL,
+    account TEXT NOT NULL,
+    data TEXT NOT NULL,
+    ts INTEGER NOT NULL,
+    PRIMARY KEY (week_to, account)
+  ) WITHOUT ROWID;
+
+  -- How much longer than scheduled the L1's trains are taking through the
+  -- tunnel, each time the collector's estimate moves (a train timed end to
+  -- end): the history a slowdown is judged against.
+  CREATE TABLE tunnel_samples (
+    ts INTEGER NOT NULL,
+    dir INTEGER NOT NULL,
+    stretch REAL NOT NULL,
+    PRIMARY KEY (ts, dir)
+  ) WITHOUT ROWID;
+  `,
 ];
 
 /**
@@ -268,7 +291,8 @@ export function clearCooldown(db, keys) {
 /**
  * Delete old observations, expired cooldowns, finished captures' samples (the
  * capture rows themselves stay a month, as a record), on-time tallies over 60
- * days old, and rail train tallies over 400 days old.
+ * days old, rail train tallies over 400 days old, weekly scorecards over two
+ * years old, and tunnel running times over a month old.
  */
 export function pruneDb(db, now, { observationRetentionDays }) {
   const DAY = 24 * 60 * 60 * 1000;
@@ -289,5 +313,8 @@ export function pruneDb(db, now, { observationRetentionDays }) {
   // A year of trains, plus a month's margin, for the recaps.
   const railCutoff = new Date(now - 400 * DAY).toISOString().slice(0, 10);
   db.prepare('DELETE FROM rail_trains WHERE service_date < ?').run(railCutoff);
+  // Two years of weekly scorecards; a month of tunnel running times.
+  db.prepare('DELETE FROM scorecard_weeks WHERE week_to < ?').run(easternDateKey(now - 730 * DAY));
+  db.prepare('DELETE FROM tunnel_samples WHERE ts < ?').run(now - 30 * DAY);
   return { observations, cooldowns, samples };
 }
