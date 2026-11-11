@@ -235,7 +235,8 @@ export async function postAlerts({ incidents, poster, now, maxAgeMs, renderMap, 
           url,
           title: `SEPTA has cleared: ${truncateGraphemes(inc.official_alert.headline, 120)}`,
           description: 'How long it lasted, on SEPTA Transit Alerts.',
-          thumbUrl: `${url}/og.jpg`,
+          // The alert's own card, by now the "Archived" one.
+          thumbUrl: `${eventUrl(inc.id)}/og.jpg`,
           fallbackThumbUrl: `${SITE_ORIGIN}/og-image.png`,
         },
       });

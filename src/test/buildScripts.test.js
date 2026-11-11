@@ -2,6 +2,14 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import {
+  cardIds,
+  eventTier,
+  hasEventCard,
+  hasEventStub,
+  hasResolvedStub,
+  recentIncidents,
+} from '../../scripts/eventScope.js';
 import { buildHtmlStub, pickIncidents } from '../../scripts/prerender-events.js';
 import * as incidentsLib from '../lib/incidents.js';
 import { incidentRecords } from '../lib/incidents.js';
@@ -168,9 +176,61 @@ describe('incidentRecords wire → row contract', () => {
     expect(resolved).toMatch(
       /<meta property="og:url" content="[^"]*\/event\/alert-9\/resolved" \/>/,
     );
+    // The resolved page shares the alert's one card file, under an address of its own.
+    expect(base).toMatch(/<meta property="og:image" content="[^"]*\/event\/alert-9\/og\.jpg" \/>/);
     expect(resolved).toMatch(
-      /<meta property="og:image" content="[^"]*\/event\/alert-9\/resolved\/og\.jpg" \/>/,
+      /<meta property="og:image" content="[^"]*\/event\/alert-9\/og\.jpg\?resolved" \/>/,
     );
+    // An incident without a card of its own unfurls with the site's.
+    expect(buildHtmlStub(shell, { ...args, card: false })).toMatch(
+      /<meta property="og:image" content="[^"]*\/og-image\.png" \/>/,
+    );
+  });
+
+  describe('which incidents get a stub and a card', () => {
+    const NOW_TS = 1_800_000_000_000;
+    const DAY = 24 * 60 * 60 * 1000;
+    const at = (daysAgo, over = {}) => ({
+      id: `i-${daysAgo}`,
+      lifecycle: { first_seen_ts: NOW_TS - daysAgo * DAY, active: false },
+      official_alert: null,
+      detections: [{ source: 'gap', post_url: null }],
+      ...over,
+    });
+    const alert = (daysAgo, over = {}) => at(daysAgo, { official_alert: { id: 'a' }, ...over });
+    const posted = (daysAgo, over = {}) =>
+      at(daysAgo, { detections: [{ source: 'gap', post_url: 'https://bsky.app/x' }], ...over });
+
+    it('keeps an official alert for 60 days, with a card and a resolved page', () => {
+      expect(eventTier(alert(1))).toBe('alert');
+      expect(hasEventCard(alert(59), NOW_TS)).toBe(true);
+      expect(hasResolvedStub(alert(59), NOW_TS)).toBe(true);
+      expect(hasEventStub(alert(61), NOW_TS)).toBe(false);
+      // Still active: no resolved page yet, and a stub however old it is.
+      const live = alert(120, { lifecycle: { first_seen_ts: NOW_TS - 120 * DAY, active: true } });
+      expect(hasEventStub(live, NOW_TS)).toBe(true);
+      expect(hasResolvedStub(live, NOW_TS)).toBe(false);
+    });
+
+    it('keeps a posted detection for 21 days, with a card and no resolved page', () => {
+      expect(eventTier(posted(1))).toBe('posted');
+      expect(hasEventCard(posted(20), NOW_TS)).toBe(true);
+      expect(hasResolvedStub(posted(20), NOW_TS)).toBe(false);
+      expect(hasEventStub(posted(22), NOW_TS)).toBe(false);
+    });
+
+    it('keeps a detection nobody posted for a week, without a card of its own', () => {
+      expect(eventTier(at(1))).toBe('quiet');
+      expect(hasEventStub(at(6), NOW_TS)).toBe(true);
+      expect(hasEventCard(at(6), NOW_TS)).toBe(false);
+      expect(hasEventStub(at(8), NOW_TS)).toBe(false);
+    });
+
+    it('lists the stubs and the cards', () => {
+      const all = [alert(5), posted(10), posted(40), at(3), at(20)];
+      expect(recentIncidents(all, NOW_TS).map((i) => i.id)).toEqual(['i-5', 'i-10', 'i-3']);
+      expect([...cardIds(all, NOW_TS)]).toEqual(['i-5', 'i-10']);
+    });
   });
 
   it('expands v2 official_alert and detections into incident-derived records', () => {

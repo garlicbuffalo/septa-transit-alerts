@@ -1,7 +1,14 @@
 // Publishing from the server: the collector writes into a clone of the repo's
-// `data` branch (config.dataDir); this pushes it as a single parentless commit
-// (the branch is always one snapshot, as collect.yml does it) and asks GitHub
-// Actions to redeploy the site.
+// `data` branch (config.dataDir); this pushes it and asks GitHub Actions to
+// redeploy the site.
+//
+// A snapshot is committed on top of the one before it, so a push sends only
+// what changed, as differences: about 20 KB for a quiet tick. Pushed as a
+// commit with no parent (as it was until November 2026, and as collect.yml
+// still does), git sends the whole archive every time: 8 MB a push then,
+// hundreds of times a day, and growing with the archive. So that the branch
+// still doesn't pile up history, once a day (RESET_EVERY_MS) the snapshot is a
+// parentless one again, which replaces the day's chain with one commit.
 //
 // Commits from here carry SERVER_MARK in their message: collect.yml's fallback
 // run sees a fresh server commit and stands down.
@@ -20,10 +27,12 @@ const MAX_PUSH_GAP_MS = 10 * 60 * 1000;
 // Every tick leaves the snapshot's changed files in the checkout's object
 // store (about 5 MB a push in October 2026, mostly the two 15 MB archive
 // files), and nothing else ever removed them: a gigabyte or more a day until
-// the service restarted. A pushed snapshot is of no further use here, so the
-// checkout keeps no reflog, and at most this often everything but the
-// snapshot in hand is dropped.
+// the service restarted. So the checkout keeps no reflog, and at most this
+// often it is repacked: the day's chain of snapshots is stored as differences
+// (a few megabytes), and everything from before the last reset is dropped.
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
+// How often the branch goes back to a single commit (see the top of the file).
+export const RESET_EVERY_MS = 24 * 60 * 60 * 1000;
 
 function gitEnv(token) {
   const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
@@ -94,7 +103,7 @@ export function createPublisher({
   let synced = false;
   let prunedAt = 0;
 
-  /** Drop every object but the snapshot in hand (see PRUNE_EVERY_MS). */
+  /** Repack the checkout, dropping all but the current chain of snapshots (see PRUNE_EVERY_MS). */
   async function prune(t) {
     prunedAt = t;
     try {
@@ -115,6 +124,10 @@ export function createPublisher({
     // Also for checkouts made before the reflog was turned off: theirs still
     // holds every snapshot pushed since the last restart.
     await git(['config', 'core.logAllRefUpdates', 'false']);
+    // Repacking compares versions of files tens of megabytes long, on a server
+    // with little memory to spare: one at a time, within a fixed budget.
+    await git(['config', 'pack.threads', '1']);
+    await git(['config', 'pack.windowMemory', '96m']);
     await prune(now());
     // Reading the published branch needs no token (the repo is public), so
     // dry runs start from the same data the live service would.
@@ -169,15 +182,22 @@ export function createPublisher({
       if (dirty && (summary.changed > 0 || t - lastPush >= MAX_PUSH_GAP_MS)) {
         const tree = await git(['write-tree']);
         const stamp = new Date(t).toISOString().replace(/\.\d+Z$/, 'Z');
+        // On top of the snapshot before it, except for the day's reset (and the
+        // first snapshot of a new archive, which has nothing before it).
+        const head = await git(['rev-parse', '--verify', '-q', 'HEAD']).catch(() => '');
+        const lastReset = Number(getMeta(db, 'last_reset_ts') ?? 0);
+        const reset = !head || t - lastReset >= RESET_EVERY_MS;
         const commit = await git([
           'commit-tree',
           tree,
+          ...(reset ? [] : ['-p', head]),
           '-m',
           `Data snapshot ${stamp} ${SERVER_MARK}`,
         ]);
         await git(['update-ref', 'HEAD', commit]);
         await git(['push', '-q', '--force', remote, `${commit}:refs/heads/${github.dataBranch}`]);
         setMeta(db, 'last_push_ts', t);
+        if (reset) setMeta(db, 'last_reset_ts', t);
         pushed = true;
       }
 

@@ -407,7 +407,7 @@ describe('digests', () => {
     expect(link).toMatchObject({
       url: `${SITE_ORIGIN}/day/${TODAY}`,
       title: 'SEPTA on Tuesday, Oct 6',
-      thumbUrl: `${SITE_ORIGIN}/day/${TODAY}/og.png`,
+      thumbUrl: `${SITE_ORIGIN}/day/${TODAY}/og.jpg`,
     });
   });
 

@@ -13,6 +13,14 @@
 //
 // Writes are skipped when a file's bytes are unchanged, so a quiet run only
 // touches the few files that carry `generated_at`.
+//
+// The archive is tens of megabytes of JSON and this runs every couple of
+// minutes on a server with 1 GB of memory, so it avoids holding more of it at
+// once than it must: a file on disk is compared by a hash read in a stream,
+// not by reading it back whole, and the recent slice (a second copy of what
+// the shards hold) is read only when a shard is missing.
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { writeFileAtomic } from './files.js';
@@ -52,13 +60,17 @@ export async function loadArchive(dir) {
       shardKeys = [];
     }
   }
+  let missing = !index;
   for (const key of shardKeys) {
     const shard = await readJson(join(dir, 'alerts', `${key}.json`));
+    if (!shard) missing = true;
     for (const inc of shard?.incidents ?? []) incidents.set(inc.id, inc);
   }
-  // Belt-and-braces: an active incident must never be lost because a shard
-  // write failed mid-run; the recent slice carries every active incident.
-  const recent = await readJson(join(dir, 'alerts-recent.json'));
+  // Belt-and-braces: an active incident must never be lost because a shard has
+  // gone; the recent slice carries every active incident. With every shard the
+  // index lists in hand it adds nothing (the shards are written before it, each
+  // whole or not at all), and it is as big as they are, so it isn't read.
+  const recent = missing ? await readJson(join(dir, 'alerts-recent.json')) : null;
   for (const inc of recent?.incidents ?? []) if (!incidents.has(inc.id)) incidents.set(inc.id, inc);
 
   const accessibility = await readJson(join(dir, 'accessibility.json'));
@@ -69,6 +81,17 @@ export async function loadArchive(dir) {
     dataStartTs: index?.data_start_ts ?? recent?.data_start_ts ?? null,
     shardKeys,
   };
+}
+
+/** The SHA-1 of a file, read in a stream; null when it isn't there. */
+function hashFile(path) {
+  return new Promise((resolve) => {
+    const hash = createHash('sha1');
+    createReadStream(path)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('end', () => resolve(hash.digest('hex')))
+      .on('error', () => resolve(null));
+  });
 }
 
 function byFirstSeenDesc(a, b) {
@@ -175,14 +198,9 @@ export async function publishArchive(
   const written = [];
   const put = async (rel, data) => {
     const path = join(dir, rel);
-    const body = `${JSON.stringify(data)}\n`;
-    let current = null;
-    try {
-      current = await readFile(path, 'utf8');
-    } catch {
-      current = null;
-    }
-    if (current === body) return;
+    const body = Buffer.from(`${JSON.stringify(data)}\n`);
+    const hash = createHash('sha1').update(body).digest('hex');
+    if ((await hashFile(path)) === hash) return;
     await mkdir(dirname(path), { recursive: true });
     await writeFileAtomic(path, body);
     written.push(rel);

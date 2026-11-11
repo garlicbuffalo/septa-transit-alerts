@@ -5,7 +5,9 @@
 // rewritten OG meta) plus `dist/event/<id>/og.jpg` (1200x630,
 // Playwright-rendered).
 //
-// Only the incidents eventScope.js selects (active + recent) get a stub.
+// Only the incidents eventScope.js selects get a stub, and only some of those a
+// card of their own (official alerts, and detections the bots posted about);
+// the rest use the site-wide card.
 //
 // Runs as a postbuild step. Requires `dist/data/alerts.json` to be present —
 // it's copied from `public/data/` by Vite at build time.
@@ -35,7 +37,7 @@ import { METRO_LINES, normalizeMetroLine } from '../src/lib/metroLines.js';
 import { normalizeRailLine, RAIL_LINES } from '../src/lib/railLines.js';
 import { SITE_NAME, SITE_ORIGIN } from '../src/lib/site.js';
 import { launchChromium } from './browser.js';
-import { recentIncidents } from './eventScope.js';
+import { cardIds, hasResolvedStub, recentIncidents } from './eventScope.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -285,15 +287,25 @@ function buildJsonLd(incident, { ogTitle, desc, url }) {
   return JSON.stringify(ld);
 }
 
-export function buildHtmlStub(shell, { id, title, subtitle, accent, incident, variant = null }) {
+export function buildHtmlStub(
+  shell,
+  { id, title, subtitle, accent, incident, variant = null, card = true },
+) {
   const canonical = `${SITE}/event/${id}`;
   // The /resolved variant is the URL the bots' "cleared" replies link to:
   // Bluesky caches link cards by URL, so a distinct URL gets the finished
   // ("Archived") card instead of the one cached while the incident was live.
   // It points search engines at the canonical page and stays out of the index.
   const url = variant === 'resolved' ? `${canonical}/resolved` : canonical;
-  // og.jpg is served alongside index.html in the same directory.
-  const image = `${url}/og.jpg`;
+  // og.jpg is served alongside the canonical page's index.html. The resolved
+  // variant uses the same file (by then the "Archived" card) under an address of
+  // its own, for anything that caches images by address. An incident without a
+  // card of its own gets the site-wide one.
+  const image = !card
+    ? `${SITE}/og-image.png`
+    : variant === 'resolved'
+      ? `${canonical}/og.jpg?resolved`
+      : `${canonical}/og.jpg`;
   // Link/unfurl title leads with the line/route. For bot events the card title
   // ends with the line (it's also a chip), so build the meta title from the bare
   // impact to avoid repeating it ("L1 · Disruption detected"). Alert titles
@@ -347,6 +359,10 @@ export function buildHtmlStub(shell, { id, title, subtitle, accent, incident, va
     .replace(
       /<meta property="og:image"[^>]*>/g,
       `<meta property="og:image" content="${escAttr(image)}" />`,
+    )
+    .replace(
+      /<meta property="og:image:type"[^>]*>/,
+      `<meta property="og:image:type" content="${card ? 'image/jpeg' : 'image/png'}" />`,
     )
     .replace(
       /<meta property="og:image:alt"[^>]*>/,
@@ -447,6 +463,8 @@ async function main() {
   // `{ alerts, observations }` the merge/label helpers below expect.
   const raw = JSON.parse(readFileSync(DATA, 'utf8'));
   raw.incidents = recentIncidents(raw.incidents);
+  const withCard = cardIds(raw.incidents);
+  const withResolved = new Set(raw.incidents.filter((i) => hasResolvedStub(i)).map((i) => i.id));
   const payload = { ...raw, ...incidentRecords(raw.incidents || []) };
   const shell = readFileSync(SHELL, 'utf8');
   const template = readEventTemplate();
@@ -460,14 +478,14 @@ async function main() {
 
   mkdirSync(CACHE, { recursive: true });
 
-  // Plan each event: always emit the HTML stub at /event/:id; queue a PNG render
-  // only on a signature miss. The badge tracks `incident.active`, so a card
-  // re-renders once when its incident resolves.
+  // Plan each event: always emit the HTML stub at /event/:id; for one with a card
+  // of its own, queue a render only on a signature miss. The badge tracks
+  // `incident.active`, so a card re-renders once when its incident resolves.
   const renders = [];
-  const resolvedDirs = [];
   const seenIds = new Set();
+  let cards = 0;
   for (const [id, incident] of incidents) {
-    seenIds.add(id);
+    const card = withCard.has(id);
     const accent = accentFor(incident);
     const { title, subtitle } = summarize(incident);
     const date = formatCardDate(incident);
@@ -477,17 +495,21 @@ async function main() {
     mkdirSync(outDir, { recursive: true });
     writeFileSync(
       resolve(outDir, 'index.html'),
-      buildHtmlStub(shell, { id, title, subtitle, accent, incident }),
+      buildHtmlStub(shell, { id, title, subtitle, accent, incident, card }),
     );
-    if (!incident.active) {
+    // What the bots' "cleared" replies link to: finished official alerts only.
+    if (withResolved.has(id)) {
       const resolvedDir = resolve(outDir, 'resolved');
       mkdirSync(resolvedDir, { recursive: true });
       writeFileSync(
         resolve(resolvedDir, 'index.html'),
         buildHtmlStub(shell, { id, title, subtitle, accent, incident, variant: 'resolved' }),
       );
-      resolvedDirs.push(outDir);
     }
+    if (!card) continue;
+    cards++;
+    // Only cards are cached, so only they are kept by the sweep below.
+    seenIds.add(id);
     const cacheDir = resolve(CACHE, id);
     const cachedPng = resolve(cacheDir, 'og.jpg');
     const cachedSig = resolve(cacheDir, 'sig');
@@ -534,12 +556,6 @@ async function main() {
     await browser.close();
   }
 
-  // The resolved variant shares the (already "Archived") card.
-  for (const dir of resolvedDirs) {
-    const card = resolve(dir, 'og.jpg');
-    if (existsSync(card)) copyFileSync(card, resolve(dir, 'resolved', 'og.jpg'));
-  }
-
   // Sweep cache entries for events no longer in the payload so the cache
   // doesn't grow unboundedly. (Resolved incidents eventually age out of
   // alerts.json; their cached PNGs are no longer reachable.)
@@ -552,7 +568,7 @@ async function main() {
   }
 
   console.log(
-    `prerender-events: ${incidents.size} events · ${rendered} rendered · ${pruned} pruned (concurrency=${CONCURRENCY})`,
+    `prerender-events: ${incidents.size} events · ${cards} with a card · ${rendered} rendered · ${pruned} pruned (concurrency=${CONCURRENCY})`,
   );
 }
 

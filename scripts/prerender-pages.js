@@ -2,7 +2,7 @@
 // /station/:slug, /calendar, and /stats so social media crawlers get
 // page-specific cards instead of the generic homepage one. Same pattern as
 // prerender-events.js: emit an HTML stub at <route>/index.html with
-// rewritten OG meta, plus og.png next to it. PNGs are signature-cached so
+// rewritten OG meta, plus og.jpg next to it. PNGs are signature-cached so
 // unchanged pages skip Playwright.
 //
 // Scope (intentionally bounded — generating 150+ bus routes when only a few
@@ -822,7 +822,7 @@ function structuredDataTags(page, ogTitle, desc) {
 }
 
 function buildHtmlStub(shell, page) {
-  const image = `${page.url}/og.png`;
+  const image = `${page.url}/og.jpg`;
   const ogTitle = page.ogTitle.slice(0, 200);
   const desc = page.desc.slice(0, 280);
   const ldTags = structuredDataTags(page, ogTitle, desc);
@@ -841,6 +841,10 @@ function buildHtmlStub(shell, page) {
     .replace(
       /<meta name="description"[^>]*>/,
       `<meta name="description" content="${escAttr(desc)}" />`,
+    )
+    .replace(
+      /<meta property="og:image:type"[^>]*>/,
+      '<meta property="og:image:type" content="image/jpeg" />',
     )
     .replace(
       /<meta property="og:title"[^>]*>/,
@@ -1022,7 +1026,10 @@ async function renderPng(page, html, outPath) {
   await page.setContent(html, { waitUntil: 'load' });
   await page.screenshot({
     path: outPath,
-    type: 'png',
+    // JPEG, like the event cards: these are gradients, text and small charts, and a PNG of
+    // one is about 400 KB against 60 as a JPEG, across some 500 pages.
+    type: 'jpeg',
+    quality: 85,
     clip: { x: 0, y: 0, width: 1200, height: 630 },
   });
 }
@@ -1110,13 +1117,13 @@ async function main() {
     writeFileSync(resolve(page.outDir, 'index.html'), buildHtmlStub(shell, page));
 
     const cacheDir = resolve(CACHE, page.slug);
-    const cachedPng = resolve(cacheDir, 'og.png');
+    const cachedPng = resolve(cacheDir, 'og.jpg');
     const cachedSig = resolve(cacheDir, 'sig');
     const sigMatches =
       existsSync(cachedPng) && existsSync(cachedSig) && readFileSync(cachedSig, 'utf8') === sig;
 
     if (sigMatches) {
-      copyFileSync(cachedPng, resolve(page.outDir, 'og.png'));
+      copyFileSync(cachedPng, resolve(page.outDir, 'og.jpg'));
       continue;
     }
 
@@ -1150,7 +1157,7 @@ async function main() {
     let i = 0;
     await workerPool(renders, playwrightPages.length, async (item) => {
       const pw = playwrightPages[i++ % playwrightPages.length];
-      const out = resolve(item.page.outDir, 'og.png');
+      const out = resolve(item.page.outDir, 'og.jpg');
       await renderPng(pw, item.html, out);
       mkdirSync(item.cacheDir, { recursive: true });
       copyFileSync(out, item.cachedPng);

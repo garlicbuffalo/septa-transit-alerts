@@ -18,7 +18,7 @@ import { loadConfig } from '../lib/config.js';
 import { getMeta, openDb, setMeta } from '../lib/db.js';
 import { createPipeline } from '../lib/pipeline.js';
 import { createPoster } from '../lib/poster.js';
-import { createPublisher, SERVER_MARK } from '../lib/publish.js';
+import { createPublisher, RESET_EVERY_MS, SERVER_MARK } from '../lib/publish.js';
 import { createBasemap } from '../map/basemap.js';
 import { fakeLiveClient } from './helpers.js';
 
@@ -60,7 +60,7 @@ function fakeGitHub({ busy = false } = {}) {
 }
 
 describe('publisher', () => {
-  it('pushes one parentless server snapshot and triggers a deploy', async () => {
+  it('pushes a server snapshot, the next on top of it, and triggers a deploy', async () => {
     const remote = bareRemote();
     const dataDir = mkdtempSync(join(tmpdir(), 'data-'));
     const db = openDb(':memory:');
@@ -105,12 +105,67 @@ describe('publisher', () => {
       deployed: false,
     });
     expect(getMeta(db, 'deploy_pending')).toBe('1');
-    expect(git(remote, 'rev-list', '--count', 'data')).toBe('1');
+    // On top of the first snapshot, so the push carries only what changed.
+    expect(git(remote, 'rev-list', '--count', 'data')).toBe('2');
     t += 10 * 60_000;
     expect(await publisher.publish({ changed: 0 })).toMatchObject({ deployed: true });
   });
 
-  it('keeps no reflog and drops pushed snapshots from the checkout hourly', async () => {
+  it('sends only what changed, and goes back to one commit once a day', async () => {
+    const remote = bareRemote();
+    const dataDir = mkdtempSync(join(tmpdir(), 'data-'));
+    let t = FIXTURE_NOW;
+    const publisher = createPublisher({
+      dataDir,
+      github: {
+        repo: 'o/r',
+        token: 't',
+        dataBranch: 'data',
+        deployWorkflow: 'd',
+        deployRef: 'main',
+      },
+      db: openDb(':memory:'),
+      enabled: true,
+      deployMinGapMs: 60 * 60_000,
+      fetchFn: fakeGitHub().fetchFn,
+      now: () => t,
+      remoteUrl: remote,
+    });
+    await publisher.prepare();
+    // A big file that never changes, and a small one that does every tick.
+    const big = Array.from({ length: 20000 }, (_, i) => `incident ${i} ${(i * 2654435761) % 997}`);
+    writeFileSync(join(dataDir, 'archive.json'), big.join('\n'));
+    const objects = () =>
+      Number(
+        git(remote, 'count-objects', '-v')
+          .match(/size(?:-pack)?: (\d+)/g)
+          .reduce((n, m) => n + Number(m.split(': ')[1]), 0),
+      );
+    for (let i = 0; i < 4; i++) {
+      writeFileSync(join(dataDir, 'state.json'), JSON.stringify({ tick: i }));
+      expect(await publisher.publish({ changed: 1 })).toMatchObject({ pushed: true });
+      t += 10 * 60_000;
+    }
+    expect(git(remote, 'rev-list', '--count', 'data')).toBe('4');
+    // The big file went up once, not four times.
+    const afterFour = objects();
+    writeFileSync(join(dataDir, 'state.json'), JSON.stringify({ tick: 4 }));
+    await publisher.publish({ changed: 1 });
+    expect(objects() - afterFour).toBeLessThan(20);
+    // A day after the first snapshot, the branch is a single commit again.
+    t += RESET_EVERY_MS;
+    writeFileSync(join(dataDir, 'state.json'), JSON.stringify({ tick: 5 }));
+    await publisher.publish({ changed: 1 });
+    expect(git(remote, 'rev-list', '--count', 'data')).toBe('1');
+    expect(git(remote, 'rev-parse', 'data')).toBe(git(dataDir, 'rev-parse', 'HEAD'));
+    // …and the next is on top of that one.
+    t += 10 * 60_000;
+    writeFileSync(join(dataDir, 'state.json'), JSON.stringify({ tick: 6 }));
+    await publisher.publish({ changed: 1 });
+    expect(git(remote, 'rev-list', '--count', 'data')).toBe('2');
+  });
+
+  it('keeps no reflog, and drops the snapshots from before a reset', async () => {
     const remote = bareRemote();
     const dataDir = mkdtempSync(join(tmpdir(), 'data-'));
     let t = FIXTURE_NOW;
@@ -139,15 +194,22 @@ describe('publisher', () => {
       t += 10 * 60_000;
     }
     expect(existsSync(join(dataDir, '.git', 'logs'))).toBe(false);
-    // Within the hour every snapshot is still there…
-    expect(pushed.map((c) => holds(dataDir, c))).toEqual([true, true, true]);
-    // …and an hour on, only the one in hand is kept.
+    // The day's chain is kept (each snapshot is the next one's parent), through a repack…
     t += 60 * 60_000;
     writeFileSync(join(dataDir, 'alerts-recent.json'), JSON.stringify({ tick: 3 }));
     await publisher.publish({ changed: 1 });
+    expect(pushed.map((c) => holds(dataDir, c))).toEqual([true, true, true]);
+    // …and after the daily reset, the next repack drops all of it.
+    t += RESET_EVERY_MS;
+    writeFileSync(join(dataDir, 'alerts-recent.json'), JSON.stringify({ tick: 4 }));
+    await publisher.publish({ changed: 1 });
+    t += 61 * 60_000;
+    writeFileSync(join(dataDir, 'alerts-recent.json'), JSON.stringify({ tick: 5 }));
+    await publisher.publish({ changed: 1 });
     const head = git(dataDir, 'rev-parse', 'HEAD');
     expect(git(remote, 'rev-parse', 'data')).toBe(head);
-    expect(pushed.slice(0, 2).map((c) => holds(dataDir, c))).toEqual([false, false]);
+    expect(git(remote, 'rev-list', '--count', 'data')).toBe('2');
+    expect(pushed.map((c) => holds(dataDir, c))).toEqual([false, false, false]);
   });
 
   it('clears out a checkout that kept every snapshot when it starts', async () => {

@@ -12,7 +12,12 @@ WorkingDirectory=/opt/septa-transit-alerts
 EnvironmentFile=/etc/septa-bots.env
 Environment=STATE_DIR=/var/lib/septa-bots
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node bot/main.js
+# The heap is capped so Node collects its garbage before the server (1 GB of
+# memory) starts to swap: each tick reads and rewrites the whole archive, and
+# left to itself Node let that pile up to about 750 MB. If the log ever says
+# "heap out of memory", the archive has outgrown the cap: raise it (and the
+# droplet's memory with it).
+ExecStart=/usr/bin/node --max-old-space-size=400 bot/main.js
 Restart=always
 RestartSec=15
 # Let a running post or video finish on stop/restart.
