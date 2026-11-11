@@ -480,7 +480,7 @@ export function composeDigest(stats) {
         : month
           ? 'Every day of the month, on the SEPTA Transit Alerts calendar.'
           : 'Every alert and disruption of the week, on SEPTA Transit Alerts.',
-      thumbUrl: `${url}/og.png`,
+      thumbUrl: `${url}/og.jpg`,
       fallbackThumbUrl: `${SITE_ORIGIN}/og-image.png`,
     },
   };

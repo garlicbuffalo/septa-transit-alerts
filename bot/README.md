@@ -102,6 +102,8 @@ The tint is made for the colours CARTO used in October 2026, so every map checks
 | `assets/` | Dry-run output, kept 7 days |
 | `backups/` | A nightly copy of the database, last 7 kept; skipped (and logged) when the disk couldn't take another with 1 GB to spare |
 
+**Memory and traffic.** The service runs with Node's heap capped at 400 MB (`--max-old-space-size` in the systemd unit), which keeps it at about 450 MB on a 1 GB server; uncapped, the garbage from reading and rewriting the archive each tick reached 750 MB and the server swapped. If the log says `heap out of memory`, the archive has outgrown the cap: raise it in `bot/deploy/septa-bots.service`, and the server's memory with it. Each data push sends only what changed since the last one (about 20 KB for a quiet tick), because a snapshot is committed on top of the one before; once a day the branch is reset to a single commit, which sends the whole archive once (about 8 MB in November 2026). Before that every push sent all of it, hundreds of times a day.
+
 **If an account goes quiet,** look at the disk first: `df -h /var/lib/septa-bots`. A full disk stops the collector (the site's data then comes from the GitHub Actions fallback), the timelapses, and writes to the database. Then `sudo septa-bots logs`: a session Bluesky has ended logs `the <account> session has ended; logging in again`, and a post that couldn't be recorded is deleted again (`couldn't record …; deleting …`) rather than repeated on the next try.
 
 **Rebuilding a server:** run the setup command on a new one and copy `/etc/septa-bots.env` and `/var/lib/septa-bots/bots.sqlite` across. The post history keeps the new server from posting anything twice. Without the database it still won't flood the feed, because it never posts anything first seen before it started.
@@ -117,7 +119,8 @@ lib/bluesky.js     Bluesky client: cached sessions (logging in again when one en
                    + the dry-run client with the same interface
 lib/poster.js      posts recorded in SQLite under (subject, kind): never twice, threads continue; one
                    that can't be recorded is deleted again
-lib/publish.js     single-commit push of the data branch ("· server"), debounced deploy dispatch,
+lib/publish.js     pushes the data branch ("· server"), each snapshot on top of the last so only
+                   what changed is sent, reset to one commit daily; debounced deploy dispatch,
                    old snapshots pruned from the checkout
 features/alerts.js which SEPTA alerts post, their text, ✅ cleared replies, links into the data
 features/detections.js  gap / bunching / stuck / silent-route posts, caps, follow-ups, quotes

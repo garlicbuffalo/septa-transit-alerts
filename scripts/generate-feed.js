@@ -27,7 +27,7 @@ import {
 import { METRO_LINE_ORDER, METRO_LINES, metroLineFullName } from '../src/lib/metroLines.js';
 import { RAIL_LINE_ORDER, RAIL_LINES, railLineFullName } from '../src/lib/railLines.js';
 import { SITE_NAME, SITE_ORIGIN } from '../src/lib/site.js';
-import { hasEventStub } from './eventScope.js';
+import { cardIds, hasEventStub } from './eventScope.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -98,10 +98,11 @@ function entryLink(incident) {
 // `?v=...` an incident that transitioned ongoing→resolved keeps showing the
 // stale "ongoing" thumbnail. Keying on updatedTs flips the URL exactly when
 // the state changes (entry's <updated> bumps too), so each state caches once.
-// Only incidents inside the prerender window have a card to point at.
-function entryThumbnail(incident, updatedTs, now = Date.now()) {
+// Only incidents with a prerendered card have one to point at: `cards` is their
+// ids (eventScope.js). Without it, anything inside the prerender window counts.
+function entryThumbnail(incident, updatedTs, now = Date.now(), cards = null) {
   const id = incidentId(incident);
-  if (!id || !hasEventStub(incident, now)) return null;
+  if (!id || (cards ? !cards.has(id) : !hasEventStub(incident, now))) return null;
   const base = `${SITE}/event/${encodeURIComponent(id)}/og.jpg`;
   return updatedTs ? `${base}?v=${updatedTs}` : base;
 }
@@ -334,14 +335,14 @@ export function isLikelyDetectorBlip(incident) {
 
 // `now` decides whether the incident still has a prerendered OG card to use as
 // the entry thumbnail (see eventScope.js).
-export function buildEntryRecord(incident, { now = Date.now() } = {}) {
+export function buildEntryRecord(incident, { now = Date.now(), cards = null } = {}) {
   const id = entryId(incident);
   const link = entryLink(incident);
   const title = entryTitle(incident);
   const summary = entrySummary(incident);
   const publishedMs = startTs(incident);
   const updatedMs = updatedTs(incident);
-  const thumb = entryThumbnail(incident, updatedMs, now);
+  const thumb = entryThumbnail(incident, updatedMs, now, cards);
   const contentHtml = entryContentHtml(incident, thumb);
   const categories = entryCategories(incident);
   const source = sourceUrl(incident);
@@ -458,15 +459,17 @@ function writeFeed(records, meta, feedUpdatedIso, xmlPath, jsonPath) {
 
 // Most-recent-first slice of `pool` scoped to one route, capped at ENTRY_LIMIT.
 // `pool` is already sorted newest-first, so the slice preserves that order.
-export function scopedRecords(pool, kind, route, { now = Date.now() } = {}) {
+export function scopedRecords(pool, kind, route, { now = Date.now(), cards = null } = {}) {
   return pool
     .filter((i) => i.kind === kind && routesFor(i).includes(route))
     .slice(0, ENTRY_LIMIT)
-    .map((i) => buildEntryRecord(i, { now }));
+    .map((i) => buildEntryRecord(i, { now, cards }));
 }
 
 function main() {
   const raw = JSON.parse(readFileSync(DATA, 'utf8'));
+  // The incidents with a card of their own to use as an entry's thumbnail.
+  const cards = cardIds(raw.incidents || []);
   const payload = { ...raw, ...incidentRecords(raw.incidents || []) };
   const { merged, standaloneAlerts, standaloneObs } = groupIncidentRecords(
     payload.officialRecords || [],
@@ -496,7 +499,7 @@ function main() {
 
   // Global feed — unchanged URLs and <id>, so existing subscribers are
   // unaffected by the per-line additions below.
-  const globalRecords = pool.slice(0, ENTRY_LIMIT).map((i) => buildEntryRecord(i));
+  const globalRecords = pool.slice(0, ENTRY_LIMIT).map((i) => buildEntryRecord(i, { cards }));
   writeFeed(
     globalRecords,
     feedMeta({
@@ -518,7 +521,7 @@ function main() {
   // rather than waiting for a first incident to bring the feed into existence.
   let lineFeeds = 0;
   for (const line of METRO_LINE_ORDER) {
-    const records = scopedRecords(pool, 'metro', line);
+    const records = scopedRecords(pool, 'metro', line, { cards });
     const label = metroLineFullName(line);
     writeFeed(
       records,
@@ -538,7 +541,7 @@ function main() {
 
   let routeFeeds = 0;
   for (const route of Object.keys(BUS_ROUTE_NAMES).sort(compareBusRoutes)) {
-    const records = scopedRecords(pool, 'bus', route);
+    const records = scopedRecords(pool, 'bus', route, { cards });
     const name = BUS_ROUTE_NAMES[route];
     const label = name ? `${formatBusRoute(route)} (${name})` : formatBusRoute(route);
     writeFeed(
@@ -562,7 +565,7 @@ function main() {
   // rationale as the Metro and bus feeds.
   let railFeeds = 0;
   for (const line of RAIL_LINE_ORDER) {
-    const records = scopedRecords(pool, 'rail', line);
+    const records = scopedRecords(pool, 'rail', line, { cards });
     const label = railLineFullName(line);
     writeFeed(
       records,
