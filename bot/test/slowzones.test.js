@@ -207,7 +207,7 @@ describe('the weekly post', () => {
     }));
     const { text, facets, alt } = composeSlowZones('bus', zones, { label: 'Oct 4 – Oct 10' });
     expect(graphemeLength(text)).toBeLessThanOrEqual(300);
-    expect(text).toContain('🐢 Slowest stretches on SEPTA buses · Oct 4 – Oct 10');
+    expect(text).toContain('🐢 Slowest bus stretches · Oct 4 – Oct 10');
     expect(text).toContain('1. Route 21 · Chestnut St, 17th St to 12th St — 3.0 mph');
     expect(facets[0].features[0].uri).toMatch(/\/map\?layer=slow$/);
     expect(alt).toContain('1. Route 21, Chestnut St, 17th St to 12th St, 3.0 mph');

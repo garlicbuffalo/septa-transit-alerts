@@ -44,8 +44,8 @@ export const SLOW = {
 };
 const MODES = { bus: SPEED_CONFIG.bus, metro: SPEED_CONFIG.metro };
 const ACCOUNT = {
-  bus: { mode: 'bus', what: 'SEPTA buses' },
-  metro: { mode: 'metro', what: 'SEPTA Metro' },
+  bus: { mode: 'bus', what: 'SEPTA buses', head: 'Slowest bus stretches' },
+  metro: { mode: 'metro', what: 'SEPTA Metro', head: 'Slowest SEPTA Metro stretches' },
 };
 const SITE_HOST = new URL(SITE_ORIGIN).host;
 const MAP_URL = `${SITE_ORIGIN}/map?layer=slow`;
@@ -194,15 +194,21 @@ const mph = (v) => `${v.toFixed(1)} mph`;
 /** Text and alt text for the weekly post. */
 export function composeSlowZones(account, zones, { label }) {
   const a = ACCOUNT[account];
-  const head = `🐢 Slowest stretches on ${a.what} · ${label}`;
+  const head = `🐢 ${a.head} · ${label}`;
   const where = (z) => (z.name ? ` · ${z.name}` : z.direction ? ` · ${z.direction}` : '');
   const full = (z, i) => `${i + 1}. ${routeShortLabel(a.mode, z.route)}${where(z)} — ${mph(z.mph)}`;
   const bare = (z, i) => `${i + 1}. ${routeShortLabel(a.mode, z.route)} — ${mph(z.mph)}`;
-  const note = `Average over the week, stops included. Map: ${SITE_HOST}/map`;
+  const notes = [
+    `Average over the week, stops included. Map: ${SITE_HOST}/map`,
+    `Stops included · ${SITE_HOST}/map`,
+  ];
+  // Where each stretch is matters more than listing all five.
   const candidates = [];
   for (const fmt of [full, bare]) {
     for (let n = Math.min(zones.length, SLOW.listed); n >= 3; n--) {
-      candidates.push([head, zones.slice(0, n).map(fmt).join('\n'), note].join('\n\n'));
+      for (const note of notes) {
+        candidates.push([head, zones.slice(0, n).map(fmt).join('\n'), note].join('\n\n'));
+      }
     }
   }
   const text = firstThatFits(candidates);
