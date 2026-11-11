@@ -256,10 +256,8 @@ describe('planned work', () => {
 
   it('lays them out by the weekend, the days ahead, now, later and long-running', () => {
     const layout = layoutPlanned(plannedItems(INCIDENTS, NOW), NOW);
-    expect(layout.weekend.items.map((i) => [i.id, i.startsThen])).toEqual([
-      ['weekend', true],
-      ['old', false],
-    ]);
+    expect(layout.weekend.items.map((i) => [i.id, i.startsThen])).toEqual([['weekend', true]]);
+    expect(layout.weekend.longRunning).toBe(1);
     expect(layout.days.map((d) => d.items.map((i) => i.id))).toEqual([
       ['both'],
       ['friday'],
@@ -280,7 +278,17 @@ describe('planned work', () => {
   it("puts an item's dates in words", () => {
     const items = Object.fromEntries(plannedItems(INCIDENTS, NOW).map((i) => [i.id, i]));
     expect(windowText(items.weekend, NOW)).toBe('Sat, Nov 14, 5:00 AM – Sun, Nov 15');
-    expect(windowText(items.now, NOW)).toBe('Until Thu, Nov 12');
+    expect(windowText(items.now, NOW)).toBe('Through Thu, Nov 12');
+    // An end at midnight is the whole of the day before; an end at a time is that time.
+    expect(
+      windowText({ ...items.now, endTs: eastern(2026, 11, 16), endDateOnly: false }, NOW),
+    ).toBe('Through Sun, Nov 15');
+    expect(
+      windowText({ ...items.now, endTs: eastern(2026, 11, 11, 16), endDateOnly: false }, NOW),
+    ).toBe('Until Wed, Nov 11, 4:00 PM');
+    expect(windowText({ ...items.now, endTs: Date.UTC(2027, 7, 25, 3, 59) }, NOW)).toBe(
+      'Through Tue, Aug 24, 2027',
+    );
     expect(windowText({ ...items.friday, endDateOnly: false }, NOW)).toBe(
       'Fri, Nov 13, 9:00 AM – 3:00 PM',
     );

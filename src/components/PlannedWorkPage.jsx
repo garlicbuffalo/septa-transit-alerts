@@ -137,7 +137,7 @@ export default function PlannedWorkPage() {
       kind === 'rail'
         ? []
         : upcomingSpecialDays(schedule, phillyDateKey(now)).filter(
-            (d) => d.date <= phillyDateKey(now + (AHEAD_DAYS + 7) * DAY_MS),
+            (d) => d.date <= phillyDateKey(now + 21 * DAY_MS),
           ),
     [schedule, now, kind],
   );
@@ -234,7 +234,7 @@ export default function PlannedWorkPage() {
             <Section
               id="weekend-heading"
               title={`This weekend · ${formatPhillyDay(saturday).replace(/, \d{4}$/, '')} – ${formatPhillyDay(sunday).replace(/, \d{4}$/, '')}`}
-              note="Everything planned that covers Saturday or Sunday."
+              note="Planned work that covers Saturday or Sunday."
             >
               {layout.weekend.items.length ? (
                 <List>
@@ -249,7 +249,19 @@ export default function PlannedWorkPage() {
                 </List>
               ) : (
                 <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
-                  Nothing planned covers this weekend.
+                  {layout.weekend.longRunning
+                    ? 'Nothing new covers this weekend.'
+                    : 'Nothing planned covers this weekend.'}
+                </p>
+              )}
+              {layout.weekend.longRunning > 0 && (
+                <p className="px-4 pb-4 text-xs text-slate-500 dark:text-slate-400">
+                  Plus {layout.weekend.longRunning} long-running change
+                  {layout.weekend.longRunning === 1 ? '' : 's'} still in effect,{' '}
+                  <a href="#ongoing-heading" className={LINK}>
+                    listed below
+                  </a>
+                  .
                 </p>
               )}
             </Section>
@@ -263,7 +275,7 @@ export default function PlannedWorkPage() {
                 layout.days.map(({ day, items: starting }) => (
                   <div key={day}>
                     <h3 className="px-4 pt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      {dayText(starting[0].startTs)}
+                      {dayText(starting[0].startTs, now)}
                     </h3>
                     <List>
                       {starting.map((item) => (

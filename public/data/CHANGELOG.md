@@ -4,10 +4,61 @@ Breaking and notable changes to the published data under `/data/` —
 `alerts-recent.json`, the monthly `alerts/<YYYY-MM>.json` shards,
 `incidents/by-line/<key>.json`, `alerts-index.json`, `aggregates.json`,
 `daily-counts.json`, `accessibility.json`, `shapes/<route>.json`,
-`system-map.json`, `pcc.json`, `speeds/<route>.json`, `speeds/rail/<line>.json`, and `alerts.csv` — and to the
+`system-map.json`, `pcc.json`, `speeds/<route>.json`, `speeds/rail/<line>.json`,
+`schedule-changes.json`, `scorecards.json`, `rail-trains.json`, `slow-zones.json`, and `alerts.csv` — and to the
 syndication feeds (`/feed.xml` and the per-line/route feeds under `/feed/`).
 Newest first. If you build on this data, watch this file before pinning to the
 format.
+
+## 2026-11-11 — Schedule changes, scorecards, train records, slow zones
+
+Four new files. All carry `schema_version: 1` and `generated_at`; the last
+three come from the bot server, so they're absent when only the GitHub Actions
+collector is running.
+
+- New **`schedule-changes.json`** (collector, rewritten when the schedule index
+  is rebuilt, about daily): what SEPTA's published **bus and Metro** timetable
+  holds. `{ covers: ["bus", "metro"], feed_version, feed_start, feed_end,
+  periods: [{ start, end, totals: { weekday, saturday, sunday } }], changes:
+  [...], special_days: [...] }`. Dates are `YYYY-MM-DD`.
+  - `periods` are the stretches between the dates a weekly service starts or
+    stops; `totals` are the trips of a typical day of each kind.
+  - A `changes` entry compares two periods that follow each other (or a new
+    feed with the one it replaces): `{ id, effective, feed_version,
+    from_feed_version, detected_ts, totals: { weekday: [before, after], … },
+    routes: [{ route, mode, kind: "new" | "ended" | "changed", delta, days: {
+    weekday?: { trips: [before, after], first: [before, after], last: [before,
+    after] }, saturday?, sunday? } }] }`. `first` and `last` are the first and
+    last trip's start in seconds past the service day's midnight (over 86400
+    after midnight), null when the route doesn't run. A kind of day is listed
+    when its trips differ or a first or last trip moves 10 minutes or more.
+    `delta` is the change in trips over a week (a weekday counted five times);
+    routes are sorted by its size. Newest `effective` first, kept 180 days.
+  - A `special_days` entry is a date in the next 28 days whose service isn't
+    its period's typical day of the same kind: `{ date, day_type, holiday,
+    trips, typical, like: "sunday" | "saturday" | null, kind: "reduced" |
+    "extra" | "routes-off", routes_off: [route, …] }`.
+- New **`scorecards.json`**: `{ weights, on_time, modes: { bus?, metro?, rail?:
+  { weeks: [{ from, to, ranked }], latest: { from, to, ranked, entries: [{
+  route, rank, score, measures, counts }] }, history: { [route]: [score, …] }
+  } } }`. `latest` is the last full Sunday–Saturday week; `history` is each
+  route's score by week, aligned with `weeks` (newest first, null when it
+  wasn't ranked). `measures` holds what was ranked (`onTime` %, `speed` mph;
+  for buses and Metro `cancelled`, `bunching`, `gaps` per 1,000 speed readings;
+  for Regional Rail `cancelled` % and `delay` minutes) and `counts` what was
+  counted. A mode is absent until a week of it has been scored.
+- New **`rail-trains.json`**: `{ on_time_max, from, to, days: [date, …],
+  trains: [{ no, line, origin, dest, first_seen_min, seen, ran, on_time, late,
+  cancelled, avg_late, worst, daily: [...] }] }` over the 28 service days
+  before today's. `daily` is aligned with `days`: the train's worst lateness
+  that day in minutes, `-1` cancelled, null not seen. `first_seen_min` is when
+  the train usually first shows on TrainView, in minutes past midnight
+  (TrainView carries no scheduled times).
+- New **`slow-zones.json`**: `{ from_day, to_day, zones: [{ mode, route, dir,
+  direction, mph, readings, length_m, name, route_mph, points: [[lat, lon], …]
+  }] }`: the slowest two stretches in a row of each direction of each bus and
+  Metro route over the past 7 days, the 40 slowest for buses and 12 for Metro.
+  `name` is from the stops at the zone's ends, or null.
 
 ## 2026-10-11 — PCC trolleys on the G1
 

@@ -87,12 +87,12 @@ function routeLabels(incidents) {
   return out;
 }
 
-/** "L1, Route 23, Paoli/Thorndale Line +4" in versions, longest first. */
+/** "L1, Route 23, Paoli/Thorndale Line +4 more" in versions, longest first. */
 function namedList(labels, max = 4) {
   const versions = [];
   for (let n = Math.min(max, labels.length); n >= 1; n--) {
     const more = labels.length - n;
-    versions.push(`${labels.slice(0, n).join(', ')}${more ? ` +${more}` : ''}`);
+    versions.push(`${labels.slice(0, n).join(', ')}${more ? ` +${more} more` : ''}`);
   }
   return versions;
 }
@@ -245,7 +245,7 @@ export function composeBriefing(stats) {
     },
     { rank: 4, text: stats.elevators ? `♿ ${plural(stats.elevators, 'elevator')} out` : null },
   ];
-  const text = fitSections(head, [lines, [{ rank: 0, text: `🔗 ${SITE_HOST}` }]]);
+  const text = fitSections(head, [lines, [{ rank: -1, text: `🔗 ${SITE_HOST}` }]]);
   return { text, facets: linkFacets(text, [{ text: SITE_HOST, uri: SITE_ORIGIN }]) };
 }
 
@@ -353,7 +353,7 @@ export function composeWeekend({ saturday, sunday, fresh, continuing }, special 
             ? `Plus ${plural(continuing.length, 'longer-running change')} still in effect.`
             : null,
       },
-      { rank: 0, text: `Dates and details: ${SITE_HOST}/planned` },
+      { rank: -1, text: `Dates and details: ${SITE_HOST}/planned` },
     ],
   ];
   const text = fitSections(head, sections);
@@ -443,7 +443,7 @@ export function composeHeadsUp(day) {
           "From SEPTA's timetable; Regional Rail isn't covered.",
         ],
       },
-      { rank: 0, text: `🔗 ${SITE_HOST}/schedule-changes` },
+      { rank: -1, text: `🔗 ${SITE_HOST}/schedule-changes` },
     ],
   ]);
   return {
@@ -551,7 +551,7 @@ export function composeScheduleChange(set, now) {
       { rank: 2, text: totals },
     ],
     [{ rank: 1, text: versions.slice(-3) }],
-    [{ rank: 0, text: `Every change: ${SITE_HOST}/schedule-changes` }],
+    [{ rank: -1, text: `Every change: ${SITE_HOST}/schedule-changes` }],
   ]);
   return {
     text,

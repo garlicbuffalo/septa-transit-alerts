@@ -71,14 +71,15 @@ export function comingWeekend(now = Date.now()) {
 // Whether an item's window covers any part of the Philadelphia days [fromDay, toDay].
 function coversDays(item, fromDay, toDay) {
   const start = phillyDayUTC(item.startTs);
-  const end = item.endTs == null ? Number.POSITIVE_INFINITY : phillyDayUTC(item.endTs);
+  // An end at midnight is the end of the day before, not a minute of the next.
+  const end = item.endTs == null ? Number.POSITIVE_INFINITY : phillyDayUTC(item.endTs - 60_000);
   return start <= toDay && end >= fromDay;
 }
 
 /**
  * The items laid out for the page:
- *   weekend   everything covering the coming weekend, the work that starts
- *             with it first (`startsThen`), long-running work last
+ *   weekend   what covers the coming weekend, the work that starts with it
+ *             first (`startsThen`); long-running work is only counted
  *   days      the next AHEAD_DAYS days, each with the items that start that day
  *   now       in effect now and not long-running
  *   ongoing   in effect now, begun over LONG_RUNNING_DAYS ago
@@ -90,15 +91,12 @@ export function layoutPlanned(items, now = Date.now()) {
   const longRunning = (i) => now - i.startTs > LONG_RUNNING_DAYS * DAY_MS;
   const started = (i) => i.startTs <= now;
 
-  const weekend = items
-    .filter((i) => coversDays(i, saturday, sunday))
+  // Long-running work covers every weekend: it's counted here and listed in its own section.
+  const covering = items.filter((i) => coversDays(i, saturday, sunday));
+  const weekend = covering
+    .filter((i) => !(started(i) && longRunning(i)))
     .map((i) => ({ ...i, startsThen: phillyDayUTC(i.startTs) >= saturday - DAY_MS && !started(i) }))
-    .sort(
-      (a, b) =>
-        Number(b.startsThen) - Number(a.startsThen) ||
-        Number(longRunning(a)) - Number(longRunning(b)) ||
-        a.startTs - b.startTs,
-    );
+    .sort((a, b) => Number(b.startsThen) - Number(a.startsThen) || a.startTs - b.startTs);
 
   const days = [];
   for (let n = 0; n < AHEAD_DAYS; n++) {
@@ -108,7 +106,12 @@ export function layoutPlanned(items, now = Date.now()) {
   }
   const horizon = today + (AHEAD_DAYS - 1) * DAY_MS;
   return {
-    weekend: { saturday, sunday, items: weekend },
+    weekend: {
+      saturday,
+      sunday,
+      items: weekend,
+      longRunning: covering.length - weekend.length,
+    },
     days,
     now: items.filter((i) => started(i) && !longRunning(i)),
     ongoing: items.filter((i) => started(i) && longRunning(i)),
@@ -125,28 +128,48 @@ const timeFmt = (ts) =>
     minute: '2-digit',
   });
 
-/** "Sat, Nov 14" for an instant, in Philadelphia. */
-export const dayText = (ts) => dateFmt(ts, { weekday: 'short', month: 'short', day: 'numeric' });
+const yearOf = (ts) => dateFmt(ts, { year: 'numeric' });
 
-// A moment of a window: the date, and the time unless SEPTA gave only a date.
-const momentText = (ts, dateOnly) => (dateOnly ? dayText(ts) : `${dayText(ts)}, ${timeFmt(ts)}`);
+/** "Sat, Nov 14" for an instant, in Philadelphia; with the year when it isn't this one. */
+export const dayText = (ts, now = Date.now()) =>
+  dateFmt(ts, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(yearOf(ts) !== yearOf(now) && { year: 'numeric' }),
+  });
+
+const isMidnight = (ts) => timeFmt(ts) === '12:00 AM';
+
+// A moment a window starts: the date, and the time unless SEPTA gave only a date.
+const startText = (item, now) =>
+  item.startDateOnly
+    ? dayText(item.startTs, now)
+    : `${dayText(item.startTs, now)}, ${timeFmt(item.startTs)}`;
+
+// The moment a window ends. SEPTA writes "through Sunday" as 11:59 PM Sunday or as midnight
+// Monday: both are the whole of Sunday.
+const endsWholeDay = (item) => item.endDateOnly || isMidnight(item.endTs);
+const endText = (item, now) =>
+  endsWholeDay(item)
+    ? dayText(isMidnight(item.endTs) ? item.endTs - 60_000 : item.endTs, now)
+    : `${dayText(item.endTs, now)}, ${timeFmt(item.endTs)}`;
 
 /**
- * An item's dates in words: "Sat, Nov 14, 5:00 AM – Sun, Nov 15", "Until Sat,
- * Dec 19", "Since Oct 30 · no end date posted".
+ * An item's dates in words: "Sat, Nov 14, 5:00 AM – Sun, Nov 15", "Through Sat,
+ * Dec 19", "Until Wed, Nov 11, 4:00 PM", "Since Oct 30 · no end date posted".
  */
 export function windowText(item, now = Date.now()) {
-  const start = momentText(item.startTs, item.startDateOnly);
   if (item.startTs > now) {
+    const start = startText(item, now);
     if (item.endTs == null) return `From ${start}`;
-    // One day's work reads as a time range.
-    if (phillyDayUTC(item.startTs) === phillyDayUTC(item.endTs)) {
-      return item.startDateOnly || item.endDateOnly
-        ? dayText(item.startTs)
-        : `${start} – ${timeFmt(item.endTs)}`;
+    const lastDay = isMidnight(item.endTs) ? item.endTs - 60_000 : item.endTs;
+    // One day's work reads as that day, or a time range within it.
+    if (phillyDayUTC(item.startTs) === phillyDayUTC(lastDay)) {
+      return item.startDateOnly || endsWholeDay(item) ? start : `${start} – ${timeFmt(item.endTs)}`;
     }
-    return `${start} – ${momentText(item.endTs, item.endDateOnly)}`;
+    return `${start} – ${endText(item, now)}`;
   }
-  if (item.endTs == null) return `Since ${dayText(item.startTs)} · no end date posted`;
-  return `Until ${momentText(item.endTs, item.endDateOnly)}`;
+  if (item.endTs == null) return `Since ${dayText(item.startTs, now)} · no end date posted`;
+  return `${endsWholeDay(item) ? 'Through' : 'Until'} ${endText(item, now)}`;
 }

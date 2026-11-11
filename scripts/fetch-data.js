@@ -43,6 +43,14 @@ const REMOTE_FILES = [
   'accessibility.json',
 ];
 
+const OPTIONAL_FILES = [
+  'pcc.json',
+  'schedule-changes.json',
+  'scorecards.json',
+  'rail-trains.json',
+  'slow-zones.json',
+];
+
 mkdirSync(OUT_DIR, { recursive: true });
 
 function readLocalJson(file) {
@@ -88,11 +96,15 @@ async function downloadFromOrigin() {
   for (const file of REMOTE_FILES) {
     writeJson(file, file === 'alerts-index.json' ? index : await fetchJson(file));
   }
-  // The G1's PCC trolleys (the G1 page's banner); an archive from before it has none.
-  try {
-    writeJson('pcc.json', await fetchJson('pcc.json'));
-  } catch (err) {
-    console.warn(`fetch-data: ${err.message}`);
+  // Files an archive may not have: the G1's PCC trolleys (from before the collector kept
+  // them), schedule changes (likewise), and the bot server's scorecards, train records and
+  // slow zones (absent when only the GitHub Actions collector runs).
+  for (const file of OPTIONAL_FILES) {
+    try {
+      writeJson(file, await fetchJson(file));
+    } catch (err) {
+      console.warn(`fetch-data: ${err.message}`);
+    }
   }
   console.log(`fetch-data: downloaded ${REMOTE_FILES.length + shards.length} files from ${ORIGIN}`);
 }

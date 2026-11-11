@@ -222,7 +222,7 @@ describe('the morning briefing', () => {
     const { text } = composeBriefing(briefingStats({ incidents: many, now: MORNING }));
     expect(graphemeLength(text)).toBeLessThanOrEqual(300);
     expect(text).toContain(
-      '⚠️ 30 unplanned alerts in effect: Route 100, Route 101, Route 102, Route 103 +26',
+      '⚠️ 30 unplanned alerts in effect: Route 100, Route 101, Route 102, Route 103 +26 more',
     );
   });
 });

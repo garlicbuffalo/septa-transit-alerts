@@ -326,7 +326,7 @@ describe('the planned work page', () => {
       'href',
       '/event/alert-2',
     );
-    expect(within(now).getByText('Until Thu, Nov 12')).toBeInTheDocument();
+    expect(within(now).getByText('Through Thu, Nov 12')).toBeInTheDocument();
     const starting = screen.getByRole('region', { name: 'Starting in the next 7 days' });
     expect(within(starting).getByRole('heading', { name: 'Sat, Nov 14' })).toBeInTheDocument();
   });

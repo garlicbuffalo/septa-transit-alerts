@@ -7,12 +7,12 @@ The always-on half of the project. It runs on a small server and:
 
   | Account | Posts |
   |---|---|
-  | `alerts` (titled "insights") | SEPTA's significant alerts, with a map when the alert names a stretch of line, and a threaded ✅ reply when SEPTA clears them; a daily and a weekly system digest; rough-hour callouts; reposts of the other accounts' standout posts |
-  | `metro` | SEPTA Metro gaps, bunching, stuck vehicles, and silent routes, each with a map; an hourly roundup of routes with vehicles missing from the tracker; cancelled-trip roundups; timelapse videos; speed maps; weekly and monthly bunching and gap recaps; a weekly Hall of Fame and Wall of Shame; PCC trolley posts when SEPTA's vintage cars run on the G1 |
-  | `bus` | The same for buses, plus clusters of several routes' buses stopped together |
-  | `rail` | An hourly roundup of Regional Rail cancellations and 15+ min delays; speed maps; weekly and monthly on-time recaps with a chart by line; a weekly Hall of Fame and Wall of Shame |
+  | `alerts` (titled "insights") | SEPTA's significant alerts, with a map when the alert names a stretch of line, and a threaded ✅ reply when SEPTA clears them; a morning briefing; a Friday weekend preview; a heads-up before a holiday timetable; a post when new schedules are coming; a daily, a weekly, and a monthly system digest, and a year in review; rough-hour callouts; reposts of the other accounts' standout posts |
+  | `metro` | SEPTA Metro gaps, bunching, stuck vehicles, and silent routes, each with a map; an hourly roundup of routes with vehicles missing from the tracker; cancelled-trip roundups; timelapse videos; speed maps; weekly and monthly bunching and gap recaps; a weekly Hall of Fame and Wall of Shame; the week's slowest stretches; a post when the L1's trains slow in the tunnel; PCC trolley posts when SEPTA's vintage cars run on the G1 |
+  | `bus` | The same for buses (but for the tunnel and the PCCs), plus clusters of several routes' buses stopped together |
+  | `rail` | An hourly roundup of Regional Rail cancellations and 15+ min delays; speed maps; weekly and monthly on-time recaps with a chart by line; a weekly Hall of Fame and Wall of Shame; the trains late most often over four weeks |
 
-- **Publishes the site's data.** It pushes the `data` branch and triggers deploys, and links every incident to its Bluesky post. While the server publishes, the [collect workflow](../.github/workflows/collect.yml) stands down. If the server goes quiet for 20 minutes, the workflow's next scheduled run takes over again by itself (GitHub's cron can be slow to fire; *Actions → Collect SEPTA data → Run workflow* takes over at once).
+- **Publishes the site's data.** It pushes the `data` branch and triggers deploys, and links every incident to its Bluesky post. Hourly it adds the files only it can make: the week's speeds, the slow zones for the system map, and the scorecards and train-by-train record for the site's scorecards page. While the server publishes, the [collect workflow](../.github/workflows/collect.yml) stands down. If the server goes quiet for 20 minutes, the workflow's next scheduled run takes over again by itself (GitHub's cron can be slow to fire; *Actions → Collect SEPTA data → Run workflow* takes over at once).
 
 Everything defaults to **dry run**. The service collects and renders every post (text, alt text, map) into `/var/lib/septa-bots/assets`, but posts and publishes nothing until you say so.
 
@@ -82,7 +82,11 @@ The tint is made for the colours CARTO used in October 2026, so every map checks
 | Post a speed map now | `sudo septa-bots speedmap bus` (or `metro`, `rail`); add a route to map that one, e.g. `speedmap metro m1` (nothing is posted if it has too little data in the past hour) |
 | Post a recap now | `sudo septa-bots recap rail week` (`bus`, `metro`, `rail`; `week` or `month`: the last full Sunday–Saturday week or calendar month, whatever day it's run) |
 | Post a Hall of Fame thread now | `sudo septa-bots halloffame bus` (`bus`, `metro`, `rail`; the last full Sunday–Saturday week, so one missed on Sunday can be posted later in the week) |
-| Post the insights digest now | `sudo septa-bots digest day` (or `week`) |
+| Post the insights digest now | `sudo septa-bots digest day` (or `week`, `month`) |
+| Post the year in review now | `sudo septa-bots year` (the calendar year before this one; nothing if the archive covers under 60 days of it) |
+| Post an outlook post now | `sudo septa-bots outlook briefing` (or `weekend`, `headsup`, `schedulechange`; each posts once, and only when it has something to say) |
+| Post the slowest stretches now | `sudo septa-bots slowzones bus` (or `metro`; the last full Sunday–Saturday week) |
+| Post the most-often-late trains now | `sudo septa-bots latetrains` (the last four full weeks) |
 | Turn videos off | set `VIDEOS=0`, restart |
 | Stop posting at once | set `BOT_MODE=dry-run`, restart |
 | Hand collecting back to GitHub Actions | set `PUBLISH=0`, restart, then run *Actions → Collect SEPTA data → Run workflow* (or wait 20+ minutes for its schedule) |
@@ -91,7 +95,7 @@ The tint is made for the colours CARTO used in October 2026, so every map checks
 
 | Path | What it holds |
 |---|---|
-| `bots.sqlite` | Every post (so restarts never double-post and threads continue), recent vehicle positions, cooldowns, timelapse recordings, a year of Regional Rail train tallies, two months of daily on-time tallies by route, speed map history, every detection seen (for the recaps) |
+| `bots.sqlite` | Every post (so restarts never double-post and threads continue), recent vehicle positions, cooldowns, timelapse recordings, a year of Regional Rail train tallies, two months of daily on-time tallies by route, speed map history, every detection seen (for the recaps), each week's scorecards (two years), a month of the L1's tunnel running times |
 | `data/` | The checkout of the `data` branch: only the latest snapshot, since older ones are pruned hourly |
 | `cache/` | The daily GTFS schedule index |
 | `bluesky-sessions/` | Cached logins, so the accounts stay under Bluesky's login limits |
@@ -127,7 +131,14 @@ features/speedhistory.js past week's speeds per route, for the site's pages
 features/recaps.js      weekly and monthly bunching hotspots and gap charts
 features/halloffame.js  weekly Hall of Fame and Wall of Shame: each account's best and worst five routes by an overall score
 features/cancellations.js  twice-daily cancelled-trip roundups
-features/insights.js    the insights account: reposts, rough hours, daily and weekly digests
+features/insights.js    the insights account: reposts, rough hours, daily, weekly and monthly digests,
+                        the year in review
+features/outlook.js     the insights account's look ahead: morning briefing, weekend preview,
+                        holiday heads-up, schedule-change posts
+features/scorecards.js  each week's scores kept, and the site's scorecards and train-by-train files
+features/latetrains.js  the Regional Rail trains late most often
+features/slowzones.js   the slowest stretches: the site's map layer and the weekly post
+features/tunnel.js      posts when the L1's trains slow in the tunnel
 features/pcc.js         posts when the G1's vintage PCC trolleys come out
 map/               CARTO basemap (tiles stitched in basemap.js) + SVG overlay rendering (projection, drawing, line, route,
                    speed and hotspot maps, bar charts)
@@ -179,6 +190,14 @@ Each measure is ranked among the week's routes (worst 0, best 1, ties sharing th
 
 A bus or Metro route needs 300 speed readings on 3 days of the week to be ranked, and a Regional Rail line 30+ trains. Ten routes or lines are needed to fill both lists; with fewer (Metro has about nine that report positions) the ranking splits evenly, so nothing is in both, and with fewer than six there's no thread. A week the bot saw too little of (speeds on fewer than 5 days, or under 200 trains) gets no thread. The weights are `WEIGHTS` in `features/halloffame.js`. The posts aren't highlighted, so the insights account doesn't repost them.
 
+**Scorecards for the site.** The scores behind the Hall of Fame are worked out once for each week, in the first hours of Sunday (the speed tallies behind them are kept nine days), and kept in the database (`scorecard_weeks`), so the site's `/scorecards` can show every ranked route, not just the ends, and each one's score week by week. `scorecards.json` and `rail-trains.json` (each Regional Rail train number's record over the past 28 service days, from the TrainView tally) go out hourly with the speed files.
+
+**Slow zones** (bus and metro accounts). A slow zone is the slowest two stretches in a row (about half a mile) of one direction of a route, timed over the week with stops included, from the speed tallies behind the site's speed maps. It needs 40 readings, and the layovers at the ends of a route don't count. Sundays at 11:10 (bus) and 11:15 (metro) each account posts the week's five slowest, one per route, named for the stops at their ends ("Chestnut St, 17th St to 12th St"), with a map of the ten slowest in the speed maps' colours. A reply lists the routes whose average speed moved most from the week before (at least 0.5 mph and 5%), from that week's stored scorecard. The past seven days' zones (40 bus, 12 Metro) are published hourly as `slow-zones.json` for the site's system map.
+
+**Most-often-late trains** (rail account). Sundays at 11:20: the Regional Rail trains that were late on at least half the days they ran over the four weeks just ended (and ran at least 8), worst first, with a chart. A train is late on a day when it was more than 5 minutes behind at its worst, as in the recap. Each is named by number, where it runs, and about when it first shows on TrainView (TrainView has no scheduled times). Silent with fewer than three such trains.
+
+**Tunnel slowdowns** (metro account). The L1's trains have no GPS between Front St and 45th St, so nothing SEPTA publishes shows a slow tunnel. The collector learns how much longer than scheduled trains take through it, from each train seen going in at one portal and coming out at the other (about 13% on an ordinary day), to place the trains underground. The bot keeps that figure each time it moves and posts when a direction reaches 30% over schedule and 12 points over its own usual (the median of the past two weeks' readings, at least 20 of them), on a reading under 25 minutes old. The collector's figure moves 30% of the way to each new train's time, so one slow train doesn't reach the bar and two in a row do. A ✅ reply follows when it's back within 6 points of usual. At most one post every 3 hours and 2 a day. The collector caps the figure at 50% over schedule, so a post never says more than that.
+
 **PCC trolleys** (metro account). Most G1 trips run with buses, but on some days SEPTA runs its vintage PCC trolleys. The collector picks them out of TransitView's G1 positions each tick by fleet number (four digits starting with 23; see [`src/lib/pcc.js`](../src/lib/pcc.js)) and hands them to the bot. When the day's first PCC comes out, the metro account posts it with a map of the G1 and the car marked, where it's headed, and how many of the G1's other vehicles are buses. Each car that comes out later that day gets a reply in the same thread listing every PCC out now. Each car is posted once a day, and only after it's been out for 3 minutes, so a one-poll blip never posts. Every post links to the [G Trolley Tracker](https://septa-g-trolley-tracker.netlify.app/) to follow the cars live. `PCC_POSTS=0` turns these posts off. The site's `/line/g1` banner reads the same data from `pcc.json`. The PCC posts' maps show the line's buses too, and a G1 detection's text calls its vehicles buses, trolleys, or, for a mix, vehicles.
 
 **Regional Rail** (rail account). At 14 past each hour, the bot posts a roundup of the trains SEPTA cancelled and the trains running 15+ minutes late that the collector picked up in the hour before, worst delays first, threaded when it runs long. It's silent when there were none, and each train's incident on the site links to the roundup. Every Sunday (the past week) and on the 1st (the past month), a recap gives the share of trains on time (never more than 5 minutes late, and not cancelled), the three least reliable lines, cancellations, and the worst delay, with a bar chart of every line. The recaps count every train on SEPTA's TrainView as the server polls it, not just the ones that were posted.
@@ -191,8 +210,16 @@ A bus or Metro route needs 300 speed readings on 3 days of the week to be ranked
 | Rough hour | 10 past the hour, when the hour that just ended brought at least 12 new disruptions across SEPTA (unplanned alerts, gaps, bunching, stuck or missing vehicles, late or cancelled trains), at least 1.5× the usual for that hour, and more than at that hour on any comparable day (weekday, Saturday, or Sunday) in the past 4 weeks. Needs 8 comparable weekdays (3 Saturdays or Sundays) of history; at most one every 3 hours and 2 a day. |
 | Daily digest | 9:30 PM: the day's unplanned SEPTA alerts, cancelled bus and Metro trips, long gaps and bunching, Regional Rail's on-time share, elevators out, and the hardest-hit routes, linking to the site's day page. A 📈 line names what stood out against the past 30 days ("Most cancelled trips in 30 days, 3× a usual weekday"), or 📉 a calmer day than usual. |
 | Weekly digest | Sunday at 11 AM: the same for the Sunday–Saturday week just ended, against the 8 weeks before, linking to the site's week page. |
+| Monthly digest | The 1st at 11:30 AM: the same for the calendar month just ended, against the 6 months before, with the month's roughest day, linking to the site's calendar. |
+| Year in review | New Year's Day at 12:30 PM, as two posts: the year's totals, then its roughest day, hardest-hit routes, the route with the most cancelled trips, and the longest train delay. It needs the archive to cover 60 days of the year, and says "since Oct 5" when it doesn't cover all of it. |
+| Morning briefing | 6:30 AM on weekdays, 8 AM at weekends: the unplanned alerts in effect and the lines they're on, the planned changes riders must work around today, the bus and Metro trips cancelled so far, Regional Rail trains cancelled, elevators out, and a holiday timetable when there is one. "No unplanned SEPTA alerts in effect" on a clear morning. Not posted after noon, if the bot was down in the morning. |
+| Weekend preview | Friday at 3:30 PM: the planned work covering Saturday and Sunday that the account would post about (shuttle buses, closures, suspensions), the changes that start this weekend first and the long-running ones counted, linking to the site's `/planned`. Silent when nothing covers the weekend. |
+| Holiday heads-up | 4 PM the day before a *special day*: one whose bus and Metro timetable isn't the usual for its weekday. It says which timetable runs ("a Sunday timetable: 8,437 trips, 57% of a usual Thursday") and how many routes don't. A day that only has routes off (the school routes, when schools are closed) is announced once, at the start of a run of such days. |
+| Schedule change | Once, from 10 days before a change in the bus and Metro timetable takes effect to 2 days after: how many routes change, the biggest changes by name, and a typical weekday's trips before and after, linking to the site's `/schedule-changes`. |
 
 Each feature marks its standout posts (`highlight` in the posts table) and the insights account reposts them. The digests and rough hours count from the site's archive, the same incidents the site shows, so their comparisons work from the archive's first day: an alert counts when the account would post it and it isn't planned work, and an earlier day or week counts only once the source behind a figure was running and the collector recorded something every day of it.
+
+The heads-up and the schedule-change post read the collector's `schedule-changes.json` (see [What's tracked](../README.md#whats-tracked)): from SEPTA's published timetable, for buses and Metro. Regional Rail's timetable is a separate feed the collector doesn't read, and the heads-up says so.
 
 **Which alerts post:**
 
